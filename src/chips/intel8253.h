@@ -33,10 +33,9 @@
 // ---------------------------------------------------------------------------
 // WHAT IS MODELED, AND WHAT IS TIED OFF:
 //
-//   * Modes 0, 2, 3, 4 have their real OUT behavior; the count read-back is exact for
-//     modes 0/2/4 and approximate for the square-wave mode 3 (a real 8253 decrements
-//     the mode-3 count by two per tick and the read-back is rarely relied on -- OUT is
-//     what feeds interrupts, and OUT is exact).
+//   * Modes 0, 2, 3, 4 have their real OUT behavior and their real count read-back. In
+//     the square-wave mode 3 the count steps by two and reloads N at each half period,
+//     as a real SS-1 reads it back (#908; reference/Intel 8253.md §5).
 //   * Modes 1 and 5 are GATE-TRIGGERED one-shots. The SS-1 pulls every gate high and
 //     ungated (§3.3), so no gate rising edge ever arrives -- a real board would never
 //     trigger them, and here they idle their programmed initial OUT (high). This is the

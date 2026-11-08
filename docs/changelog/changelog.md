@@ -203,6 +203,42 @@ GOTCHA's adjustment for the resting position could wrap a full move into the opp
 direction. Full deflection still reads `7F` or `81`, and Dazzle Doodle's drawing range
 is unchanged.
 
+**Fixed: the SS-1's 9511A math chip rounded its float results.** The simulator rounded FADD,
+FSUB, FMUL and FDIV to the nearest 24-bit mantissa. Two real 9511A chips truncate, with no guard
+bits. For example, FADD of `01800000` and `69C00000` gave `01800001`, and the real chips give
+`01800000`. Now the four operations truncate as the real chip does. FLTD truncates, and PUPI
+pushes `02C90FDA`, not `02C90FDB`. SIN, COS, TAN, ASIN, ACOS, ATAN, EXP, LN, LOG, SQRT and PWR
+now take the steps that the real chip takes. Of 550 results measured on the real chips, 507
+match in all 32 bits, and the others differ in the last 1 or 2 bits.
+
+**Fixed: SMUL and the other fixed-point commands gave a wrong result for `8000`.** SMUL of `8000`
+and `0002` gave `8000` with status `42`. The real chip returns the low half of the product,
+`0000`, with status `22`. SMUL, SMUU, SDIV and their 32-bit forms now give the real result
+when an operand is the most negative value.
+
+**Fixed: a 9511A argument error took the full command time.** SQRT of −1 ran for the full SQRT
+time and left −1 on the stack. The real chip stops after about 20 clocks with status `48` and
+`80800000`. Now SQRT, LN, LOG, ASIN, ACOS, PWR, FIXS and FIXD stop early on a bad argument, with
+the real chip's result and status.
+
+**Fixed: the SS-1 8253 read back a wrong count in mode 3.** In mode 3 (the square wave) the
+count went down by 1 on each clock, through 0, as in mode 0. A real 8253 counts down by 2 and
+loads the count again at each half period. For example, with a count of 1000, reads 76 clocks
+apart now give 936, 784, 632, 480, as on the real chip.
+
+**Fixed: the SS-1 2651 showed TxRDY with the transmitter disabled.** Status bit D0 (TxRDY) read
+1 before the guest programmed the UART, and with command bit D0 (TxEN) at 0. Because slave
+IR6 follows TxRDY, an interrupt on IR6 could come before the guest enabled the transmitter.
+Now TxRDY and TxEMT (D2) read 0 while TxEN is 0, as on a real SS-1. TxEMT stays 0 after TxEN
+is set, until a character has been sent. A byte written while TxEN is 0 waits, and is sent when
+TxEN is set.
+
+**Fixed: VI7\* did not reach the SS-1's slave 8259A.** The board tied slave IR0 inactive. On a
+real SS-1 the standard J8 shunt connects S-100 VI7\* to slave IR0 (J8 pins 8 and 9). Now a
+board that pulls VI7\* interrupts the CPU through slave IR0 and the cascade. The guest gets a
+CALL to the slave's IR0 address. A snapshot from an older version restores, but the `ss1`
+board starts as at power-on.
+
 ## 1.3.5
 
 **1.3.5 adds a math chip to the CompuPro System Support 1 and an overlay to the CADzilla board.

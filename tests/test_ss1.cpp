@@ -386,6 +386,33 @@ void test_ss1() {
         CHECK((g.status() & kTxEMT) != 0, "Y has left too: TxEMT set, nothing left to send");
     }
 
+    SECTION("SS-1 2651 -- TxEN (command D0) gates TxRDY and TxEMT, as a real SS-1 reads them");
+    {
+        // The status values a real SS-1 read in each state (#908).
+        UartRig g;
+        CHECK(g.status() == 0xC0, "power-on, not programmed: no TxRDY, no TxEMT");
+        g.program(0x4E, 0x7E, 0x26);  // TxEN off, RxEN|DTR|RTS on
+        CHECK(g.status() == 0xC0, "command 26 (TxEN off): no TxRDY, no TxEMT");
+        g.u.writeCommand(0x27, g.clk);
+        CHECK(g.status() == 0xC1, "command 27: TxRDY, but no TxEMT before a byte has left");
+        g.u.writeData('A', g.clk);
+        g.advance(kChar + kBit);
+        CHECK(g.status() == 0xC5, "a byte has left: TxRDY and TxEMT");
+        g.u.writeCommand(0x26, g.clk);
+        CHECK(g.status() == 0xC0, "command 26 again: both clear");
+
+        // A byte written while TxEN is off waits in the chip, and leaves when TxEN is set.
+        g.u.writeData('B', g.clk);
+        g.advance(kChar + kBit);
+        CHECK(g.status() == 0xC0, "a byte written with TxEN off: still no TxRDY or TxEMT");
+        CHECK(g.tty->out() == "A", "and the byte has not left");
+        g.u.writeCommand(0x27, g.clk);
+        CHECK(g.tty->out() == "AB", "command 27 sends the waiting byte");
+        CHECK(g.status() == 0xC1, "it is in the shift register: TxRDY, no TxEMT");
+        g.advance(kChar + kBit);
+        CHECK(g.status() == 0xC5, "it has left: TxRDY and TxEMT");
+    }
+
     SECTION("SS-1 2651 -- a character is clocked in over a frame time");
     {
         UartRig g;
@@ -628,6 +655,50 @@ void test_ss1() {
         CHECK(h.t.out(2, h.now), "odd N: still high at tick 2 (the extra tick is high)");
         h.advance(1);
         CHECK(!h.t.out(2, h.now), "odd N: low from tick 3");
+    }
+
+    SECTION("SS-1 8253 -- mode 3 read-back: steps by 2, reloads N each half period");
+    {
+        // 16 latched reads of counter 2 on a real SS-1 (#908), the first 32 ticks after the
+        // load and each one 76 ticks after the last. The same reads of a mode 2 load of 1001
+        // fit the same 32 and 76.
+        struct Real { uint16_t n; uint16_t reads[16]; };
+        static const Real kReal[] = {
+            {1000, {936, 784, 632, 480, 328, 176, 24, 872, 720, 568, 416, 264, 112, 960, 808, 656}},
+            {1001, {938, 786, 634, 482, 330, 178, 26, 874, 722, 570, 418, 266, 114, 964, 812, 660}},
+            {1003, {940, 788, 636, 484, 332, 180, 28, 878, 726, 574, 422, 270, 118, 970, 818, 666}},
+        };
+        for (const Real& r : kReal) {
+            TimerRig g;
+            g.t.writeControl(ctrl(2, kBoth, 3), g.now);
+            g.t.writeCounter(2, (uint8_t)(r.n & 0xFF), g.now);
+            g.t.writeCounter(2, (uint8_t)(r.n >> 8), g.now);
+            g.advance(32);
+            for (int i = 0; i < 16; ++i) {
+                g.t.writeControl(ctrl(2, 0 /*latch*/, 0), g.now);
+                uint8_t lo = g.t.readCounter(2, g.now);
+                uint8_t hi = g.t.readCounter(2, g.now);
+                std::string what = "mode 3 N=" + std::to_string(r.n) + " read " +
+                                   std::to_string(i) + ": got " +
+                                   std::to_string((hi << 8) | lo) + ", the real board read " +
+                                   std::to_string(r.reads[i]);
+                CHECK(((hi << 8) | lo) == r.reads[i], what.c_str());
+                g.advance(76);
+            }
+        }
+
+        // A whole period of a small odd count: N, then N-1 .. 2 high; N, then N-3 .. 2 low.
+        // It never reads 0 or more than N.
+        TimerRig h;
+        h.t.writeControl(ctrl(2, kLsb, 3), h.now);
+        h.t.writeCounter(2, 7, h.now);
+        const uint16_t want7[] = {7, 6, 4, 2, 7, 4, 2, 7};
+        for (int i = 0; i < 8; ++i) {
+            std::string what = "mode 3 N=7 tick " + std::to_string(i) + ": got " +
+                               std::to_string(h.t.count(2, h.now));
+            CHECK(h.t.count(2, h.now) == want7[i], what.c_str());
+            h.advance(1);
+        }
     }
 
     SECTION("SS-1 8253 -- nextEdge reports the next OUT transition");
@@ -1110,6 +1181,48 @@ void test_ss1() {
         CHECK(m.bus.intAck() == 0xCD, "INTA 1: CALL");
         CHECK(m.bus.intAck() == 0x08, "INTA 2: the MASTER's vector low (0x0200 + 2*4 = 0x0208)");
         CHECK(m.bus.intAck() == 0x02, "INTA 3: address high");
+    }
+
+    SECTION("SS-1 board -- VI7* is slave IR0 (J8 pins 8-9), through the cascade");
+    {
+        // Another board pulls VI7: an IO-4 strapped to put its idle transmitter on VI7.
+        Machine m;
+        m.bus.setVerify(true);
+        auto*       ss1 = buildIntMachine(m);
+        std::string err;
+        auto*       io  = m.add("io4", "io0", err);
+        CHECK(io != nullptr, "add an IO-4");
+        if (io) CHECK(setUnitProperty(*io, "a", "tx_int", "vi7", err), "strap its transmitter to VI7");
+        m.power();
+        // Master: only IR7 (the cascade). Slave: only IR0.
+        initSs1Pics(m, 0x50, (uint8_t)(~(1u << 7) & 0xFFu), (uint8_t)(~(1u << 0) & 0xFFu));
+
+        CHECK(m.bus.viLines() == (1u << 7), "the IO-4 is pulling VI7");
+        CHECK((ss1->slaveLive() & 0x01) != 0, "VI7 is on slave IR0");
+        CHECK(m.bus.intPending(), "slave IR0 -> master IR7 -> pin 73");
+        CHECK(ss1->intWinner() == 7, "SHOW BUS IRQ reports VI7 as the winner");
+        CHECK(m.bus.intAck() == 0xCD, "INTA 1: CALL");
+        CHECK(m.bus.intAck() == 0x00, "INTA 2: the slave's IR0 vector low (0x2200 + 0*4)");
+        CHECK(m.bus.intAck() == 0x22, "INTA 3: address high");
+
+        if (io) setUnitProperty(*io, "a", "tx_int", "none", err);
+        CHECK(m.bus.viLines() == 0, "the IO-4 lets go of VI7");
+        CHECK((ss1->slaveLive() & 0x01) == 0, "and slave IR0 drops");
+        CHECK(ss1->intWinner() == -1, "nothing wins");
+    }
+
+    SECTION("SS-1 board -- TxRDY on slave IR6 waits for TxEN, as on a real SS-1");
+    {
+        Machine m;
+        auto* ss1 = buildIntMachine(m);
+        m.bus.ioWrite(0x5E, 0x4E);  // UART MR1: 8N1
+        m.bus.ioWrite(0x5E, 0x7E);  // MR2: 9600
+        CHECK((ss1->slaveLive() & (1u << 6)) == 0, "not programmed: slave IR6 is low");
+        m.bus.ioWrite(0x5F, 0x26);  // command: RxEN|DTR|RTS, TxEN off
+        CHECK((ss1->slaveLive() & (1u << 6)) == 0, "command 26 (TxEN off): slave IR6 is low");
+        m.bus.ioWrite(0x5F, 0x27);  // TxEN on
+        CHECK((ss1->slaveLive() & (1u << 6)) != 0, "command 27: TxRDY raises slave IR6");
+        CHECK(m.bus.ioRead(0x5D) == 0xC1, "and the status port reads 41 with DSR and DCD");
     }
 
     SECTION("SS-1 board -- an interrupt actually vectors the CPU through the CALL");

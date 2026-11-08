@@ -6,7 +6,8 @@
 // functions (SQRT, SIN ... PWR) and the stack commands, all worked on a 16-byte LIFO stack
 // reached through two ports. The CompuPro System Support 1 carries one in its math socket.
 // Modeled from the Am9511A data sheet and AMD's Am9511A/Am9512 Floating Point Processor
-// Manual (reference/AMD 9511A.md), NOT from any one program that drives it.
+// Manual (reference/AMD 9511A.md) and measurements of two real chips (#908), NOT from any
+// one program that drives it.
 //
 // It knows nothing about S-100. The ports, the stack, END/SVREQ and BUSY are the bus side it
 // shares with the Am9512 (chips/am95xx.h); this file is the command set. On the SS-1 CLK is
@@ -21,15 +22,22 @@
 // ---------------------------------------------------------------------------
 // ARITHMETIC
 //
-//   * Fixed point is exact two's complement, with the data sheet's overflow rules.
-//   * The four float operations are rounded to the 24-bit mantissa, nearest-even. The 9511A
-//     data sheet does not say how it rounds (the 9512's says nearest-even); see the ⚠ in
-//     reference/AMD 9511A.md. A result too big or too small keeps its mantissa and its
-//     exponent wraps by 128, with the overflow or underflow error, as the data sheet says.
-//   * The derived functions follow the Manual's ch.9 algorithms -- range reduction, the
-//     Chebyshev series with its coefficients, then post-processing -- with every step rounded
-//     to 24 bits as the chip's own float operations round it. Their low bits are as close to
-//     silicon as the documents allow; no real chip was available to compare against.
+//   * Fixed point is two's complement, with the data sheet's overflow rules. The most
+//     negative value follows the real chip (#908): SMUL/DMUL return the low half of the
+//     product, SMUU/DMUU the high half (7FFF when B is 8000 and A is negative), SDIV/DDIV
+//     0, each with overflow.
+//   * The four float operations TRUNCATE, as two real chips do (#908, reference/AMD 9511A.md
+//     6.1): no guard bits, FMUL a 24-step shift-and-add, FDIV 23 quotient bits when B's
+//     mantissa is below A's. FLTD truncates and PUPI pushes 02C90FDA. A result too big or too
+//     small keeps its mantissa and its exponent wraps by 128, with the overflow or underflow
+//     error, as the data sheet says.
+//   * The derived functions follow the Manual's ch.9 algorithms with the steps the real chip
+//     takes (reference/AMD 9511A.md 6.1): the exact Chebyshev coefficients cut to 24 bits,
+//     SIN/COS reduced by a 23-bit quotient, ASIN through the ATAN series, EXP reduced by an
+//     FDIV by LN 2. Every step uses the four operations above. A few results are 1-2 LSB from
+//     the real chip; tests/test_am9511a.cpp lists them.
+//   * An argument error (SQRT of a negative value, LN of 0, ASIN of 2 ...) stops early with
+//     the real chip's result, status and time.
 //   * FIXS/FIXD take "the integer portion" of A: the fraction is dropped (toward zero).
 //   * A float whose mantissa MSB is 0 is zero (the data sheet's test for CHSF).
 //
@@ -48,7 +56,7 @@ class Am9511a : public Am95xx {
 public:
     explicit Am9511a(std::string name) : Am95xx(std::move(name), 0) {}  // no ERR pin
 
-    // The chip's float format <-> a host double. toFloat rounds to nearest-even and wraps
+    // The chip's float format <-> a host double. toFloat truncates to 24 bits and wraps
     // an out-of-range exponent by 128; `err` gets the overflow (0x02) or underflow (0x04)
     // bit when it does.
     static uint32_t toFloat(double x, uint8_t* err = nullptr);

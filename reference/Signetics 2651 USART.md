@@ -87,6 +87,28 @@ software effect (a System Support 1 convention).
 Command bits 1 (DTR) and 5 (RTS) follow the same inverted convention as status bits 6/7:
 setting the command bit **high** drives the modem-control **output low** (asserted).
 
+### Transmit Control (bit 0) gates TxRDY and TxEMT (measured, #908)
+
+A real 2651 on a System Support 1 gave these status reads (port base+13). Bits 6 and 7 follow
+the modem lines of that board. Bits 0 and 2 are the transmit flags.
+
+| Command register | Status |
+|---|:---:|
+| Not written since power-on | `40` |
+| `26` (transmitter disabled) | `40` |
+| `27` (transmitter enabled), nothing sent yet | `41` |
+| `27`, after one byte has left | `45` |
+| `26` again | `40` |
+| `26`, a byte written to the data register | `40` |
+| `27` after that write | `45` |
+
+- **TxRDY (bit 0) is 0 while bit 0 of the command register is 0.** The interrupt line from
+  TxRDY (slave IRQ6 on the SS-1) is also low.
+- **TxEMT (bit 2) is 0 while the transmitter is disabled.** After the transmitter is enabled,
+  TxEMT stays 0 until a character has left.
+- **A byte written while the transmitter is disabled is kept.** It is sent when the
+  transmitter is enabled.
+
 ## Initialization sequence
 
 1. Write **Mode Register 1** (frame). 2. Write **Mode Register 2** (baud). 3. Write the

@@ -1,105 +1,200 @@
 #include "chips/am9511a.h"
 
 #include <cmath>
+#include <utility>
 
 namespace altair {
 
 namespace {
 
 // ---------------------------------------------------------------------------
-// THE CHIP'S FLOAT ARITHMETIC. A value is held as a host double and rounded to a 24-bit
-// mantissa, nearest-even, after every operation, as the chip rounds each of its own float
-// operations. A double holds the exact sum, product or quotient of two 24-bit values to
-// 53 bits, and 53 >= 2 x 24 + 2, so rounding it a second time to 24 bits gives the
-// correctly rounded result. The exponent is not bounded here; toFloat wraps it.
+// THE CHIP'S FLOAT ARITHMETIC. A value is held as a host double that has at most 24
+// significant bits; a double holds each one exactly. The four operations work as the real
+// chip does, measured on two chips (issue #908): no guard bits, and the result is
+// truncated, not rounded.
 //
-// Two hand-offs inside the derived functions are NOT rounded: the range reduction (the
-// argument times 2/PI, 4/PI or LOG2 e, less its whole part) and the ASIN that ACOS subtracts
-// from PI/2. AMD's error graphs for the real chip (Algorithm Details pp.6-7) show e^x at
-// about 5e-7 near |x| = 32 and ACOS at about 1e-7; rounding those steps to 24 bits gives
-// 1.8e-6 and 5e-7, and keeping them whole gives what the graphs show.
+//   add  aligns the smaller operand with a right shift that drops its low bits, adds or
+//        subtracts the mantissas, then normalizes (one right shift on a carry, left shifts
+//        after a cancellation).
+//   mul  is a 24-step shift-and-add: each step adds B's mantissa when A's bit is 1 and
+//        shifts the sum right one place, dropping a bit. One left shift normalizes it.
+//   dvd  gives 24 quotient bits when B's mantissa >= A's, else 23 bits and a 0 at the end.
+//
+// The exponent is not bounded here; toFloat wraps it.
+//
+// The derived functions below use these four operations and the ROM constants cut to 24
+// bits. Their steps were found on the real chip (#908): it leaves intermediate values on
+// its stack. SIN, COS, TAN and EXP reduce the argument with a divide by PI/2, PI/4 or
+// LN 2: TAN of 01C90FDA and of 01C90FDB (each side of PI/2) both stop with a divide by
+// zero on the real chip, and only a quotient of exactly 2.0 does that. SQRT, TAN, LN and
+// LOG give the real chip's result in every measured case; SIN, COS, ATAN, ASIN, ACOS, EXP
+// and PWR in most, and within 2 LSB in nearly all of the rest.
 // ---------------------------------------------------------------------------
-double r24(double x) {
+
+// Cut the magnitude to a 24-bit mantissa (toward zero).
+double t24(double x) {
     if (x == 0) return 0;
     int e;
-    double m = std::frexp(x, &e);                         // 0.5 <= |m| < 1
-    return std::ldexp(std::nearbyint(std::ldexp(m, 24)), e - 24);  // ties to even
+    double m = std::frexp(std::fabs(x), &e);  // 0.5 <= m < 1
+    double v = std::ldexp(std::floor(std::ldexp(m, 24)), e - 24);
+    return x < 0 ? -v : v;
 }
 
-double add(double a, double b) { return r24(a + b); }
-double sub(double a, double b) { return r24(a - b); }
-double mul(double a, double b) { return r24(a * b); }
-double dvd(double a, double b) { return r24(a / b); }
+// A nonzero value as the chip holds it: |x| = m x 2^(e - 24), 2^23 <= m < 2^24.
+struct Parts {
+    bool     neg;
+    int      e;
+    uint64_t m;
+};
+Parts split(double x) {
+    int e;
+    double m = std::frexp(std::fabs(x), &e);
+    return {x < 0, e, (uint64_t)std::ldexp(m, 24)};
+}
+double join(bool neg, int e, uint64_t m) {
+    double v = std::ldexp((double)m, e - 24);
+    return neg ? -v : v;
+}
 
-// The constants, as the chip's ROM holds them: rounded to 24 bits.
-const double kPi       = r24(3.14159265358979323846);
-const double kHalfPi   = r24(1.57079632679489661923);
-const double kTwoOverPi  = r24(0.63661977236758134308);
-const double kFourOverPi = r24(1.27323954473516268615);
-const double kSqrt2    = r24(1.41421356237309504880);
-const double kLog2e    = r24(1.44269504088896340736);
-const double kLn2      = r24(0.69314718055994530942);
-const double kLog10e   = r24(0.43429448190325182765);
+double add(double x, double y) {
+    x = t24(x);
+    y = t24(y);
+    if (y == 0) return x;
+    if (x == 0) return y;
+    Parts b = split(x), a = split(y);
+    if (a.e > b.e || (a.e == b.e && a.m > b.m)) std::swap(a, b);  // b is the larger
+    int d = b.e - a.e;
+    uint64_t am = d < 24 ? a.m >> d : 0;
+    uint64_t m;
+    int e = b.e;
+    if (a.neg == b.neg) {
+        m = b.m + am;
+        if (m >> 24) { m >>= 1; ++e; }
+    } else {
+        m = b.m - am;
+        if (m == 0) return 0;
+        while (!(m >> 23)) { m <<= 1; --e; }
+    }
+    return join(b.neg, e, m);
+}
+double sub(double x, double y) { return add(x, -y); }
 
-// The Chebyshev coefficients, AMD Floating Point Processor Manual ch.9 (reference/AMD
-// 9511A.md sec. 6).
-const double kCsin[]  = {2.5525579, -0.2852616, 9.118016e-3, -1.365875e-4, 1.184962e-6,
-                         -6.702792e-9};
-const double kCtan[]  = {1.7701474, 1.0675393e-1, 7.5861016e-3, 5.4417038e-4,
-                         3.9066370e-5, 2.8048161e-6, 2.0137658e-7, 1.4458187e-8,
-                         1.0380510e-9};
-const double kCasin[] = {1.4866665, 3.8853034e-2, 2.8854414e-3, 2.8842183e-4,
-                         3.3223672e-5, 4.1584779e-6, 5.4965045e-7, 7.5500784e-8,
-                         1.0671938e-8, 1.5421800e-9};
-const double kCatan[] = {1.7627472, -1.0589292e-1, 1.1135842e-2, -1.3811950e-3,
-                         1.8574297e-4, -2.6215196e-5, 3.8210366e-6, -5.6991862e-7,
-                         8.6488779e-8, -1.3303384e-8, 2.0685060e-9, -3.2448600e-10};
-const double kCexp[]  = {1.4569999, -2.4876243e-1, 2.1446556e-2, -1.2357141e-3,
-                         5.3453058e-5, -1.8506907e-6, 5.3411877e-8, -1.3215160e-9};
-const double kCln[]   = {7.5290563e-1, 3.4314575e-1, -2.9437253e-2, 3.3670893e-3,
-                         -4.3327589e-4, 5.9470712e-5, -8.5029675e-6, 1.2504674e-6,
-                         -1.8772800e-7, 2.8630251e-8, -4.4209570e-9};
+double mul(double x, double y) {
+    x = t24(x);
+    y = t24(y);
+    if (x == 0 || y == 0) return 0;
+    Parts b = split(x), a = split(y);
+    uint64_t acc = 0;
+    for (int k = 0; k < 24; ++k) {
+        if ((a.m >> k) & 1) acc += b.m;
+        acc >>= 1;
+    }
+    int e = a.e + b.e;
+    if (!(acc >> 23)) { acc <<= 1; --e; }
+    return join(a.neg != b.neg, e, acc);
+}
+
+double dvd(double x, double y) {  // y != 0
+    x = t24(x);
+    y = t24(y);
+    if (x == 0) return 0;
+    Parts b = split(x), a = split(y);
+    uint64_t q;
+    int e;
+    if (b.m >= a.m) {
+        q = (b.m << 23) / a.m;
+        e = b.e - a.e + 1;
+    } else {
+        q = ((b.m << 23) / a.m) << 1;  // 23 quotient bits
+        e = b.e - a.e;
+    }
+    return join(a.neg != b.neg, e, q);
+}
+
+// dvd, cut to 23 significant bits whatever the mantissas. The SIN and COS reduction uses
+// this: the quotient the real chip leaves on its stack has 23 bits even where FDIV would
+// give 24.
+double dvd23(double x, double y) {
+    double q = dvd(x, y);
+    if (q == 0) return 0;
+    Parts p = split(q);
+    return join(p.neg, p.e, p.m & ~(uint64_t)1);
+}
+
+// A ROM word (the chip's float format) as a value.
+double rom(uint32_t v) {
+    double m = std::ldexp((double)(v & 0xFFFFFF), (int)(int8_t)((v >> 24) << 1) / 2 - 24);
+    return (v & 0x80000000u) ? -m : m;
+}
+
+// The constants, as the chip's ROM holds them: cut to 24 bits.
+const double kPi       = t24(3.14159265358979323846);
+const double kHalfPi   = t24(1.57079632679489661923);
+const double kQuarterPi = t24(0.78539816339744830962);
+const double kLn2      = t24(0.69314718055994530942);
+const double kLog10e   = t24(0.43429448190325182765);
+
+// The Chebyshev coefficients (AMD Floating Point Processor Manual ch.9, reference/AMD
+// 9511A.md sec. 6). The ROM holds the exact coefficients cut to 24 bits, not the 8-digit
+// decimals the Manual prints: 13 of them differ from the cut decimal in the last bit, and
+// only the exact ones give the real chip's results (#908; EXP C0 is 01BA7EF8, the printed
+// 1.4569999 cuts to 01BA7EF9).
+const double kCsin[]  = {rom(0x02A35D1B), rom(0xFF920DCD), rom(0x7A9563BB), rom(0xF48F38EE),
+                         rom(0x6D9F0AFA), rom(0xE5E64E5F)};
+const double kCtan[]  = {rom(0x01E29430), rom(0x7DDAA1CD), rom(0x79F894D5), rom(0x768EA6A7),
+                         rom(0x72A3DB31), rom(0x6EBC3A5F), rom(0x6AD839F8), rom(0x66F863C6),
+                         rom(0x638EAB2B)};
+const double kCatan[] = {rom(0x01E1A1B3), rom(0xFDD8DE63), rom(0x7AB6731B), rom(0xF7B50936),
+                         rom(0x74C2C3FF), rom(0xF1DBE8B4), rom(0x6F803674), rom(0xEC98FC82),
+                         rom(0x69B9BBB5), rom(0xE6E48CE6), rom(0x648E258A), rom(0xE1B26362)};
+const double kCexp[]  = {rom(0x01BA7EF8), rom(0xFEFEBB94), rom(0x7BAFB0B0), rom(0xF7A1F7AF),
+                         rom(0x72E032C8), rom(0xEDF8653F), rom(0x68E566FA), rom(0xE3B5A0B7)};
+const double kCln[]   = {rom(0x00C0BE6C), rom(0x7FAFB0CC), rom(0xFBF12664), rom(0x78DCAA62),
+                         rom(0xF5E3294E), rom(0x72F97030), rom(0xF08EA7F7), rom(0x6DA7D5BB),
+                         rom(0xEAC99247), rom(0x67F5EE96), rom(0xE597E725)};
 
 // CHEBY (ch.9.3), the Clenshaw form the Manual gives in FORTRAN: C(1..N) there is c[0..n-1].
+// The real chip's stack after a derived function holds -A aligned with D, as this order
+// gives.
 template <size_t N>
 double cheby(double x, const double (&c)[N]) {
-    double a = 0, b = 0, d = r24(c[N - 1]);
+    double a = 0, b = 0, d = c[N - 1];
     double x2 = 2 * x;  // exact
     for (size_t i = N - 1; i >= 1; --i) {
         a = b;
         b = d;
-        d = add(sub(mul(x2, b), a), r24(c[i - 1]));
+        d = add(sub(mul(x2, b), a), c[i - 1]);
     }
     return sub(d, a) / 2;  // exact
+}
+// X * CHEBY(2X^2 - 1): the odd series of SIN, TAN and ATAN.
+template <size_t N>
+double odd(double x, const double (&c)[N]) {
+    return mul(x, cheby(sub(2 * mul(x, x), 1), c));  // ⚠ SIN printed "2X^2 - 0.1"
 }
 
 double entier(double x) { return std::floor(x); }  // rounds down: ENTIER(-2.5) = -3
 
-// SIN and COS (ch.9.4, 9.5); both use the sine coefficients.
-double fsin(double x) {
-    x = x * kTwoOverPi;
-    x = x - 4 * entier((x + 1) / 4);
-    if (x > 1) x = 2 - x;
-    x = r24(x);
-    return mul(x, cheby(sub(2 * mul(x, x), 1), kCsin));  // ⚠ printed "2X^2 - 0.1"
+// SIN (ch.9.4) on Y = X / (PI/2), cut to 23 bits. COS is the same on (PI/2 - X): the
+// real chip's reduced argument is on the grid of PI/2 - X, not on that of X.
+// ⚠ A few reduced arguments on the real chip keep a 24th quotient bit (COS of -1.9 and of
+// -5.2, SIN of 3.2); no rule for them is known.
+double sinOf(double y) {
+    y = t24(y - 4 * entier((y + 1) / 4));
+    if (y > 1) y = sub(2, y);
+    return odd(y, kCsin);
 }
-double fcos(double x) {
-    x = x * kTwoOverPi;
-    x = 4 * entier((x + 2) / 4) - x + 1;
-    if (x > 1) x = 2 - x;
-    x = r24(x);
-    return mul(x, cheby(sub(2 * mul(x, x), 1), kCsin));
-}
+double fsin(double x) { return sinOf(dvd23(x, kHalfPi)); }
+double fcos(double x) { return sinOf(dvd23(sub(kHalfPi, x), kHalfPi)); }
 
-// TAN (ch.9.6). ⚠ printed X*2/PI; X*4/PI is what closes, and what the command page's
-// -PI/4 ... +PI/4 reduction says. Sets *pole when the cotangent branch would divide by 0.
+// TAN (ch.9.6). ⚠ printed X*2/PI; X/(PI/4) is what closes, and what the command page's
+// -PI/4 ... +PI/4 reduction says. Sets *pole when the cotangent branch divides by 0.
 double ftan(double x, bool* pole) {
-    x = x * kFourOverPi;
-    x = x - 4 * entier((x + 1) / 4);
+    x = dvd(x, kQuarterPi);
+    x = t24(x - 4 * entier((x + 1) / 4));
     double y = x;
-    if (y > 1) x = 2 - x;
-    x = r24(x);
-    double t = mul(x, cheby(sub(2 * mul(x, x), 1), kCtan));
+    if (y > 1) x = sub(2, x);
+    double t = odd(x, kCtan);
     if (y > 1) {
         if (t == 0) { *pole = true; return 0; }
         t = dvd(1, t);
@@ -115,39 +210,43 @@ double fsqrt(double x) {
     int e;
     double m = std::frexp(x, &e);  // the chip's own mantissa and exponent
     if (e & 1) { ++e; m /= 2; }
-    double x0 = add(mul(r24(0.68629150), m), r24(0.34314575));
+    double x0 = add(mul(t24(0.68629150), m), t24(0.34314575));
     double x1 = dvd(add(dvd(m, x0), x0), 2);
     double x2 = dvd(add(dvd(m, x1), x1), 2);
     return std::ldexp(x2, e / 2);
 }
 
-// ASIN (ch.9.7). ⚠ both printed branches drop a symbol; these are the forms that close.
-// The last step is left unrounded: ACOS (ch.9.8) subtracts it from PI/2 before rounding.
-double fasinWhole(double x) {
-    double xx = mul(x, x);
-    if (xx <= 0.5) return mul(x, kSqrt2) * cheby(sub(4 * xx, 1), kCasin);
-    double s = mul(fsqrt(sub(2, 2 * xx)), cheby(sub(3, 4 * xx), kCasin));
-    double r = kHalfPi - s;
-    return x < 0 ? -r : r;
-}
-double fasin(double x) { return r24(fasinWhole(x)); }
-double facos(double x) { return r24(kHalfPi - fasinWhole(x)); }
-
-// ATAN (ch.9.9).
+// ATAN (ch.9.9). The real chip takes the reciprocal at |X| = 1 too: ATAN 1 is 00C90FD8,
+// which only that branch gives.
 double fatan(double x) {
     double u = x;
-    if (std::fabs(u) > 1) x = dvd(1, x);
-    double a = mul(x, cheby(sub(2 * mul(x, x), 1), kCatan));
-    if (u > 1) a = sub(kHalfPi, a);
-    if (u < -1) a = sub(-kHalfPi, a);
+    if (std::fabs(u) >= 1) x = dvd(1, x);
+    double a = odd(x, kCatan);
+    if (u >= 1) a = sub(kHalfPi, a);
+    if (u <= -1) a = sub(-kHalfPi, a);
     return a;
 }
 
-// EXP (ch.9.10): 2^N times a series on the fraction; "no postprocessing is required".
+// ASIN. The real chip does not use the ASIN series the Manual prints (ch.9.7): its stack
+// holds the ATAN series' values. ASIN X = ATAN (X / SQRT(1 - X^2)), with 1 - X^2 as
+// (1 - |X|)(1 + |X|); where that quotient is 1 or more, the ATAN of its reciprocal
+// SQRT(1 - X^2) / |X| is taken from PI/2.
+double fasin(double x) {
+    double ax = std::fabs(x);
+    double q = fsqrt(mul(sub(1, ax), add(1, ax)));
+    double r;
+    if (dvd(ax, q) >= 1) r = sub(kHalfPi, odd(dvd(q, ax), kCatan));
+    else r = odd(dvd(ax, q), kCatan);
+    return x < 0 ? -r : r;
+}
+// ACOS (ch.9.8): PI/2 less the ASIN.
+double facos(double x) { return sub(kHalfPi, fasin(x)); }
+
+// EXP (ch.9.10): 2^N times a series on the fraction. The reduction is an FDIV by LN 2.
 double fexp(double x) {
-    x = x * kLog2e;
+    x = dvd(x, kLn2);
     double n = 1 + entier(x);
-    return std::ldexp(cheby(r24(2 * (n - x) - 1), kCexp), (int)n);
+    return std::ldexp(cheby(t24(2 * (n - x) - 1), kCexp), (int)n);
 }
 
 // LN (ch.9.11): a series on the mantissa plus the exponent times LN 2.
@@ -188,8 +287,7 @@ uint32_t Am9511a::toFloat(double x, uint8_t* err) {
     if (x == 0) return 0;
     int e;
     double m = std::frexp(std::fabs(x), &e);
-    uint32_t mant = (uint32_t)std::nearbyint(std::ldexp(m, 24));
-    if (mant == 0x1000000) { mant = 0x800000; ++e; }  // rounding carried into a new bit
+    uint32_t mant = (uint32_t)std::ldexp(m, 24);  // low bits past 24 are dropped
     if (err && e > 63) *err = kOverflow;
     if (err && e < -64) *err = kUnderflow;
     // "The mantissa is correct and the exponent is offset by 128": the field wraps.
@@ -236,21 +334,32 @@ unsigned Am9511a::execute(uint8_t op) {
             if (r != (int16_t)r || a == -32768) st |= kOverflow;
             cyc = 32;
             break;
-        case SMUL:
-            if (a == -32768 || b == -32768) { r = -32768; st |= kOverflow; }
-            else { r = b * a; if (r != (int16_t)r) st |= kOverflow; }
+        // The most negative value (8000H) sets overflow in SMUL, SMUU and SDIV. What R is
+        // then was measured on the real chip (#908); the data sheet calls it meaningless.
+        case SMUL:  // the low half of the product
+            r = b * a;
+            if (r != (int16_t)r || a == -32768 || b == -32768) st |= kOverflow;
             cyc = 94;
             break;
-        case SMUU:
-            if (a == -32768 || b == -32768) { r = -32768; st |= kOverflow; }
-            else r = (b * a) >> 16;
+        case SMUU:  // the high half; but B = 8000H times a negative A gives 7FFFH
+            if (a == -32768 || b == -32768) st |= kOverflow;
+            r = (b == -32768 && a < 0 && a != -32768) ? 0x7FFF : (b * a) >> 16;
             cyc = 98;
             break;
         default:  // SDIV
             if (a == 0) { r = b; st |= kDivZero; cyc = 14; break; }
-            r = b / a;  // no remainder; the quotient is truncated toward zero
-            if (r != (int16_t)r) st |= kOverflow;
             cyc = 94;
+            if (b == -32768 && a < 0 && a != -32768) {
+                // Not modeled: the chip gives 8000/FFFF = FFFE, 8000/FFFE = FFFC,
+                // 8000/C000 = AAAA, with no rule found. R here is the low 16 bits of B / A.
+                r = b / a;
+                st |= kOverflow;
+            } else if (a == -32768 || b == -32768) {
+                r = 0;  // either operand 8000H: R = 0
+                st |= kOverflow;
+            } else {
+                r = b / a;  // no remainder; the quotient is truncated toward zero
+            }
             break;
         }
         drop(2);
@@ -280,21 +389,29 @@ unsigned Am9511a::execute(uint8_t op) {
             if (r != (int32_t)r || a == kMin) st |= kOverflow;
             cyc = 40;
             break;
+        // The most negative value as in the 16-bit commands above, measured (#908).
         case DMUL:
-            if (a == kMin || b == kMin) { r = kMin; st |= kOverflow; }
-            else { r = b * a; if (r != (int32_t)r) st |= kOverflow; }
+            r = b * a;
+            if (r != (int32_t)r || a == kMin || b == kMin) st |= kOverflow;
             cyc = 210;
             break;
         case DMUU:
-            if (a == kMin || b == kMin) { r = kMin; st |= kOverflow; }  // "R is meaningless"
-            else r = (b * a) >> 32;
+            if (a == kMin || b == kMin) st |= kOverflow;
+            r = (b == kMin && a < 0 && a != kMin) ? 0x7FFFFFFF : (b * a) >> 32;
             cyc = 218;
             break;
         default:  // DDIV
             if (a == 0) { r = b; st |= kDivZero; cyc = 18; break; }
-            if (a == kMin || b == kMin) st |= kOverflow;  // "R will be meaningless"
-            r = b / a;
             cyc = 210;
+            if (b == kMin && a < 0 && a != kMin) {
+                r = b / a;  // not modeled, as SDIV; the chip gave 80000000/FFFFFFFE = FFFFFFFC
+                st |= kOverflow;
+            } else if (a == kMin || b == kMin) {
+                r = 0;
+                st |= kOverflow;
+            } else {
+                r = b / a;
+            }
             break;
         }
         drop(4);
@@ -314,7 +431,7 @@ unsigned Am9511a::execute(uint8_t op) {
             st = kDivZero;
             cyc = 22;
         } else {
-            double x = op == FADD ? b + a : op == FSUB ? b - a : op == FMUL ? b * a : b / a;
+            double x = op == FADD ? add(b, a) : op == FSUB ? sub(b, a) : op == FMUL ? mul(b, a) : dvd(b, a);
             r = toFloat(x, &st);
             static const unsigned kTop[] = {368, 370, 168, 184};
             static const unsigned kZeroA[] = {24, 26, 168, 184};
@@ -336,8 +453,19 @@ unsigned Am9511a::execute(uint8_t op) {
         unsigned cyc = 0;
         switch (op) {
         case SQRT:
-            cyc = 870;
-            if (a < 0) { err = kNegArg; keep = true; } else r = fsqrt(a);
+            if (a < 0) {
+                // The real chip stops at once and leaves the mantissa with exponent 0 and the
+                // sign: SQRT -4 = 80800000, SQRT -3 = 80C00000.
+                err = kNegArg;
+                keep = true;
+                set32(0, 0x80000000u | (get32(0) & 0xFFFFFF));
+                cyc = 20;
+            } else if (a == 0) {
+                cyc = 20;
+            } else {
+                r = fsqrt(a);
+                cyc = 870;
+            }
             break;
         case SIN:
             if (std::fabs(a) <= std::ldexp(1.0, -12)) { r = a; cyc = 30; }  // sin A = A
@@ -352,15 +480,16 @@ unsigned Am9511a::execute(uint8_t op) {
             {
                 bool pole = false;
                 r = ftan(a, &pole);
-                // At an exact pole the result is not documented; A is left with overflow.
-                if (pole) { err = kOverflow; keep = true; }
+                // At a pole the cotangent step's FDIV divides 1 by 0, and the real chip ends
+                // there: R = B = 1, divide-by-zero.
+                if (pole) { err = kDivZero; r = 1; }
             }
             cyc = 5886;
             break;
         case ASIN:
         case ACOS:
+            if (std::fabs(a) > 1) { err = kArgRange; keep = true; cyc = 140; break; }
             cyc = op == ASIN ? 7938 : 8284;
-            if (std::fabs(a) > 1) { err = kArgRange; keep = true; break; }
             r = op == ASIN ? fasin(a) : facos(a);
             break;
         case ATAN:
@@ -381,16 +510,21 @@ unsigned Am9511a::execute(uint8_t op) {
             break;
         default: {  // PWR: B ^ A = EXP(A * LN B) (ch.9.13)
             double b = fromFloat(get32(1));
-            cyc = 12032;
             uint32_t rb = get32(1);
             drop(4);  // A is consumed either way; R replaces B
-            if (b <= 0) { err = kNegArg; set32(0, rb); status_ = err | szF(rb); return cyc; }
+            if (b <= 0) { err = kNegArg; set32(0, rb); status_ = err | szF(rb); return 20; }
             double y = mul(a, fln(b));
-            if (std::fabs(y) > 32) { err = kArgRange; set32(0, rb); status_ = err | szF(rb); return cyc; }
+            if (std::fabs(y) > 32) {
+                // The real chip stops after the LN and the FMUL and leaves A x LN B.
+                uint32_t ry = toFloat(y);
+                set32(0, ry);
+                status_ = kArgRange | szF(ry);
+                return 6956 + 168;
+            }
             uint32_t rv = toFloat(fexp(y), &err);
             set32(0, rv);
             status_ = err | szF(rv);
-            return cyc;
+            return 12032;
         }
         }
         uint32_t rv = get32(0);
@@ -411,7 +545,7 @@ unsigned Am9511a::execute(uint8_t op) {
         double lim = op == FIXS ? 32768.0 : 2147483648.0;
         if (std::fabs(t) >= lim) {  // larger than 15 [31] bits: A is not changed
             status_ = kOverflow | szF(a);
-            return op == FIXS ? 214 : 336;
+            return 20;  // the real chip stops at once
         }
         drop(4);
         if (op == FIXS) {
@@ -434,7 +568,7 @@ unsigned Am9511a::execute(uint8_t op) {
         return 156;
     }
     case FLTD: {
-        set32(0, toFloat((int32_t)get32(0)));  // rounded when it has more than 24 bits
+        set32(0, toFloat((int32_t)get32(0)));  // truncated when it has more than 24 bits
         status_ = szF(get32(0));
         return 342;
     }

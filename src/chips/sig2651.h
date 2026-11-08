@@ -121,6 +121,7 @@ private:
     uint64_t   charTStates(const Clock& clk) const;
     void       driveControl();     // RTS/DTR/BREAK out to the wire
     void       applyMr2(uint8_t v);  // pull the baud out of MR2's low nibble
+    void       transmit(uint8_t v, const Clock& clk);  // the byte leaves (TxEN is on)
 
     std::string name_;
     std::unique_ptr<ByteStream> stream_;
@@ -144,6 +145,9 @@ private:
 
     // ---- transmit: DOUBLE-buffered (chips/twostagetx.h) ----
     TwoStageTx tx_;                // TxRDY = holding register free, TxEMT = shift register too
+    bool       txSent_     = false;  // a character has left since TxEN was set (TxEMT)
+    bool       txHeld_     = false;  // a byte written while TxEN was off waits for TxEN
+    uint8_t    txHeldByte_ = 0;
 };
 
 }  // namespace altair

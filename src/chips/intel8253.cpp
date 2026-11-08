@@ -139,7 +139,17 @@ uint32_t Intel8253::liveCount(const Counter& c, uint64_t now) const {
         uint32_t p = (uint32_t)(e % N);
         return N - p;
     }
-    // Modes 0/1/3/4/5 read back as a plain down-counter that wraps through 0.
+    if (c.mode == 3) {
+        // Square wave: the count steps by 2 and reloads N at each half period, so it never
+        // reads above N or reads 0 (measured on a real SS-1, #908). An odd N reads N, then
+        // N-1 down to 2 in the high half; N again, then N-3 down to 2 in the low half.
+        uint32_t p  = (uint32_t)(e % N);
+        uint32_t hi = (N + 1) / 2;  // the same half periods as outOf()
+        if (p < hi) return p == 0 ? N : N + (N & 1) - 2 * p;
+        uint32_t q = p - hi;
+        return q == 0 ? N : N - (N & 1) - 2 * q;
+    }
+    // Modes 0/1/4/5 read back as a plain down-counter that wraps through 0.
     uint32_t p = (uint32_t)(e % M);
     return (N - p + M) % M;
 }
