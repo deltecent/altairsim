@@ -10,238 +10,89 @@ register, the bit or the command that was wrong.
 
 ---
 
-## Unreleased
+## 1.3.6
 
-**New: the `interfacer1` board, a CompuPro Interfacer 1.** It has two serial channels, each a 1602-family UART at its own even port pair. An OUT to the status port inverts the power-up straps for the word format, the RTS and DTR outputs and the two interrupt enables. The status byte has the CTS, DSR and carrier inputs, and the receive and transmit interrupts go to VI lines. It can take the place of the `gsio` console in the `disk1` machine.
+**1.3.6 adds the Vector Graphic machines, the Jade Double D, the CompuPro Interfacer 1 and the
+ExpandoRAM III. The SS-1 and its 9511A math chip now match a real board. Each UART now has a
+holding register, and `CONFIG SAVE` and `CONFIG LOAD` keep the whole machine.**
 
-**New: Vector Graphic machines and boards.** The `vg3vip`, `vg3vipt`, `vg3sb` and `vgmz` machines are a Vector 3 VIP, a VIP with Tandon drives, a System B and an MZ.
+**Vector Graphic machines and boards.** The `vg3vip`, `vg3vipt`, `vg3sb` and `vgmz` machines are
+a Vector 3 VIP, a VIP with Tandon drives, a System B and an MZ. OASIS 5.5A boots from a `vgdmdc`
+disk, and Vector CP/M boots from a `vgmdc` disk. The package holds no OASIS or Micropolis disk.
 
-- `vgzcb`: the ZCB processor board. It has a Z80, three PROM sockets, 1K of RAM at `FC00`, an 8251 serial port at `04` and an 8255 parallel port at `08`. After a reset the board reads the `E000` block at every address, so Monitor 4.3 starts from address 0000. The board reads its own PROM, RAM and ports with its data-in buffers off, so a RAM board under it is not bus contention. The `baud` property has the eight values of switch S1. A `vgzcb` beside a `vgbsii` needs `serial_port = 0C` and `parallel_port = 18`, because the default ports of the two boards overlap at `04`-`09`.
-- `vgfwii`: the Flashwriter II video board. It has an 80 by 24 text screen in 2K of memory at `F000`, and the keyboard port at `00` and `01`. A key can raise `RST 7` through the `interrupt` property.
-- `vgdmdc`: the Dual-Mode Disk Controller. It runs four floppy drives through four ports and a 512-byte RAM, with the real 32-bit ECC.
-- `vgmdc`: the Micropolis Disk Controller. It has four 5.25-inch floppy drives and the real boot PROM in a 1K block of memory, at `F800` by default.
-- `vgbsii`: the Bitstreamer II. It has three 8251 serial channels, the interrupt mask and a 55 Hz clock.
-- `vgbs`: the Bit Streamer. It has one 8251 serial port and two parallel ports, at ports `00`-`03` by default.
-- `bankmem card=vector`: new `window_lo` and `window_hi` properties set the addresses of each plane. A select of a bank that the board does not carry now takes the old bank off the bus, as OASIS needs.
-- Monitors: `builtin:vgmon41`, `builtin:vgmon40`, `builtin:vgmon40c` and `builtin:vgmon20c`. Monitor 4.0 boots a `vgmdc` with the `B` key. Monitor 4.0c does the same with its console on serial port A of a `vgbsii`.
+- `vgzcb`: the ZCB processor board, with a Z80, 1K of RAM, an 8251 and an 8255.
+- `vgfwii`: the Flashwriter II video board, an 80 by 24 text screen.
+- `vgdmdc`: the Dual-Mode Disk Controller, with the real 32-bit ECC.
+- `vgmdc`: the Micropolis Disk Controller and its boot PROM.
+- `vgbsii` and `vgbs`: the Bitstreamer II and the Bit Streamer serial boards.
+- `bankmem card=vector`: the `window_lo` and `window_hi` properties set the addresses of each
+  plane.
+- Monitors 4.3, 4.1, 4.0, 4.0c and 2.0c, as `builtin:vgmon43`, `builtin:vgmon41`,
+  `builtin:vgmon40`, `builtin:vgmon40c` and `builtin:vgmon20c`.
 
-OASIS 5.5A boots from a `vgdmdc` disk, and Vector CP/M boots from a `vgmdc` disk. The package holds no OASIS or Micropolis disk.
+**The Jade Double D floppy controller (`jadedd`).** The board has its own Z80, 2K of RAM and an
+FD1791. It runs Jade's DCM2 and takes up to four drives. The `jadedd` machine boots Jade CP/M 2.2
+through Jade's boot PROM. Jade's FORMAT program makes double-density, single-density and IBM 3740
+disks on the board.
 
-**`BOARDS` and `SHOW MACHINE` now fit a terminal.** The UNITS and MEMORY columns were as wide as
-their longest entry. One board with four disk drives made the table 130 characters
-wide. Each column now wraps at 32 characters, and a long entry continues on the lines below it.
-A line breaks only after a comma or between two fields, so a unit name or an address range is
-never split. Each kind of unit starts a new line. Before, a row longer than 255 characters was
-cut off. Now the table prints every entry in full.
+**A format that changes the size of a track now moves the tracks after it.** Before, the bytes of
+the later tracks stayed where they were, and the disk file kept its old size. A disk that Jade's
+FORMAT changed to single density then gave `Bdos Err On B: Bad Sector`. The fix applies to the
+`tarbell`, `cromemco-fdc`, `sd-versafloppy`, `compupro-disk` and `jadedd` boards.
 
-**Fixed: a guest sent serial output slower than the line rate.** Each UART chip had one transmit
-register. A write cleared the ready bit (TBMT, TDRE, TxRDY or TBE) for one character time, also
-when the line was idle. Because of this, each byte cost one character time plus the time that the
-guest took to see the bit set again. The real 1602, 6850, 8251, 2651 and TMS 5501 have a holding
-register in front of the shift register. Now a byte written to an idle line moves into the shift
-register after a short transfer delay, and the ready bit sets again. The delay is one bit time on
-the 6850 and 1/16 bit time on the 1602. These are the limits in the data sheets, and measurements on a real
-8800c came close to them. The 8251, 2651 and TMS 5501 have no delay, because our references give no
-value for them. A second byte keeps the ready bit clear until the first byte is sent. For example,
-on `basic4k` a program that sends one byte and counts its status reads until the port is ready
-again counted 72 reads. It now counts 1.
+**The CompuPro Interfacer 1 (`interfacer1`).** It has two serial channels, each a 1602-family
+UART. It can take the place of the `gsio` console in the `disk1` machine.
 
-The end-of-character bit (TEOC, TxEMPTY, TxEMT) clears when a byte moves into the shift register,
-and sets one character time later. PMMI MM-103 status bit 2, TEOC, was a copy of TBMT. It now
-shows the shift register. A snapshot from an older version restores, but each board with one of
-these UARTs starts as at power-on.
+**The SD Systems ExpandoRAM III (`bankmem card=expandoram3`).** One board gives pages 0–4, and
+two boards give pages 0–9. The ExpandoRAM II now uses only the low four bits of the page byte, as
+the real board does, and its page `A` is now there.
 
-**Fixed: a long ROM or disk path was cut off in the monitor's output.** The monitor wrote each
-line into a buffer of fixed size. The `REGION ADD` reply cut a ROM path off after about 110
-characters. `SHOW <board>` cut a region or unit line off at 256 characters, and `SHOW MOUNTS`
-and `SHOW PATHS` cut a line off at 512 characters. Nothing showed that text was missing. Now
-these lines show the whole path.
+**The SS-1 and its 9511A now match a real board.** These results were measured on real chips.
 
-**Fixed: `achieved_hz` stayed at 0 under `--mcp`.** Only the monitor's `RUN` measured the clock
-speed that the processor reached. The MCP `run` tool and the `start` and `stop` free run did not
-measure it. For example, after a `run` of 300 ms on the `basic4k` machine, `SHOW cpu0` showed
-`achieved_hz 0`. Now the `run` tool and the free run measure it in the same way as `RUN`. After a
-`run` or a `stop`, `SHOW cpu0` shows the clock speed that the guest ran at.
+- The 9511A truncates its float results. Before, the simulator rounded them.
+- SMUL and the other fixed-point commands give the real result for the operand `8000`.
+- An argument error, such as SQRT of −1, stops early with the real result and status.
+- The 8253 counts down by 2 in mode 3.
+- The 2651 shows TxRDY only after the guest enables the transmitter.
+- VI7\* reaches slave IR0, through the standard J8 shunt.
 
-**Fixed: a killed simulator lost the disk writes on some floppy boards.** On the `tarbell`,
-`tarbelldd`, `versafloppy`, `jadedd`, `disk1`, `disk1a`, `16fdc` and `64fdc` boards, a sector that
-the guest wrote stayed in memory. It went to the disk file on your computer only at `UNMOUNT` or a
-clean exit. If the process stopped on a signal, such as `kill` or a crash, the write was lost. For
-example, on a `tarbell` machine, a file that CP/M `SAVE` wrote was not in the disk file after
-`kill -9`. Now each sector write, and each track that the guest formats, goes to the disk file
-before the board reports it done. The other disk boards did this already.
+**Serial output now runs at the line rate.** Each UART had one transmit register, so each byte
+cost one character time plus the guest's time to see the ready bit again. Each UART now has a
+holding register in front of the shift register, as the real chips have. On `basic4k`, a byte
+sent to an idle line is ready again after one status read, not after 72. TEOC on the PMMI MM-103
+now shows the shift register.
 
-**Fixed: `SYMBOLS LOAD` read no symbols from a MACRO-80 listing.** It read an M80 `.PRN` with the ASM layout, found no address, and reported `0 symbol(s)`. It did not refuse a relocatable M80 listing, and it took a MAC `SET` as a program label. It now finds the M80 page header and uses the M80 columns, takes `EQU`, `SET`, `DEFL` and `ASET` as constants, and refuses a relocatable listing and names the line.
+**`CONFIG SAVE` and `CONFIG LOAD` keep the whole machine.** `CONFIG SAVE` now writes the
+`[terminal]`, `[console]` and `[display]` sections. Before, a saved `basic4k` lost `strip7out`, and
+MITS BASIC printed `MEMORY SIZ?`. Under `--mcp`, the save now writes the console as `console`, not
+as the session's `scripted` line. A `CONFIG LOAD` now resets these sections before it applies the
+file. A load that fails changes no setting.
 
-**Fixed: a machine with a VDB-8024 keyboard held one host core at a prompt when it ran flat out.**
-An `IN` from the board's status port did not reach the keyboard line, so the run loop's idle test
-saw about one empty poll in 2000 instructions and never let the machine idle. `sbc200v` at its monitor
-prompt with `clock_hz=0` took 100% of a core. Each status read with no key waiting now counts as
-an empty poll, and the machine idles at the prompt. The 88-PIO status port had the same fault and has the
-same fix.
+**`RESTORE` reads a snapshot from an earlier release.** It matches the boards by id and type, and
+restores each match. A board that it cannot restore starts as at power-on, and `RESTORE` prints a
+line for it.
 
-**Fixed: `CONFIG SAVE` under `--mcp` saved a machine with no console.** The save wrote the
-session's own line, `connect = "scripted"`, for the unit that holds the console. With `--mirror`
-or `--log` it also wrote those endpoints. When you loaded that file, `run` stopped
-with `no console line`. The save now writes `connect = "console"` for that unit. A unit that
-the machine file connects to `scripted` stays `scripted`.
+**A disk write reaches the host file at once.** On the `tarbell`, `tarbelldd`, `versafloppy`,
+`jadedd`, `disk1`, `disk1a`, `16fdc` and `64fdc` boards, a sector write stayed in memory until
+`UNMOUNT` or a clean exit. A `kill` lost it. Now each write goes to the disk file before the board
+reports it done.
 
-**Fixed: a message from a connected line now names the board and the unit in one form.** A
-line can send a message to the monitor, for example the name of a `pty:` link or a print job
-that could not be spooled. Before, the form of the message changed with the board. On a `c700`
-it named only the board, as `lpt0: ...`. On a `gsio`, `propio` or `interfacer1` it had no colon
-after the unit. One `io4` printed `io40:pa pty: ...` for a parallel unit and `io40:b: pty: ...`
-for a serial unit. Now every board prints the board, the unit and a colon, for example
-`lpt0:prn: ...` and `io40:pa: pty: ...`.
+**The monitor.**
 
-**`CONFIG LOAD` now gives the same machine as the same file at startup.** The loader wrote
-`[console]`, `[display]` and `[terminal]` while it read the file, and it did not reset them first. A
-`CONFIG LOAD` that failed kept the boards but changed these settings. A file that did not name a key
-kept the value of the last machine. A file with no `strip7out` key had it on after `basic4k`, and
-off at startup. `SHOW MACHINE basic4k` also turned `strip7out` on for the running machine.
+- `BOARDS` and `SHOW MACHINE` wrap the UNITS and MEMORY columns at 32 characters.
+- A long ROM or disk path is printed whole. Before, some lines cut it off.
+- `SYMBOLS LOAD` reads the symbols from a MACRO-80 listing.
+- A message from a line names the board and the unit in one form, such as `lpt0:prn: ...`.
 
-A load that succeeds now sets the keys that `CONFIG SAVE` writes to their defaults, and then applies
-the file. `MACHINE none` sets these keys to their defaults too. A load that fails changes no
-setting, and `SHOW MACHINE <name>` changes nothing. A value that you set with `SET` at the monitor is
-lost in a load, unless the file names the key. The `stop`, `base`, `history` and `log` keys of
-`[console]` keep their values, unless the file names them.
+**Other corrections.**
 
-**`CONFIG SAVE` now saves the `[terminal]` section.** It left out `upper`, `strip7in`, `strip7out`,
-`crlf`, `echo`, `bell` and `bsdel`, the settings of the terminal window. A machine file with
-`strip7out = true` in `[terminal]` lost that key in a save. On a guest that writes parity in bit 7,
-a CR then printed as a character and did not move the cursor. The saved file now has a
-`[terminal]` section with the seven keys.
-
-**`CONFIG SAVE` now saves the transform keys of `[console]`.** It left out the whole section, so a
-saved file did not have `upper`, `strip7in`, `strip7out`, `crlf`, `echo`, `bell` and `bsdel`. The
-loader does not reset these keys. A new run of the saved file used the defaults, and `CONFIG LOAD`
-kept the values of the last machine. The `basic4k` file sets `strip7out = true`. A copy saved with
-`CONFIG SAVE` started with `strip7out` off, and MITS BASIC printed `MEMORY SIZ?` for `MEMORY SIZE?`.
-The saved file now has a `[console]` section with the seven keys. The keys `stop`, `base`, `history`
-and `log` are still not saved, because they belong to the person at the keyboard.
-
-**`CONFIG SAVE` now saves the `[display]` section.** It wrote the boards and left out `focus`,
-`keyboard` and `crt`. The loader does not reset these keys. A new run of the saved file used the
-defaults, and `CONFIG LOAD` kept the values of the last machine. The `sbc200v` file sets
-`focus = true`, so that its video window is the console. A copy saved with `CONFIG SAVE`
-opened its window behind other windows, and the console kept the keyboard. The saved file now
-has a `[display]` section, and `focus` comes back as `true`.
-
-**New: `jadedd`, the Jade Double D floppy controller.** The board has its own Z80, 2K of RAM and
-an FD1791. The host sees 1K of the board's RAM through a window at `E000`–`FC00`, and controls
-the board through one port at `40`–`43`. The board's Z80 runs the program that the host loads
-there, such as Jade's DCM2, and does the disk work. It takes up to four drives, and it knows the
-Jade double-density and single-density disks and the IBM 3740 disk by their size. The `jadedd`
-machine boots Jade CP/M 2.2 through Jade's boot PROM, DDBOOT, at `F000`. The machine's console is
-an 88-2SIO at port `10`, so its PROM is `builtin:ddboot-2sio`. That PROM is DDBOOT, patched at
-Jade's patch points for the 88-2SIO. Jade's unpatched PROM, for a console at ports `00` and `01`,
-is `builtin:ddboot`.
-Jade's FORMAT program makes double-density, single-density and IBM 3740 disks on the board, and
-copies the system tracks to a new disk.
-
-**A format that changes the size of a track now moves the tracks after it.** A soft-sector disk
-image holds the tracks one after another. When the guest's Write Track command gave a track a
-different size, the start of each later track moved. The bytes of those tracks stayed where they
-were, and the file kept its old size. Jade's FORMAT, function 2, reformatted a double-density disk single
-density and left a 489,728-byte file. The next `MOUNT` read the file as a double-density disk, and
-CP/M gave `Bdos Err On B: Bad Sector`. Now the bytes after the track move with it, and the file
-takes the size of the new layout. A format of only some tracks keeps the data on the others, for
-example FORMAT's `*` function, which formats tracks 0 and 1. The fix applies to the `tarbell`,
-`cromemco-fdc`, `sd-versafloppy`, `compupro-disk` and `jadedd` boards.
-
-**The Z80 adds 1 to its `R` register when it takes an IM 1 or IM 2 interrupt.** The interrupt
-acknowledge is an M1 cycle with a refresh, the same as an opcode fetch. Before, the processor
-did not count it in IM 1 or IM 2, so `LD A,R` read 1 too low for each interrupt taken. IM 0 was
-already right. A guest that takes interrupts in IM 1 or IM 2 now reads `R` as a real Z80 shows it.
-
-**`bankmem card=expandoram2` uses only the low four bits of the page byte.** Before, the board
-took the whole byte written to port `FF` as the page. `OUT FF 13` was refused as page 19, and the
-old page stayed live. The real board latches only D0–D3, so `OUT FF 13` now selects page 3. A
-page that no board carries now leaves its addresses empty, and the common RAM continues to
-answer. Before, such a page left the old page live. The ExpandoRAM II's page `A` is now there. With
-`partition = "ex32"` it is a 32K page, and `ram = 384` gives pages 0–`A`. With
-`partition = "ex48"` it is 16K at `8000`, and `ram = 512` gives pages 0–9 and `A`. The SD Systems
-banked CP/M 3 disk writes only pages 0–4 and boots as before.
-
-**New: `bankmem card=expandoram3`, the SD Systems ExpandoRAM III.** The guest writes a page
-number to port `FF`, and the board uses only the low four bits. `ram = 256` is one board, with
-pages 0–4. `ram = 512` is two boards, with pages 0–9. `config = "cpm"` puts 48K pages under 16K
-of common RAM at `C000`. `config = "oasis"` puts the common RAM at `0000`. `bank_enable` sets
-the bank switches of S3. A page that has no RAM on the boards leaves its addresses empty, and
-the common RAM continues to answer. The SD Systems banked CP/M 3 disk for the ExpandoRAM II
-boots unchanged with `config = "cpm"`.
-
-**The manual now says how `bankmem card=expandoram2` counts `ram` with a partition.** The
-ExpandoRAM II's 32K and 48K PROM maps are for boards of 16K chips. With `ex48` or `ex32`,
-`ram` counts those 64K boards, so `ram = 256` with `ex48` is four boards. Before, the manual
-said that the PROM map could not be copied. The map is now read from a clean copy of the
-ExpandoRAM II manual.
-
-**The manual now says when the printer's idle flush runs and what ends a job with `?idle=0`.**
-A job's idle timer runs on the host's clock, so the job prints `?idle=N` seconds after the
-last byte even while the machine is stopped at the `altairsim>` prompt. In a session run
-from a pipe or a script, or with `?idle=0`, the job waits until you `DISCONNECT`, load
-another machine or quit, unless a form feed (`?onff`) or the `?max` ceiling ends it first.
-The examples now say that `linewriter` is the name of the print queue.
-
-**The manual and the quick start now say to start the macOS program from a terminal, not with
-a double-click.** Finder refuses a double-click on the notarized `altairsim`, online or
-offline, because Finder checks the file as a document. The manual keeps the `xattr` command
-for a Mac that cannot reach Apple.
-
-**`RESTORE` reads a snapshot from an earlier release.** Before, `RESTORE` refused a snapshot
-when its format version was not the newest. It also refused a snapshot when one board was
-added, removed or changed. A snapshot from 1.3.4 could not go into 1.3.5. Now `RESTORE` matches
-the boards by id and type and restores each match. It prints a line for each board that it
-cannot restore, and that board starts as at power-on. For example, a 1.3.4 snapshot of a
-machine with an SS-1 board restores all the boards except the `ss1` board. The SS-1 timer
-state changed in 1.3.5. The MCP `restore` tool gives these lines in `not_restored`.
-
-**A gamepad resting slightly off center keeps GOTCHA's direction correct.** Each host
-gamepad axis now reads zero within one eighth of full deflection from center. Before,
-GOTCHA's adjustment for the resting position could wrap a full move into the opposite
-direction. Full deflection still reads `7F` or `81`, and Dazzle Doodle's drawing range
-is unchanged.
-
-**Fixed: the SS-1's 9511A math chip rounded its float results.** The simulator rounded FADD,
-FSUB, FMUL and FDIV to the nearest 24-bit mantissa. Two real 9511A chips truncate, with no guard
-bits. For example, FADD of `01800000` and `69C00000` gave `01800001`, and the real chips give
-`01800000`. Now the four operations truncate as the real chip does. FLTD truncates, and PUPI
-pushes `02C90FDA`, not `02C90FDB`. SIN, COS, TAN, ASIN, ACOS, ATAN, EXP, LN, LOG, SQRT and PWR
-now take the steps that the real chip takes. Of 550 results measured on the real chips, 507
-match in all 32 bits, and the others differ in the last 1 or 2 bits.
-
-**Fixed: SMUL and the other fixed-point commands gave a wrong result for `8000`.** SMUL of `8000`
-and `0002` gave `8000` with status `42`. The real chip returns the low half of the product,
-`0000`, with status `22`. SMUL, SMUU, SDIV and their 32-bit forms now give the real result
-when an operand is the most negative value.
-
-**Fixed: a 9511A argument error took the full command time.** SQRT of −1 ran for the full SQRT
-time and left −1 on the stack. The real chip stops after about 20 clocks with status `48` and
-`80800000`. Now SQRT, LN, LOG, ASIN, ACOS, PWR, FIXS and FIXD stop early on a bad argument, with
-the real chip's result and status.
-
-**Fixed: the SS-1 8253 read back a wrong count in mode 3.** In mode 3 (the square wave) the
-count went down by 1 on each clock, through 0, as in mode 0. A real 8253 counts down by 2 and
-loads the count again at each half period. For example, with a count of 1000, reads 76 clocks
-apart now give 936, 784, 632, 480, as on the real chip.
-
-**Fixed: the SS-1 2651 showed TxRDY with the transmitter disabled.** Status bit D0 (TxRDY) read
-1 before the guest programmed the UART, and with command bit D0 (TxEN) at 0. Because slave
-IR6 follows TxRDY, an interrupt on IR6 could come before the guest enabled the transmitter.
-Now TxRDY and TxEMT (D2) read 0 while TxEN is 0, as on a real SS-1. TxEMT stays 0 after TxEN
-is set, until a character has been sent. A byte written while TxEN is 0 waits, and is sent when
-TxEN is set.
-
-**Fixed: VI7\* did not reach the SS-1's slave 8259A.** The board tied slave IR0 inactive. On a
-real SS-1 the standard J8 shunt connects S-100 VI7\* to slave IR0 (J8 pins 8 and 9). Now a
-board that pulls VI7\* interrupts the CPU through slave IR0 and the cascade. The guest gets a
-CALL to the slave's IR0 address. A snapshot from an older version restores, but the `ss1`
-board starts as at power-on.
-
-**Samples now show what the program prints.** The `STEP` example in `HELP STEP` and in the
-Monitor document now shows the output of `EX 0`. The `SHOW MOUNTS` sample in the tapes chapter
-and the `SHOW BOARD 2sio` sample in the boards chapter now show every line of the output.
+- The Z80 adds 1 to `R` when it takes an IM 1 or IM 2 interrupt.
+- `SHOW cpu0` shows `achieved_hz` after an MCP `run` or a free run.
+- A machine with a VDB-8024 or an 88-PIO idles at a prompt when it runs flat out.
+- A gamepad axis reads zero near its center, so GOTCHA keeps the correct direction.
+- The *User Manual* now says how the ExpandoRAM II counts `ram` with a partition and when the
+  printer's idle flush runs. It also says to start the macOS program from a terminal.
+- Samples in the *User Manual* and the Monitor document now show what the program prints.
 
 ## 1.3.5
 
@@ -278,6 +129,7 @@ hardware.
 overlay memory. **`RESTORE` does not accept a snapshot from 1.3.4 or earlier.**
 
 **Host bridge.**
+
 - A wildcard in `R` and `HDIR` skips a host file whose name starts with `.`, such as
   `.DS_Store`. `HDIR .*` lists these files.
 - `W *.ASM SRC` copies each match into the host folder `SRC`.
@@ -328,6 +180,7 @@ case. A machine-file word with the wrong case gets an error that names the fix, 
 refuses a value other than `true` or `false`.
 
 **New commands and options.**
+
 - `SHOW SERIAL` lists the serial ports on your computer and the unit that holds each one.
 - `--set "cpu0 clock_hz=2000000"` changes settings for one run, before the machine's `startup`.
 - `--mcp` refuses `-x`, `-s` and `-i`.
