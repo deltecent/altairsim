@@ -121,7 +121,7 @@ Built-ins are a **convenience, never a lock-in**: a path always overrides, so an
 
 ```
 altairsim> MOUNT mem0:rom0 newdbl.hex
-mem0:2 — rom, FF00-FFFF (256 bytes, 1 page), from newdbl.hex
+mem0:rom0: mounted newdbl.hex
 ```
 
 ### An empty socket is still a socket
@@ -171,11 +171,11 @@ The `read` row is a genuine footgun and it is *supposed* to be: write `42` to a 
 
 ### Getting bytes *into* a ROM region
 
-The guest cannot write ROM. **The operator can**, and the mechanism already exists — `RAW <id>` (`DESIGN.md` §10.2) reaches behind the bus, straight into the board's store:
+The guest cannot write ROM. **The operator can**. `LOAD … ROM` (`DESIGN.md` §10.2) goes behind the bus, into the store of the board that answers reads at that address:
 
 ```
-altairsim> LOAD dbl.hex RAW mem0        ; the PROM burner. Not a bus cycle.
-mem0: loaded 256 bytes from dbl.hex (FF00-FFFF, region 2)
+altairsim> LOAD dbl.hex ROM             ; the PROM burner. Not a bus cycle.
+loaded 256 bytes (1 page) from dbl.hex (FF00-FFFF) (ROM override)
 
 altairsim> DEPOSIT FF00 41              ; a bus cycle. mem0 doesn't decode it.
 FF00: no board decodes writes here (mem0 answers reads -- it is ROM). byte discarded.
