@@ -239,6 +239,10 @@ board that pulls VI7\* interrupts the CPU through slave IR0 and the cascade. The
 CALL to the slave's IR0 address. A snapshot from an older version restores, but the `ss1`
 board starts as at power-on.
 
+**Samples now show what the program prints.** The `STEP` example in `HELP STEP` and in the
+Monitor document now shows the output of `EX 0`. The `SHOW MOUNTS` sample in the tapes chapter
+and the `SHOW BOARD 2sio` sample in the boards chapter now show every line of the output.
+
 ## 1.3.5
 
 **1.3.5 adds a math chip to the CompuPro System Support 1 and an overlay to the CADzilla board.

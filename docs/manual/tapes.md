@@ -128,6 +128,8 @@ one direction at a time, so `mode` has two values only.
 altairsim> SHOW MOUNTS
   UNIT       KIND  HOLDS
   acr0:tape  tape  4K BASIC Ver 3-1.tap  00:00 / 02:28 (0%)  1/4439 bytes
+
+  Paths are AS WRITTEN.  SHOW PATHS says what they are relative to.
 ```
 
 The counter gives minutes and seconds into the tape, a percentage, and a byte count. For a

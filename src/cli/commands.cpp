@@ -57,6 +57,8 @@ static const std::vector<CommandDef> kCommands = {
      "\n"
      "  altairsim> DEPOSIT 0 3E 05 06 0A 80 76  ; MVI A,5 / MVI B,0A / ADD B / HLT\n"
      "  altairsim> EX 0\n"
+     "  0000  3E  >  00111110\n"
+     "  C0Z0M0E0I0 A=00 BC=0000 DE=0000 HL=0000 SP=0000 IE=0 PC=0000  MVI A,05\n"
      "  altairsim> S 3\n"
      "  C0Z0M0E0I0 A=05 BC=0000 DE=0000 HL=0000 SP=0000 IE=0 PC=0002  MVI B,0A\n"
      "  C0Z0M0E0I0 A=05 BC=0A00 DE=0000 HL=0000 SP=0000 IE=0 PC=0004  ADD B\n"

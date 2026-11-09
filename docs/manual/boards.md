@@ -64,11 +64,17 @@ has no default, and has no line:
 
 ```
 altairsim> SHOW BOARD 2sio
+  2sio  MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at
+        BASE+0..3
+
   PROPERTY  HELP
   --------  ------------------------------------------------------------------
   port      Base address. The board decodes four ports: BASE+0 .. BASE+3
             values: 0x0 .. 0xFC
             default: 0x10
+
+  This board has units: a, b
+  SHOW BOARD 2sio UNITS for their properties.
 ```
 
 Add `UNITS` to see only the units. Each unit has a heading with its **kind**, and after the
