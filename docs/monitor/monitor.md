@@ -153,6 +153,9 @@ before it starts the command. `vi` gets a normal terminal, and it gives the term
 
 A bare `!` with no command shows how to use `!`.
 
+Under `--mcp`, the monitor refuses `!` and runs nothing. Standard output carries the messages
+between the server and its client, and the output of a shell command would break them.
+
 ## Numbers: one fixed rule
 
 > **On the wire → hex. Never on the wire → decimal.**

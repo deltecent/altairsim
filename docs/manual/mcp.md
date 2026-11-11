@@ -306,7 +306,9 @@ The tools let an assistant operate the whole machine:
 - Save the state of the whole machine in a snapshot, and restore it.
 
 When no tool does what it needs, such as a conditional breakpoint or an octal listing, the
-`monitor` tool runs any monitor command and returns its text.
+`monitor` tool runs any monitor command and returns its text. The tool
+refuses a `!` command, because the output of a host shell command would go between the server's
+messages.
 
 This manual has no tool reference, because the server describes its own tools. `tools/list`
 returns every tool, and `board_types` returns every board type. Their answers always match your

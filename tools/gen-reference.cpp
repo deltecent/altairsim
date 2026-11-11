@@ -585,6 +585,7 @@ void cheatsheet(const std::string& dir) {
          "  -s, --script <f>   run a command script, then exit with its status. Paths in\n"
          "                     it are relative to the script's folder.\n"
          "  -x, --exec <cmd>   run one monitor command (repeatable), then exit.\n"
+         "                     -x and -s stop at the first command that fails.\n"
          "  -i, --interactive  after --script/--exec, stay in the monitor.\n"
          "      --set <text>   change a setting for this run, before the machine's startup\n"
          "                     commands (repeatable). The text is what follows SET at the\n"

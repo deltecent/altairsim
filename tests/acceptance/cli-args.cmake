@@ -78,3 +78,31 @@ execute_process(
 if(err MATCHES "TCP port" OR NOT err MATCHES "pty|/tmp/altairsim")
   fail("--Mirror PTY was not read as --mirror pty" "${out}" "${err}")
 endif()
+
+# ---- -x AND -s STOP AT THE FIRST COMMAND THAT FAILS (issue #916). ----
+# A refused command leaves the machine as it was, so the commands after it would run on a
+# machine the caller did not write, and print output that is wrong without saying why.
+# So the run stops there: the error, then one line that says so, then exit 1.
+run_in("${work}/plain" rc out err -n -x "SET nosuch x=1" -x "SHOW MACHINE")
+if(NOT rc EQUAL 1)
+  fail("-x with a failed command must exit 1, got ${rc}" "${out}" "${err}")
+endif()
+if(NOT out MATCHES "Stopped: that command failed")
+  fail("-x did not say it stopped at the failed command" "${out}" "${err}")
+endif()
+if(out MATCHES "altairsim> SHOW MACHINE")
+  fail("-x ran a command after the one that failed" "${out}" "${err}")
+endif()
+
+# The same for a script: line 2 fails, line 3 must not run.
+file(WRITE "${work}/plain/stop.cmd" "SHOW MACHINE\nSET nosuch x=1\nSHOW CONSOLE\n")
+run_in("${work}/plain" rc out err -n -s stop.cmd)
+if(NOT rc EQUAL 1)
+  fail("-s with a failed line must exit 1, got ${rc}" "${out}" "${err}")
+endif()
+if(NOT out MATCHES "altairsim> SHOW MACHINE" OR NOT out MATCHES "Stopped: that command failed")
+  fail("-s did not run line 1, or did not say it stopped at line 2" "${out}" "${err}")
+endif()
+if(out MATCHES "altairsim> SHOW CONSOLE")
+  fail("-s ran a line after the one that failed" "${out}" "${err}")
+endif()

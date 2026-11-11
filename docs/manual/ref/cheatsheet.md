@@ -48,6 +48,7 @@ altairsim [machine] [options]
   -s, --script <f>   run a command script, then exit with its status. Paths in
                      it are relative to the script's folder.
   -x, --exec <cmd>   run one monitor command (repeatable), then exit.
+                     -x and -s stop at the first command that fails.
   -i, --interactive  after --script/--exec, stay in the monitor.
       --set <text>   change a setting for this run, before the machine's startup
                      commands (repeatable). The text is what follows SET at the

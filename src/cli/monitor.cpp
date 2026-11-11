@@ -3203,6 +3203,14 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                    "   e.g. !ls, !vi HELLO.PRN\n";
             return true;
         }
+        // Under --mcp, stdout is the JSON-RPC channel. The child inherits it, so whatever
+        // it prints lands between the server's messages and breaks the client (issue #915).
+        // The caller is a program, not a person at a shell, so `!` is refused there.
+        if (mcpMode_) {
+            out << "! -- the host shell is not available under --mcp.\n";
+            failed_ = true;
+            return true;
+        }
         if (std::system(nullptr) == 0) {  // no command processor to hand it to
             out << "! -- no host shell is available.\n";
             failed_ = true;
@@ -6691,7 +6699,26 @@ int Monitor::repl(std::istream& in, std::ostream& out, bool interactive) {
             if (fileDepth_ > 0)
                 for (const auto& b : m_.boards()) b->setConfigDir(startupDir_);
         }
-        if (!exec(line, out)) break;
+        if (interactive) {
+            if (!exec(line, out)) break;
+            continue;
+        }
+        // -x AND -s STOP AT THE FIRST COMMAND THAT FAILS (issue #916). Every command after
+        // it would run on a machine that is not the one the caller wrote -- a SET that was
+        // refused leaves the old value in place -- and its output would be wrong without
+        // saying why. A person at the prompt (and DO, and a startup list) sees each result
+        // as it comes, so those go on. failed_ is sticky and may already be set by a startup
+        // entry, so judge THIS line alone, then fold it back in for the exit status.
+        const bool before = failed_;
+        failed_           = false;
+        const bool more   = exec(line, out);
+        const bool bad    = failed_;
+        failed_           = before || bad;
+        if (bad) {
+            out << "Stopped: that command failed. The commands after it did not run.\n";
+            break;
+        }
+        if (!more) break;
     }
     return exitCode();
 }

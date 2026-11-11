@@ -1437,12 +1437,15 @@ altairsim [options] [<machine>]
 
   -s, --script <file>  run a command script, then exit with its status.  (was `-c`)
   -x, --exec <cmd>     run one monitor command (repeatable), then exit.
+                       -x and -s stop at the first command that fails.
   -i, --interactive    after --script/--exec, stay in the monitor.
       --mcp            MCP server on stdio.
   -v, --version        -h, --help
 ```
 
 `-s script.cmd` is the CI/regression entry point: a script that fails exits non-zero. `-x` is the same thing for one-liners, which is what makes a bug report reproducible in a single pasteable line.
+
+**`-x` and `-s` stop at the first command that fails** (issue #916). A refused `SET` leaves the old value in place. Each command after it would run on a machine that is not the one the caller wrote, and its output would be wrong with nothing to say why. Until #916 the run went on, and only the exit status said that something failed. A run whose output went to a log that nobody read looked like a run that worked. `Monitor::repl()` judges each line alone (`failed_` is sticky, and a failed `startup` entry may already have set it), prints `Stopped: that command failed. The commands after it did not run.` and breaks. This is the same rule that `--set` follows, one level down. A failed `--set` already stops the launch, and a failed `-x` already skips `-s`. Commands typed at the prompt, a `DO` file and a `startup` list still run every line, because a person sees each result as it comes. A `DO` given as an `-x` line counts as failed if any of its lines failed, so `-x` stops after it.
 
 **`--set "<id> <key>=<value>"` is a `SET` that runs before `startup`** (issue #736). `startup` runs before `-x` and `-s`, so on a machine whose file says `startup = ["RUN FF00"]` a `-x "SET cpu0 clock_hz=2000000"` arrives after the guest has booted. `--set` is the same command, given to the same `Monitor::exec`, at the one point where it is still in time: immediately before `startup`. The order on a plain launch is banner, `~/altairsim.ini`, `--set`, `startup`: the banner reports the machine as the file or the built-in made it, and the operator's ini file and then the command line change that, each on a line of its own, with the command line last so that it wins. It takes the text of a `SET` and nothing else, so there is no second grammar and no key that works in one place and not the other. Each one is echoed behind `set>`, as `startup>` and `ini>` echo theirs. One that fails stops the program with exit 2 before `startup` -- a wrong key must not boot the machine with the setting the operator meant to change. The machine file is not written.
 
