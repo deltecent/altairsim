@@ -10,6 +10,15 @@ register, the bit or the command that was wrong.
 
 ---
 
+## Unreleased
+
+**`-x` and `-s` stop at the first command that fails.** Before, the program ran every command,
+and only the exit status showed the failure. For example, `-x "SET fdc0 baud=115200"` printed an
+error and left the rate at 403200. The next `-x` commands then ran at 403200, and their output
+did not show the cause. Now the program prints the error and the line `Stopped: that command
+failed. The commands after it did not run.`, and exits with status 1. A `DO` file, a `startup`
+list and commands that you type still run every line.
+
 ## 1.3.6
 
 **1.3.6 adds the Vector Graphic machines, the Jade Double D, the CompuPro Interfacer 1 and the

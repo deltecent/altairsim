@@ -6691,7 +6691,26 @@ int Monitor::repl(std::istream& in, std::ostream& out, bool interactive) {
             if (fileDepth_ > 0)
                 for (const auto& b : m_.boards()) b->setConfigDir(startupDir_);
         }
-        if (!exec(line, out)) break;
+        if (interactive) {
+            if (!exec(line, out)) break;
+            continue;
+        }
+        // -x AND -s STOP AT THE FIRST COMMAND THAT FAILS (issue #916). Every command after
+        // it would run on a machine that is not the one the caller wrote -- a SET that was
+        // refused leaves the old value in place -- and its output would be wrong without
+        // saying why. A person at the prompt (and DO, and a startup list) sees each result
+        // as it comes, so those go on. failed_ is sticky and may already be set by a startup
+        // entry, so judge THIS line alone, then fold it back in for the exit status.
+        const bool before = failed_;
+        failed_           = false;
+        const bool more   = exec(line, out);
+        const bool bad    = failed_;
+        failed_           = before || bad;
+        if (bad) {
+            out << "Stopped: that command failed. The commands after it did not run.\n";
+            break;
+        }
+        if (!more) break;
     }
     return exitCode();
 }

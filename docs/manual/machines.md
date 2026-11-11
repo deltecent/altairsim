@@ -24,8 +24,8 @@ options before the machine: `altairsim mine.toml -s check.cmd` and
 | `-f, --file <path>` | **always** a file, never a built-in name |
 | `-n, --none` | an empty backplane. No boards, no memory, nothing |
 | `-l, --list` | list the built-in machines and exit |
-| `-s, --script <file>` | run a command script, then exit with its status. Paths in it are relative to the script's folder |
-| `-x, --exec <cmd>` | run one monitor command, then exit. You can give it more than one time |
+| `-s, --script <file>` | run a command script, then exit with its status. Paths in it are relative to the script's folder. The script stops at the first command that fails |
+| `-x, --exec <cmd>` | run one monitor command, then exit. You can give it more than one time. The commands stop at the first command that fails |
 | `-i, --interactive` | after `--script` or `--exec`, stay in the monitor |
 | `--set <setting>` | change a setting for this run, before the machine's startup commands. You can give it more than one time |
 | `--mcp` | run as an MCP server on stdio. You cannot give `-s`, `-x`, `-i` or `--set` with it |
@@ -460,6 +460,18 @@ path to the script from the folder that you are in:
 ```
 $ altairsim -s examples/cpm/cpm22-buffered.ini
 ```
+
+**`-x` and `-s` stop at the first command that fails.** After a command fails, the machine is
+different from the machine that your commands describe. The output of the commands after it
+would be wrong. The program prints the error, then this line, and runs no more commands:
+
+```
+Stopped: that command failed. The commands after it did not run.
+```
+
+If an `-x` command fails, the `-s` script does not run. With `-i`, you then get the monitor, and
+you can look at the machine. A `DO` file and a `startup` list run all of their lines. If a line
+in a `DO` file fails, the `DO` command fails, and `-x` or `-s` stops after it.
 
 **The exit status is not zero if a command failed.** You can use `altairsim -s` in a shell
 script, a Makefile or a build, and test the result:
