@@ -3203,6 +3203,14 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                    "   e.g. !ls, !vi HELLO.PRN\n";
             return true;
         }
+        // Under --mcp, stdout is the JSON-RPC channel. The child inherits it, so whatever
+        // it prints lands between the server's messages and breaks the client (issue #915).
+        // The caller is a program, not a person at a shell, so `!` is refused there.
+        if (mcpMode_) {
+            out << "! -- the host shell is not available under --mcp.\n";
+            failed_ = true;
+            return true;
+        }
         if (std::system(nullptr) == 0) {  // no command processor to hand it to
             out << "! -- no host shell is available.\n";
             failed_ = true;
