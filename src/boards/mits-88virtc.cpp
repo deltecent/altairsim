@@ -262,7 +262,7 @@ std::vector<Property> VirtcBoard::properties() {
     // below is what the GUEST has written to port 0xFE and is live right now -- and
     // there is no way to see it otherwise, because the port is write-only and the card
     // has no IN. A SET here would be the monitor reaching into the 8214 and pretending
-    // the program had done it, so these have no setter, SHOW prints them "(read-only)",
+    // the program had done it, so these have no setter, SHOW prints them "(show-only)",
     // and CONFIG SAVE skips them (toml.cpp: `if (!p.set) continue`) -- so a saved
     // machine still round-trips to the same STRAPS and none of this live state leaks
     // into it.

@@ -148,7 +148,7 @@ void propTable(std::ostream& o, std::vector<Property>& props) {
         std::string def = readOnly(p) ? "—" : (p.get ? p.get().text(p.radix) : "");
         if (!def.empty() && def != "—") def = "`" + def + "`";
         std::string meaning = cell(p.help);
-        if (readOnly(p)) meaning += " **(read-only — not a key you may set)**";
+        if (readOnly(p)) meaning += " **(show-only — not a key you may set)**";
         if (p.irqJumper) meaning += " *(interrupt strap)*";
         meaning += alsoSpelled(p);
         o << "| `" << p.name << "` | " << kindName(p.kind) << " | " << def << " | "
@@ -162,7 +162,7 @@ void propTable(std::ostream& o, std::vector<Property>& props) {
 // and it is built (Board::subUnitProperties). So there is no Default column: there is
 // nothing to read a default off. And crucially there is NO read-only mark -- propTable
 // stamps that on `!p.set`, and one of these has no setter EITHER, which would print every
-// one of them "(read-only -- not a key you may set)" when in a machine file they are
+// one of them "(show-only -- not a key you may set)" when in a machine file they are
 // nothing BUT settable. The monitor drew exactly this line, showSchema() beside showProps()
 // (src/cli/monitor.cpp); this is the same split, one consumer over.
 void schemaTable(std::ostream& o, std::vector<Property>& props) {

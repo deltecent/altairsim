@@ -139,7 +139,7 @@ MITS 88-CPU: an 8080A CPU board. Decodes nothing -- it drives the bus
 |---|---|---|---|---|
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
 | `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
-| `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
+| `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Show-only; 0 until it has run. **(show-only — not a key you may set)** |
 
 
 ### `8085`
@@ -154,7 +154,7 @@ Generic 8085 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin,
 |---|---|---|---|---|
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
 | `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
-| `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
+| `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Show-only; 0 until it has run. **(show-only — not a key you may set)** |
 
 
 ### `vgzcb`
@@ -176,7 +176,7 @@ Vector Graphic ZCB: a Z-80 processor with up to three PROM sockets in E000-EFFF 
 |---|---|---|---|---|
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
 | `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
-| `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
+| `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Show-only; 0 until it has run. **(show-only — not a key you may set)** |
 | `group` | int | `0x0` | `0x0` .. `0xE0` | The 32-port group of both chips (area G): 00, 20, 40 ... E0 |
 | `serial_port` | int | `0x4` | `0x0` .. `0x1C` | Base of the 8251 in the group (area E). Data at BASE, status and command at BASE+1, repeated at BASE+2 and BASE+3 |
 | `parallel_port` | int | `0x8` | `0x0` .. `0x1C` | Base of the 8255 in the group (area E): ports A, B, C and control |
@@ -204,7 +204,7 @@ Generic Z80 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, 
 |---|---|---|---|---|
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
 | `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
-| `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Read-only; 0 until it has run. **(read-only — not a key you may set)** |
+| `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Show-only; 0 until it has run. **(show-only — not a key you may set)** |
 
 
 ## Memory
@@ -227,7 +227,7 @@ S-100 bank-switched RAM. One card, five decoders (card=vector|cromemco64kz|north
 | `bank_enable` | int | `0xFF` | `0x0` .. `0xFF` | ExpandoRAM III S3 bank enables: bit = board x 4 + bank, set = enabled (factory FF). On each board, S3 switch 4 is bank 0 and switch 1 is bank 3. A switched-off bank answers nothing |
 | `ram` | int | `512` | `1` .. `640` | total board RAM in KB. Sets the bank count from the current partition: with ex48, 256 -> 5 banks; with none (whole plane), 256 -> 4 banks of 64K. The real ExpandoRAM II is 64K (16K chips) or 256K (64K chips); with ex48 or ex32, ram counts 64K boards of 16K chips (ex48 512 = 8 boards, pages 0-A). expandoram3: 256 (one board) or 512 (two boards) |
 | `honors_phantom` | enum | `none` | `none` \| `read` \| `all` | A JUMPER. Another board pulls PHANTOM* (a boot PROM shadowing the RAM this card sits under) -- do I switch off? none \| read \| all. `read` keeps answering writes so a cold-boot loader falls through to this RAM while the PROM shadows reads (an ExpandoRAM II under the SBC-200 boot PROM). Default none -- a plain banked-RAM machine has no PROM overlay |
-| `active` | string | — | — | the live bank(s) right now -- the guest sets this by writing the select port. Read-only here **(read-only — not a key you may set)** |
+| `active` | string | — | — | the live bank(s) right now -- the guest sets this by writing the select port. Show-only here **(show-only — not a key you may set)** |
 | `fill` | enum | `random` | `zero` \| `random` | RAM contents at power-on: zero \| random (real RAM is not zeroed) |
 | `seed` | int | `1` | any | seed for fill=random -- the same seed fills RAM the same way at every POWER, so a run is repeatable |
 
@@ -254,7 +254,7 @@ RAM/ROM board: a list of regions and PHANTOM* -- plain, unbanked memory (bank sw
 | `phantom` | enum | `all` | `none` \| `read` \| `all` | What I ASSERT over my rom regions: none \| read \| all |
 | `fill` | enum | `random` | `zero` \| `random` | RAM contents at power-on: zero \| random (real RAM is not zeroed) |
 | `seed` | int | `1` | any | Seed for fill=random. The same seed fills RAM the same way at every POWER, so a run is repeatable; change it for a different junk pattern |
-| `pages` | string | — | — | the composite page map -- which pages this board answers for. Derived from the regions you declared **(read-only — not a key you may set)** |
+| `pages` | string | — | — | the composite page map -- which pages this board answers for. Derived from the regions you declared **(show-only — not a key you may set)** |
 
 
 ### `v2z80rom`
@@ -301,7 +301,7 @@ Cromemco 16FDC: WD FD1793 soft-sector floppy (single + double density), up to 4 
 | `rate` | string | `full` | text | Console speed: full (as fast as the guest reads) \| real (wall-clock baud) |
 | `dcd` | enum | `ground` | `ground` \| `wired` | /DCD pin: grounded on the card, or wired to the connector |
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
-| `lines` | string | — | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS **(read-only — not a key you may set)** |
+| `lines` | string | — | — | Live pin state (show-only). CAPITALS = asserted. in: DCD CTS **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
 
 
@@ -336,7 +336,7 @@ Cromemco 64FDC: the 16FDC's 1983 successor -- same FD1793 + TMS 5501, carrying a
 | `rate` | string | `full` | text | Console speed: full (as fast as the guest reads) \| real (wall-clock baud) |
 | `dcd` | enum | `ground` | `ground` \| `wired` | /DCD pin: grounded on the card, or wired to the connector |
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
-| `lines` | string | — | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS **(read-only — not a key you may set)** |
+| `lines` | string | — | — | Live pin state (show-only). CAPITALS = asserted. in: DCD CTS **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
 
 
@@ -792,7 +792,7 @@ MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where this channel's IRQ is jumpered: none \| int \| vi0..vi7 *(interrupt strap)* |
 | `dcd` | enum | `ground` | `ground` \| `wired` | /DCD pin: grounded on the card, or wired to the connector |
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
-| `lines` | string | — | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(read-only — not a key you may set)** |
+| `lines` | string | — | — | Live pin state (show-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
 
 #### Unit `b` — `[board.unit.b]`
@@ -803,7 +803,7 @@ MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where this channel's IRQ is jumpered: none \| int \| vi0..vi7 *(interrupt strap)* |
 | `dcd` | enum | `ground` | `ground` \| `wired` | /DCD pin: grounded on the card, or wired to the connector |
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
-| `lines` | string | — | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(read-only — not a key you may set)** |
+| `lines` | string | — | — | Live pin state (show-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
 
 
@@ -874,7 +874,7 @@ CompuPro Interfacer 1 (Godbout 133H): two serial channels 'a' and 'b', each a re
 | `opt` | enum | `cf` | `cf` \| `eoc` | J12 (A) / J13 (B): what status bit D2 reads -- cf = the RS-232 CF input (B-A, reads 0 when ON), eoc = the UART's End Of Character (B-C) |
 | `rx_int` | enum | `none` | `none` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | J11: where RxINT (DAV AND RXINTE) is jumpered: none \| vi0..vi7 *(interrupt strap)* |
 | `tx_int` | enum | `none` | `none` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | J11: where TxINT (TBMT AND TXINTE) is jumpered: none \| vi0..vi7. A LEVEL, held while the transmitter is idle *(interrupt strap)* |
-| `control` | int | — | — | What the guest last wrote to the control port (the 74LS175 latches) **(read-only — not a key you may set)** |
+| `control` | int | — | — | What the guest last wrote to the control port (the 74LS175 latches) **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
 
 #### Unit `b` — `[board.unit.b]`
@@ -895,7 +895,7 @@ CompuPro Interfacer 1 (Godbout 133H): two serial channels 'a' and 'b', each a re
 | `opt` | enum | `cf` | `cf` \| `eoc` | J12 (A) / J13 (B): what status bit D2 reads -- cf = the RS-232 CF input (B-A, reads 0 when ON), eoc = the UART's End Of Character (B-C) |
 | `rx_int` | enum | `none` | `none` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | J11: where RxINT (DAV AND RXINTE) is jumpered: none \| vi0..vi7 *(interrupt strap)* |
 | `tx_int` | enum | `none` | `none` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | J11: where TxINT (TBMT AND TXINTE) is jumpered: none \| vi0..vi7. A LEVEL, held while the transmitter is idle *(interrupt strap)* |
-| `control` | int | — | — | What the guest last wrote to the control port (the 74LS175 latches) **(read-only — not a key you may set)** |
+| `control` | int | — | — | What the guest last wrote to the control port (the 74LS175 latches) **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
 
 
@@ -991,10 +991,10 @@ PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0.
 | `answer` | string |  | text | Auto-answer TCP port (empty/0 = will not answer). DTR arms the listener; an inbound call RINGS until the guest answers with RI |
 | `rtsdtr` | bool | `false` | `on` \| `off` | Mirror DTR onto RTS on a CONNECTed serial port (for cables that need RTS asserted to pass data). Default off |
 | `telnet` | bool | `true` | `on` \| `off` | Speak the Telnet protocol on a dial=/answer= line, for a human telnet client (no double echo, character-at-a-time). Default on; telnet=off for a raw pipe to another simulator |
-| `frame` | string | — | — | Live UART frame (read-only), e.g. 8N1. Set by OUT BA+0 bits 2-6 **(read-only — not a key you may set)** |
-| `baud` | int | — | — | Live line rate (read-only), 250000/(16*N) from the OUT BA+2 divisor **(read-only — not a key you may set)** |
-| `uart` | string | — | — | Live UART status (read-only). CAPITALS = asserted: TBMT DAV **(read-only — not a key you may set)** |
-| `lines` | string | — | — | Live modem lines (read-only). CAPITALS = asserted: SH RI DTR ST DT RING CTS AP (DT/RING/CTS/AP from the phone line + handshake state machine) **(read-only — not a key you may set)** |
+| `frame` | string | — | — | Live UART frame (show-only), e.g. 8N1. Set by OUT BA+0 bits 2-6 **(show-only — not a key you may set)** |
+| `baud` | int | — | — | Live line rate (show-only), 250000/(16*N) from the OUT BA+2 divisor **(show-only — not a key you may set)** |
+| `uart` | string | — | — | Live UART status (show-only). CAPITALS = asserted: TBMT DAV **(show-only — not a key you may set)** |
+| `lines` | string | — | — | Live modem lines (show-only). CAPITALS = asserted: SH RI DTR ST DT RING CTS AP (DT/RING/CTS/AP from the phone line + handshake state machine) **(show-only — not a key you may set)** |
 
 
 ### `propio`
@@ -1102,7 +1102,7 @@ MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (u
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where this channel's IRQ is jumpered: none \| int \| vi0..vi7 *(interrupt strap)* |
 | `dcd` | enum | `ground` | `ground` \| `wired` | /DCD pin: grounded on the card, or wired to the connector |
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
-| `lines` | string | — | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(read-only — not a key you may set)** |
+| `lines` | string | — | — | Live pin state (show-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
 
 
@@ -1200,8 +1200,8 @@ MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the WIND/
 | `waveform` | enum | `square` | `square` \| `sine` | Carrier shape when writing audio: square (like real hardware) \| sine |
 | `level` | int | `36` | `1` .. `100` | Recording level as a percent of full scale, when writing audio |
 | `rate` | enum | `full` | `full` \| `real` | Playback speed: full (as fast as the guest reads) \| real (wall-clock baud) |
-| `detected` | string | — | — | What the mounted tape turned out to be (empty if nothing is mounted) **(read-only — not a key you may set)** |
-| `position` | string | — | — | Where the tape head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |
+| `detected` | string | — | — | What the mounted tape turned out to be (empty if nothing is mounted) **(show-only — not a key you may set)** |
+| `position` | string | — | — | Where the tape head is now: mm:ss / total (percent) -- show-only **(show-only — not a key you may set)** |
 | `counter` | enum | `on` | `on` \| `off` | Live tape counter on the console during a load: on \| off |
 | `stop` | string | `off` | off \| end \| mm:ss | Auto-stop playback at this time: off \| end \| <mm:ss> |
 
@@ -1226,7 +1226,7 @@ MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10
 | `out_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the OUT pad is soldered (TX): none \| int \| vi0..vi7 *(interrupt strap)* |
 | `serial_port` | int | `0x10` | `0x0` .. `0xFE` | Serial (6850) base -- SW-2. 0x10 = 2SIO Port A (default); SW-2 ON = 0x18 |
 | `standard` | enum | `mits` | `mits` \| `kansas` | SW-1 tape modulation: mits (2400/1850) \| kansas (Kansas City 2400/1200) |
-| `motor` | enum | — | — | Tape-recorder motor relay (guest-driven: OUT 6,127 = on, OUT 6,191 = off) **(read-only — not a key you may set)** |
+| `motor` | enum | — | — | Tape-recorder motor relay (guest-driven: OUT 6,127 = on, OUT 6,191 = off) **(show-only — not a key you may set)** |
 
 #### Unit `tape` — `[board.unit.tape]`
 
@@ -1239,8 +1239,8 @@ MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10
 | `waveform` | enum | `square` | `square` \| `sine` | Carrier shape when writing audio: square (like real hardware) \| sine |
 | `level` | int | `36` | `1` .. `100` | Recording level as a percent of full scale, when writing audio |
 | `rate` | enum | `full` | `full` \| `real` | Playback speed: full (as fast as the guest reads) \| real (wall-clock baud) |
-| `detected` | string | — | — | What the mounted tape turned out to be (empty if nothing is mounted) **(read-only — not a key you may set)** |
-| `position` | string | — | — | Where the tape head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |
+| `detected` | string | — | — | What the mounted tape turned out to be (empty if nothing is mounted) **(show-only — not a key you may set)** |
+| `position` | string | — | — | Where the tape head is now: mm:ss / total (percent) -- show-only **(show-only — not a key you may set)** |
 | `counter` | enum | `on` | `on` \| `off` | Live tape counter on the console during a load: on \| off |
 | `stop` | string | `off` | off \| end \| mm:ss | Auto-stop playback at this time: off \| end \| <mm:ss> |
 
@@ -1252,7 +1252,7 @@ MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where this channel's IRQ is jumpered: none \| int \| vi0..vi7 *(interrupt strap)* |
 | `dcd` | enum | `ground` | `ground` \| `wired` | /DCD pin: grounded on the card, or wired to the connector |
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
-| `lines` | string | — | — | Live pin state (read-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(read-only — not a key you may set)** |
+| `lines` | string | — | — | Live pin state (show-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
 
 
@@ -1380,16 +1380,16 @@ CADzilla: an HD63484 ACRTC graphics board with a Bt453 RAMDAC and 2 MB of fixed 
 | `draw_rate` | enum | `full` | `full` \| `real` | Drawing speed. full: each ACRTC command completes at once. real: each command takes its HD63484 data-sheet time, and the write FIFO fills as on the real board |
 | `width` | string | `auto` | text | Video window width in pixels: 'auto' (default) opens about half the screen wide, or a number like 1024. The height follows the board's own aspect, and the picture is a whole multiple of its pixels so it stays crisp |
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | SW1-8: the S-100 line for the ACRTC's IRQ*. none (default) disconnects it. int (pin 73) or vi0..vi7 is asserted while an enabled status flag is set *(interrupt strap)* |
-| `video` | string | — | — | LIVE: whether the ACRTC is displaying -- OMR STR and DCR SE1 both set. Read-only **(read-only — not a key you may set)** |
-| `picture` | string | — | — | LIVE: the size in pixels of the picture that the ACRTC is set to show, and the position of its top-left corner in the monitor's frame. Read-only **(read-only — not a key you may set)** |
-| `wiring` | string | — | — | LIVE: 'ok' when the ACRTC settings agree with the board's wiring (CCR GBM 8 bpp, OMR GAI +8 words, OMR ACM the same as MODE AMODE, no displayed screen with MWR CHR set). If not, it names the setting that is wrong, and the picture is scrambled. Read-only **(read-only — not a key you may set)** |
-| `hspol` | string | — | — | LIVE: MODE register bit 0, the horizontal sync polarity. The simulator shows the value but does not use it. Read-only **(read-only — not a key you may set)** |
-| `vspol` | string | — | — | LIVE: MODE register bit 1, the vertical sync polarity. The simulator shows the value but does not use it. Read-only **(read-only — not a key you may set)** |
-| `amode` | string | — | — | LIVE: MODE register bit 2, the access mode of the board's fetch logic: single or interleaved. The ACRTC's OMR ACM bit must agree (see wiring). Read-only **(read-only — not a key you may set)** |
-| `olen` | bool | — | — | LIVE: MODE register bit 3, overlay display enable. Off, the overlay is not shown; drawing into it still works. Read-only **(read-only — not a key you may set)** |
-| `olsel` | int | — | — | LIVE: MODE register bit 4, overlay select. Which half of the overlay memory a CHR screen draws into: 0 the half for the lower 1 MB of frame memory, 1 the upper. Read-only **(read-only — not a key you may set)** |
-| `status` | int | — | — | LIVE: the ACRTC status register -- CER ARD CED LPD RFF RFR WFR WFE. Read-only **(read-only — not a key you may set)** |
-| `irq` | bool | — | — | LIVE: whether IRQ* is asserted right now -- an enabled status flag pending AND the interrupt strap not 'none'. Read-only **(read-only — not a key you may set)** |
+| `video` | string | — | — | LIVE: whether the ACRTC is displaying -- OMR STR and DCR SE1 both set. Show-only **(show-only — not a key you may set)** |
+| `picture` | string | — | — | LIVE: the size in pixels of the picture that the ACRTC is set to show, and the position of its top-left corner in the monitor's frame. Show-only **(show-only — not a key you may set)** |
+| `wiring` | string | — | — | LIVE: 'ok' when the ACRTC settings agree with the board's wiring (CCR GBM 8 bpp, OMR GAI +8 words, OMR ACM the same as MODE AMODE, no displayed screen with MWR CHR set). If not, it names the setting that is wrong, and the picture is scrambled. Show-only **(show-only — not a key you may set)** |
+| `hspol` | string | — | — | LIVE: MODE register bit 0, the horizontal sync polarity. The simulator shows the value but does not use it. Show-only **(show-only — not a key you may set)** |
+| `vspol` | string | — | — | LIVE: MODE register bit 1, the vertical sync polarity. The simulator shows the value but does not use it. Show-only **(show-only — not a key you may set)** |
+| `amode` | string | — | — | LIVE: MODE register bit 2, the access mode of the board's fetch logic: single or interleaved. The ACRTC's OMR ACM bit must agree (see wiring). Show-only **(show-only — not a key you may set)** |
+| `olen` | bool | — | — | LIVE: MODE register bit 3, overlay display enable. Off, the overlay is not shown; drawing into it still works. Show-only **(show-only — not a key you may set)** |
+| `olsel` | int | — | — | LIVE: MODE register bit 4, overlay select. Which half of the overlay memory a CHR screen draws into: 0 the half for the lower 1 MB of frame memory, 1 the upper. Show-only **(show-only — not a key you may set)** |
+| `status` | int | — | — | LIVE: the ACRTC status register -- CER ARD CED LPD RFF RFR WFR WFE. Show-only **(show-only — not a key you may set)** |
+| `irq` | bool | — | — | LIVE: whether IRQ* is asserted right now -- an enabled status flag pending AND the interrupt strap not 'none'. Show-only **(show-only — not a key you may set)** |
 
 
 ### `dazzler`
@@ -1402,11 +1402,11 @@ Cromemco Dazzler: color graphics from a framebuffer in main RAM. Two ports at BA
 |---|---|---|---|---|
 | `port` | int | `0xE` | `0x0` .. `0xFE` | I/O base port -- control/status (BASE) and format (BASE+1). Even; default 0E |
 | `width` | string | `auto` | text | Video window width in pixels: 'auto' (default) opens about half the screen wide, or a number like 1024. The height follows the board's own aspect, and the picture is a whole multiple of its pixels so it stays crisp |
-| `video` | string | — | — | LIVE: whether the Dazzler is displaying -- OUT BASE D7 (on/off). Read-only **(read-only — not a key you may set)** |
-| `resolution` | string | — | — | LIVE: picture size in elements, decoded from the format byte (D6 X4, D5 size): 32x32, 64x64 or 128x128. Read-only **(read-only — not a key you may set)** |
-| `color` | string | — | — | LIVE: color vs black-and-white -- format D4. Read-only **(read-only — not a key you may set)** |
-| `size` | string | — | — | LIVE: framebuffer footprint -- format D5: 512 bytes (one quadrant) or 2 KB (four quadrants). Read-only **(read-only — not a key you may set)** |
-| `base` | int | — | — | LIVE: framebuffer start address in RAM -- OUT BASE D6-D0 << 9. Read-only **(read-only — not a key you may set)** |
+| `video` | string | — | — | LIVE: whether the Dazzler is displaying -- OUT BASE D7 (on/off). Show-only **(show-only — not a key you may set)** |
+| `resolution` | string | — | — | LIVE: picture size in elements, decoded from the format byte (D6 X4, D5 size): 32x32, 64x64 or 128x128. Show-only **(show-only — not a key you may set)** |
+| `color` | string | — | — | LIVE: color vs black-and-white -- format D4. Show-only **(show-only — not a key you may set)** |
+| `size` | string | — | — | LIVE: framebuffer footprint -- format D5: 512 bytes (one quadrant) or 2 KB (four quadrants). Show-only **(show-only — not a key you may set)** |
+| `base` | int | — | — | LIVE: framebuffer start address in RAM -- OUT BASE D6-D0 << 9. Show-only **(show-only — not a key you may set)** |
 
 
 ### `dazzler2`
@@ -1419,11 +1419,11 @@ Cromemco Dazzler II (a modern board): the Dazzler with its picture in 4 KB of RA
 |---|---|---|---|---|
 | `port` | int | `0xE` | `0x0` .. `0xFE` | I/O base port -- control/status (BASE) and format (BASE+1). Even; default 0E |
 | `width` | string | `auto` | text | Video window width in pixels: 'auto' (default) opens about half the screen wide, or a number like 1024. The height follows the board's own aspect, and the picture is a whole multiple of its pixels so it stays crisp |
-| `video` | string | — | — | LIVE: whether the Dazzler is displaying -- OUT BASE D7 (on/off). Read-only **(read-only — not a key you may set)** |
-| `resolution` | string | — | — | LIVE: picture size in elements, decoded from the format byte (D6 X4, D5 size): 32x32, 64x64 or 128x128. Read-only **(read-only — not a key you may set)** |
-| `color` | string | — | — | LIVE: color vs black-and-white -- format D4. Read-only **(read-only — not a key you may set)** |
-| `size` | string | — | — | LIVE: framebuffer footprint -- format D5: 512 bytes (one quadrant) or 2 KB (four quadrants). Read-only **(read-only — not a key you may set)** |
-| `base` | int | — | — | LIVE: framebuffer start address in RAM -- OUT BASE D6-D0 << 9. Read-only **(read-only — not a key you may set)** |
+| `video` | string | — | — | LIVE: whether the Dazzler is displaying -- OUT BASE D7 (on/off). Show-only **(show-only — not a key you may set)** |
+| `resolution` | string | — | — | LIVE: picture size in elements, decoded from the format byte (D6 X4, D5 size): 32x32, 64x64 or 128x128. Show-only **(show-only — not a key you may set)** |
+| `color` | string | — | — | LIVE: color vs black-and-white -- format D4. Show-only **(show-only — not a key you may set)** |
+| `size` | string | — | — | LIVE: framebuffer footprint -- format D5: 512 bytes (one quadrant) or 2 KB (four quadrants). Show-only **(show-only — not a key you may set)** |
+| `base` | int | — | — | LIVE: framebuffer start address in RAM -- OUT BASE D6-D0 << 9. Show-only **(show-only — not a key you may set)** |
 | `page` | enum | `0` | `0` \| `800` | Which 2 KB half of the card's 4 KB RAM is shown: 0 = the first, 800 = the second, at +800H (jumper P18 pins 31-32 closed) |
 | `seed` | int | `1` | any | Seed for the undefined contents of the card RAM at power-on. The same seed gives the same contents at every power |
 
@@ -1539,8 +1539,8 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one bo
 | `level` | int | `36` | `1` .. `100` | Recording level as a percent of full scale, when writing audio |
 | `rc` | int | `4000` | `1000` .. `20000` | Edge-rounding low-pass corner in Hz, when writing CUTS audio |
 | `rate` | enum | `full` | `full` \| `real` | Playback speed: full (as fast as the guest reads) \| real (wall-clock baud) |
-| `detected` | string | — | — | What the cassette in this deck turned out to be (empty if none) **(read-only — not a key you may set)** |
-| `position` | string | — | — | Where this deck's head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |
+| `detected` | string | — | — | What the cassette in this deck turned out to be (empty if none) **(show-only — not a key you may set)** |
+| `position` | string | — | — | Where this deck's head is now: mm:ss / total (percent) -- show-only **(show-only — not a key you may set)** |
 | `counter` | enum | `on` | `on` \| `off` | Live tape counter on the console during a load: on \| off |
 | `stop` | string | `off` | text | Auto-stop playback at this time: off \| end \| <mm:ss> |
 
@@ -1556,8 +1556,8 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one bo
 | `level` | int | `36` | `1` .. `100` | Recording level as a percent of full scale, when writing audio |
 | `rc` | int | `4000` | `1000` .. `20000` | Edge-rounding low-pass corner in Hz, when writing CUTS audio |
 | `rate` | enum | `full` | `full` \| `real` | Playback speed: full (as fast as the guest reads) \| real (wall-clock baud) |
-| `detected` | string | — | — | What the cassette in this deck turned out to be (empty if none) **(read-only — not a key you may set)** |
-| `position` | string | — | — | Where this deck's head is now: mm:ss / total (percent) -- read-only **(read-only — not a key you may set)** |
+| `detected` | string | — | — | What the cassette in this deck turned out to be (empty if none) **(show-only — not a key you may set)** |
+| `position` | string | — | — | Where this deck's head is now: mm:ss / total (percent) -- show-only **(show-only — not a key you may set)** |
 | `counter` | enum | `on` | `on` \| `off` | Live tape counter on the console during a load: on \| off |
 | `stop` | string | `off` | text | Auto-stop playback at this time: off \| end \| <mm:ss> |
 
@@ -1615,7 +1615,7 @@ Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a perio
 |---|---|---|---|---|
 | `port` | int | `0xB0` | `0x0` .. `0xFE` | Base port. Two ports: BASE+0 command/status, BASE+1 data |
 | `hostdir` | string |  | text | The sandbox root. Guest names resolve here and CANNOT escape it. Empty = the shell's working directory |
-| `hostdir_root` | string | — | — | LIVE: the sandbox root as RESOLVED -- the actual directory the guest is fenced into. Read-only; `hostdir` is what was written. **(read-only — not a key you may set)** |
+| `hostdir_root` | string | — | — | LIVE: the sandbox root as RESOLVED -- the actual directory the guest is fenced into. Show-only; `hostdir` is what was written. **(show-only — not a key you may set)** |
 | `readonly` | bool | `false` | `on` \| `off` | Refuse OPEN_WRITE and DELETE -- the guest may read the host, not change it |
 
 
@@ -1630,7 +1630,7 @@ SciTronics RTC-100: an S-100 battery-backed real-time clock/calendar (OKI MSM583
 | `port` | int | `0xF0` | `0x0` .. `0xFC` | Base address -- MUST BE A MULTIPLE OF 4. Four consecutive ports |
 | `interrupt` | enum | `none` | `none` \| `int` | The once-a-second interrupt: none \| int (pin 73, vectored by `restart`) |
 | `restart` | int | `7` | `0` .. `7` | INT switch: which RST the card jams on acknowledge, 0-7 (vector 8n). 0 and 7 are legal but commonly taken by other devices |
-| `time` | string | — | — | LIVE: the date/time the MSM5832 is showing, and its offset from host time **(read-only — not a key you may set)** |
+| `time` | string | — | — | LIVE: the date/time the MSM5832 is showing, and its offset from host time **(show-only — not a key you may set)** |
 
 
 ### `ss1`
@@ -1645,10 +1645,10 @@ CompuPro System Support 1: multifunction S-100 board. Dual 8259A interrupt contr
 |---|---|---|---|---|
 | `base` | int | `0x50` | `0x0` .. `0xF0` | Base port of the 16-port I/O block. CompuPro standard is 50H |
 | `math` | enum | `none` | `none` \| `9511a` \| `9512` | The chip in the math socket (U13): none (the stock empty socket), 9511a (AMD Am9511A, Intel 8231A) or 9512 (AMD Am9512, Intel 8232) |
-| `clock` | string | — | — | LIVE: the date/time the MSM5832 is showing, and its offset from host time **(read-only — not a key you may set)** |
-| `timer` | string | — | — | LIVE: the three 8253 counters -- mode, current count and OUT level **(read-only — not a key you may set)** |
-| `pic` | string | — | — | LIVE: the master/slave 8259A -- IRR/ISR/IMR and the master's INT pin **(read-only — not a key you may set)** |
-| `mathchip` | string | — | — | LIVE: the math chip -- busy/idle, stack pointer, status, top of stack, END/SVREQ/ERR **(read-only — not a key you may set)** |
+| `clock` | string | — | — | LIVE: the date/time the MSM5832 is showing, and its offset from host time **(show-only — not a key you may set)** |
+| `timer` | string | — | — | LIVE: the three 8253 counters -- mode, current count and OUT level **(show-only — not a key you may set)** |
+| `pic` | string | — | — | LIVE: the master/slave 8259A -- IRR/ISR/IMR and the master's INT pin **(show-only — not a key you may set)** |
+| `mathchip` | string | — | — | LIVE: the math chip -- busy/idle, stack pointer, status, top of stack, END/SVREQ/ERR **(show-only — not a key you may set)** |
 
 #### Unit `serial` — `[board.unit.serial]`
 
@@ -1671,8 +1671,8 @@ MITS 88-VI/RTC: vectored interrupts (VI0-VI7 -> RST n) and a real-time clock. On
 | `rtc_source` | enum | `line` | `line` \| `clock` | RTC clock source jumper: the 60 Hz line, or 10 kHz off the 2 MHz clock |
 | `rtc_divide` | enum | `1` | `1` \| `10` \| `100` \| `1000` | RTC divider jumper: source frequency / 1, 10, 100 or 1000 |
 | `rtc_interrupt` | enum | `none` | `none` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the RTC's interrupt ("RI") is jumpered: none \| vi0..vi7. Leave it `none` to run the PS2 package *(interrupt strap)* |
-| `vi_enabled` | bool | — | — | LIVE: is the 88-VI structure enabled? (control bit 7; POC clears it) **(read-only — not a key you may set)** |
-| `level_live` | bool | — | — | LIVE: is the current-level comparison in circuit? (control bit 3) **(read-only — not a key you may set)** |
-| `rtc_pending` | bool | — | — | LIVE: has the RTC's interrupt flip-flop set? (cleared by control bit 4) **(read-only — not a key you may set)** |
-| `current_level` | int | — | — | LIVE: the current interrupt level (control bits 0-2, ones-complement on the wire). Nothing at this level or below may interrupt while level_live **(read-only — not a key you may set)** |
+| `vi_enabled` | bool | — | — | LIVE: is the 88-VI structure enabled? (control bit 7; POC clears it) **(show-only — not a key you may set)** |
+| `level_live` | bool | — | — | LIVE: is the current-level comparison in circuit? (control bit 3) **(show-only — not a key you may set)** |
+| `rtc_pending` | bool | — | — | LIVE: has the RTC's interrupt flip-flop set? (cleared by control bit 4) **(show-only — not a key you may set)** |
+| `current_level` | int | — | — | LIVE: the current interrupt level (control bits 0-2, ones-complement on the wire). Nothing at this level or below may interrupt while level_live **(show-only — not a key you may set)** |
 

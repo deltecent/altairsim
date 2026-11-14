@@ -195,15 +195,21 @@ altairsim> SHOW hb0
 hb0  (hostbridge)
 
   property         value            legal
+  ---------------- ---------------- -----------
   port             0xB0             0x0..0xFE
-  hostdir          xfer
-  hostdir_root     /home/you/altair/disks/cpm22/xfer (read-only)
+  hostdir          xfer             
+  hostdir_root     /home/you/altair/disks/cpm22/xfer
+                                    (show-only)
   readonly         false            true|false
 ```
 
-`hostdir` is what was **written**. `hostdir_root` is where the limit **really is**. It is
-read-only, because it is a fact about this run, not a setting, and the program never writes it
+`hostdir` is what was **written**. `hostdir_root` is where the limit **really is**. The
+`(show-only)` mark in the legal column means that `SHOW` prints the value and `SET` cannot
+change it. The value is a fact about this run, not a setting, and the program never writes it
 into a machine file.
+
+A value longer than 32 characters puts its legal text on the next line, under the `legal`
+column, as `hostdir_root` does here.
 
 `SHOW PATHS` prints the same folder, beside the base directory. If `R` cannot find a file that
 you are sure you put in `xfer`, read that line to see which folder the guest uses.

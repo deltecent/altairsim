@@ -611,7 +611,7 @@ std::vector<Property> HostBridgeBoard::properties() {
         Property x;
         x.name = "hostdir_root";
         x.help = "LIVE: the sandbox root as RESOLVED -- the actual directory the guest is "
-                 "fenced into. Read-only; `hostdir` is what was written.";
+                 "fenced into. Show-only; `hostdir` is what was written.";
         x.kind = Kind::Str;
         x.get  = [this] { return Value::ofStr(sandboxRoot()); };
         p.push_back(std::move(x));

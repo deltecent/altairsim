@@ -109,7 +109,7 @@ public:
             x.radix = 16;
             x.get = [this] { return Value::ofInt(latch_); };
             // NO SETTER. That is how a consumer knows this is something the card KNOWS and
-            // not something you CHOSE: SHOW prints "(read-only)", CONFIG SAVE leaves it out
+            // not something you CHOSE: SHOW prints "(show-only)", CONFIG SAVE leaves it out
             // of the file, and the manual's reference marks it. A setter that always failed
             // would stop a SET and fool all three.
             p.push_back(std::move(x));

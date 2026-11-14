@@ -160,7 +160,7 @@ static bool setOne(std::vector<Property> props, const std::string& who, const st
     // signal. There is no second rule to keep in step -- which is why a card must say
     // "no setter" and NOT install a setter that always fails.
     if (!p->set) {
-        err = who + ": '" + p->name + "' is read-only -- " + p->help;
+        err = who + ": '" + p->name + "' is show-only -- " + p->help;
         return false;
     }
 

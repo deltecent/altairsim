@@ -274,7 +274,7 @@ void test_dazzler() {
         CHECK(val("color") == "grey", "format D4 clear is black-and-white");
         CHECK(val("size") == "512B (1 quad)", "format D5 clear is a 512-byte framebuffer");
 
-        // These are STATUS, not straps: no setter, so SHOW prints "(read-only)" and CONFIG
+        // These are STATUS, not straps: no setter, so SHOW prints "(show-only)" and CONFIG
         // SAVE skips them (config/toml.cpp). The two real straps DO have setters.
         CHECK(!prop("video").set, "video is read-only");
         CHECK(!prop("resolution").set, "resolution is read-only");

@@ -197,7 +197,7 @@ Two details worth stealing:
   that switches how the *monitor* prints addresses and bytes, while `SHOW` prints every
   property in its own radix. So pick it by which side of the wire the number lives on, and
   never because one base reads better.
-- **`lamps` has no setter**, and that absence *is* the signal. `SHOW` prints `(read-only)`,
+- **`lamps` has no setter**, and that absence *is* the signal. `SHOW` prints `(show-only)`,
   `CONFIG SAVE` leaves it out of the file, and the manual's reference marks it. A setter that
   merely *refused* would stop a `SET` and fool all three at once — which is a mistake that was
   in this codebase, on the memory board, until this manual went looking.
@@ -306,8 +306,9 @@ altairsim> SHOW lamp0
 lamp0  (lamp)
 
   property         value            legal
+  ---------------- ---------------- -----------
   port             0xFF             0x0..0xFF
-  lamps            0x55             (read-only)
+  lamps            0x55             (show-only)
 ```
 
 `OUT FF 55` ran a **real output cycle on a real bus** — the same path the 8080's `OUT`

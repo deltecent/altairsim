@@ -1055,6 +1055,28 @@ void Monitor::flush(std::ostream& out) {
 // SHOW
 // ---------------------------------------------------------------------------
 
+// EVERY SHOW TABLE SIZES ITS COLUMNS FROM WHAT IS IN THEM (#920). A fixed `%-16s` lets a
+// longer entry push the next column along, and then the next column's text reads as part
+// of this one: `hostdir_root  /Users/... (read-only)` looked like a fact about the folder.
+// A column is as wide as its widest entry, never narrower than the width it always had,
+// so a table of short entries prints exactly as before.
+static std::string padRight(const std::string& s, size_t w) {
+    return s.size() < w ? s + std::string(w - s.size(), ' ') : s;
+}
+
+// THE LINE UNDER A HEADER: one run of dashes per column, one space between runs, so the
+// header reads apart from the rows below it. The last column holds free text of any
+// length; its run stops at kRuleCap so one long entry does not draw a long line.
+constexpr size_t kRuleCap = 32;
+static std::string headerRule(std::initializer_list<size_t> widths) {
+    std::string r = "  ";
+    for (size_t w : widths) {
+        if (r.size() > 2) r += ' ';
+        r += std::string(w, '-');
+    }
+    return r + "\n";
+}
+
 // WHAT A PROTECTED MEDIUM IS CALLED. A floppy and a cassette can each be WRITE-PROTECTED --
 // on a diskette by the notch in its jacket, on a cassette by knocking out its tab -- and
 // that is the physical thing, and the word the 88-DCDD manual uses. A ROM has no such
@@ -1101,12 +1123,19 @@ void Monitor::showBoard(Board* b, std::ostream& out) {
     // CONNECT, so it has to come from the same place they read (Board::units()).
     auto us = b->units();
     if (!us.empty()) {
-        out << "\n  unit     kind    holds\n";
+        size_t wName = 7, wKind = 7;
         for (const auto& u : us) {
-            std::snprintf(buf, sizeof buf, "    %-7s %-7s ", u.name.c_str(),
-                          unitKindName(u.kind));
-            out << buf << u.state << roNote(u) << "\n";
+            wName = std::max(wName, u.name.size());
+            wKind = std::max(wKind, std::strlen(unitKindName(u.kind)));
         }
+        size_t wHolds = 5;  // "holds"
+        for (const auto& u : us)
+            wHolds = std::max(wHolds, std::min(kRuleCap, u.state.size() + roNote(u).size()));
+        out << "\n  " << padRight("unit", wName + 1) << padRight("kind", wKind + 1) << "holds\n";
+        out << headerRule({wName, wKind, wHolds});
+        for (const auto& u : us)
+            out << "  " << padRight(u.name, wName) << " " << padRight(unitKindName(u.kind), wKind)
+                << " " << u.state << roNote(u) << "\n";
     }
 
     showProps(b->properties(), out);
@@ -1149,8 +1178,16 @@ void Monitor::showBoard(Board* b, std::ostream& out) {
 
 // The same six facts as showProps(), minus the value -- see above for why there isn't one.
 void Monitor::showSchema(const std::vector<Property>& ps, std::ostream& out) {
-    char buf[256];
-    out << "\n  key              type             legal\n";
+    char buf[64];
+    size_t wKey = 16;
+    for (const auto& p : ps) {
+        wKey = std::max(wKey, p.name.size());
+        for (const auto& a : p.aliases) wKey = std::max(wKey, a.size());
+    }
+    // The rows go to a buffer first: the rule under the header is as wide as the
+    // longest legal text, and that is known only after every row is built.
+    std::ostringstream body;
+    size_t             wLegal = 5;  // "legal"
     for (const auto& p : ps) {
         const char* kind = "string";
         std::string legal;
@@ -1181,24 +1218,26 @@ void Monitor::showSchema(const std::vector<Property>& ps, std::ostream& out) {
         // A free-form Str can still advertise a grammar (the ACR's `stop`); showProps does
         // the same, so the schema view and the value view agree on that column.
         if (legal.empty() && !p.values.empty()) legal = p.values;
-        std::snprintf(buf, sizeof buf, "  %-16s %-16s %s", p.name.c_str(), kind, legal.c_str());
-        out << buf << "\n";
+        wLegal = std::max(wLegal, std::min(kRuleCap, legal.size()));
+        body << "  " << padRight(p.name, wKey) << " " << padRight(kind, 16) << " " << legal
+             << "\n";
 
         // A SECOND SPELLING GETS ITS OWN LINE, under the real one. It cannot share the key
         // column: the name there is what CONFIG SAVE saves, and an operator reading a
         // slash-separated pair has no way to tell which of the two that is.
-        for (const auto& a : p.aliases) {
-            std::snprintf(buf, sizeof buf, "  %-16s (another spelling of %s)", a.c_str(),
-                          p.name.c_str());
-            out << buf << "\n";
-        }
+        for (const auto& a : p.aliases)
+            body << "  " << padRight(a, wKey) << " (another spelling of " << p.name << ")\n";
     }
+    out << "\n  " << padRight("key", wKey) << " type             legal\n"
+        << headerRule({wKey, 16, wLegal}) << body.str();
 }
 
 void Monitor::showProps(const std::vector<Property>& ps, std::ostream& out) {
     if (ps.empty()) return;
-    char buf[256];
-    out << "\n  property         value            legal\n";
+    struct Row {
+        std::string name, value, legal;
+    };
+    std::vector<Row> rows;
     for (const auto& p : ps) {
         std::string legal;
         if (p.kind == Kind::Enum) {
@@ -1220,15 +1259,43 @@ void Monitor::showProps(const std::vector<Property>& ps, std::ostream& out) {
         if (legal.empty() && !p.values.empty()) legal = p.values;
         // No setter -> it is a PIN, not a jumper. Say so in the column that tells you
         // what you may type, because that is the question being asked there.
-        if (!p.set) legal = "(read-only)";
+        //
+        // SHOW-ONLY, NOT READ-ONLY (#920): beside the hostbridge's `readonly` jumper,
+        // "read-only" read as a fact about a folder. The value is one SHOW prints and SET
+        // cannot change -- the guest, the far end of a line or another property moves it.
+        if (!p.set) legal = "(show-only)";
         // There is no "runtime?" column any more (Patrick, 2026-07-12). EVERY
         // property can be set, always: you can only type at the prompt when the
         // machine is stopped, and a real card being worked on sits on an EXTENDER
         // with its jumpers moved live anyway. A column that always said "yes" was
         // just a column, and the gate behind it never once fired.
-        std::snprintf(buf, sizeof buf, "  %-16s %-16s %s", p.name.c_str(),
-                      p.get().text(p.radix).c_str(), legal.c_str());
-        out << buf << "\n";
+        rows.push_back({p.name, p.get().text(p.radix), legal});
+    }
+
+    // THE VALUE COLUMN HAS A CAP. A host path can be any length, and sizing the column to
+    // it would push the legal column far right on every row of the table. A value longer
+    // than the cap keeps its whole text, and its legal text goes on the next line, under
+    // the legal column, where it cannot be read as part of the value.
+    constexpr size_t kValueCap = 32;
+    size_t wName = 16, wValue = 16;
+    for (const auto& r : rows) {
+        wName = std::max(wName, r.name.size());
+        if (r.value.size() <= kValueCap) wValue = std::max(wValue, r.value.size());
+    }
+    size_t wLegal = 5;  // "legal"
+    for (const auto& r : rows) wLegal = std::max(wLegal, std::min(kRuleCap, r.legal.size()));
+    out << "\n  " << padRight("property", wName) << " " << padRight("value", wValue)
+        << " legal\n"
+        << headerRule({wName, wValue, wLegal});
+    for (const auto& r : rows) {
+        out << "  " << padRight(r.name, wName) << " ";
+        if (r.value.size() > wValue && r.legal.empty())
+            out << r.value;
+        else if (r.value.size() > wValue)
+            out << r.value << "\n" << std::string(2 + wName + 1 + wValue + 1, ' ') << r.legal;
+        else
+            out << padRight(r.value, wValue) << " " << r.legal;
+        out << "\n";
     }
 }
 
@@ -1542,15 +1609,20 @@ void Monitor::showSymbols(const std::vector<std::string>& a, std::ostream& out) 
     // a one-symbol glob, so the two paths are one.
     std::string pat = a.size() > 2 ? upper(a[2]) : "";
 
-    char buf[128];
+    // The name and source columns are as wide as the symbols this listing shows (#920).
+    size_t wName = 14, wSource = 14;
+    for (const auto& [name, s] : t.byName) {
+        if (!pat.empty() && !globMatch(pat, name)) continue;
+        wName   = std::max(wName, name.size());
+        wSource = std::max(wSource, s.source.size());
+    }
     int shown = 0;
     for (const auto& [name, s] : t.byName) {
         if (!pat.empty() && !globMatch(pat, name)) continue;
         // An EQU is flagged so a constant is not mistaken for a program address -- it is the
         // one thing SHOW cannot recover from the value alone (core/symbols.h, the EQU rule).
-        std::snprintf(buf, sizeof buf, "%-14s %s  %-14s %s", name.c_str(),
-                      fmtWord((uint16_t)s.value).c_str(), s.source.c_str(), s.isAddr ? "" : "=");
-        out << buf << "\n";
+        out << padRight(name, wName) << " " << fmtWord((uint16_t)s.value) << "  "
+            << padRight(s.source, wSource) << " " << (s.isAddr ? "" : "=") << "\n";
         ++shown;
     }
     if (pat.empty())
@@ -1688,13 +1760,10 @@ void Monitor::showBoards(std::ostream& out, const Machine& m) {
         for (const auto& mr : r.mem) wMem = std::max(wMem, mr.size());
     }
 
-    auto pad = [](const std::string& s, size_t w) {
-        return s.size() < w ? s + std::string(w - s.size(), ' ') : s;
-    };
     auto line = [&](const std::string& id, const std::string& type, const std::string& io,
                     const std::string& un, const std::string& mem) {
-        std::string l = "  " + pad(id, wId) + "  " + pad(type, wType) + "  " + pad(io, wIo) +
-                        "  " + pad(un, wUn) + "  " + mem;
+        std::string l = "  " + padRight(id, wId) + "  " + padRight(type, wType) + "  " + padRight(io, wIo) +
+                        "  " + padRight(un, wUn) + "  " + mem;
         while (!l.empty() && l.back() == ' ') l.pop_back();
         return l;
     };
@@ -2468,17 +2537,13 @@ void Monitor::showDebug(std::ostream& out) {
         return;
     }
 
-    auto pad = [](std::string s, size_t w) {
-        if (s.size() < w) s.append(w - s.size(), ' ');
-        return s;
-    };
     size_t w = 7;  // "CHANNEL"
     for (dbg::Channel* c : chans) w = std::max(w, c->name().size());
 
-    out << "\n  " << pad("CHANNEL", w) << "  FLAGS  (an enabled flag is UPPER-CASE)\n";
+    out << "\n  " << padRight("CHANNEL", w) << "  FLAGS  (an enabled flag is UPPER-CASE)\n";
     out << "  " << std::string(w, '-') << "  " << std::string(38, '-') << "\n";
     for (dbg::Channel* c : chans) {
-        out << "  " << pad(c->name(), w) << "  ";
+        out << "  " << padRight(c->name(), w) << "  ";
         const auto& fl = c->flags();
         if (fl.empty()) out << "(none)";
         for (size_t i = 0; i < fl.size(); ++i) {
@@ -2584,54 +2649,86 @@ void Monitor::showBusIrq(std::ostream& out, bool table) {
 
     out << "INTERRUPTS\n";
 
+    // The second column holds a state (`INTE on`) or an 88-VI board's id, so it is as wide
+    // as the longest id (#920). The third column is free text and starts after it.
+    size_t wState = 16;
+    for (Board* w : watchers) wState = std::max(wState, w->id.size());
+    auto head = [&](const char* label, const std::string& state, const std::string& text) {
+        out << "  " << padRight(label, 6) << "  " << padRight(state, wState) << " " << text
+            << "\n";
+    };
+
     // INTE. A backplane with no CPU is legal (milestone 1a ran one) and still has
     // wiring worth printing, so this is the one thing that may be absent.
-    if (CpuCore* c = m_.cpu())
-        out << (c->interruptsEnabled()
-                    ? "  CPU     INTE on          an acknowledged interrupt will be taken\n"
-                    : "  CPU     INTE off         interrupts are DISABLED; nothing will be "
-                      "acknowledged\n");
-    else
-        out << "  CPU     (none)           this backplane has no processor\n";
+    if (CpuCore* c = m_.cpu()) {
+        if (c->interruptsEnabled())
+            head("CPU", "INTE on", "an acknowledged interrupt will be taken");
+        else
+            head("CPU", "INTE off", "interrupts are DISABLED; nothing will be acknowledged");
+    } else {
+        head("CPU", "(none)", "this backplane has no processor");
+    }
 
     if (pin73.empty()) {
-        out << "  pINT    idle             pin 73\n";
+        head("pINT", "idle", "pin 73");
     } else {
         std::string ids;
         for (const auto& i : pin73) ids += " " + i;
-        std::snprintf(buf, sizeof buf, "  pINT    ASSERTED         pin 73, pulled by%s",
-                      ids.c_str());
-        out << buf << "\n";
+        head("pINT", "ASSERTED", "pin 73, pulled by" + ids);
     }
 
     for (Board* w : watchers) {
         bool on = propBool(w, "vi_enabled");
-        std::snprintf(buf, sizeof buf, "  88-VI   %-8s         %s", w->id.c_str(),
-                      on ? "enabled" : "DISABLED (POC leaves it so until the guest enables it)");
-        out << buf;
+        std::string text = on ? "enabled" : "DISABLED (POC leaves it so until the guest enables it)";
         if (on) {
             std::snprintf(buf, sizeof buf, ", current level %lld%s", propInt(w, "current_level"),
                           propBool(w, "level_live") ? " (live)" : " (compare off)");
-            out << buf;
+            text += buf;
         }
-        out << "\n";
+        head("88-VI", w->id, text);
     }
-    if (watchers.empty())
-        out << "  88-VI   (none)           nothing watches VI0-VI7; an acknowledged interrupt\n"
-               "                           floats to FF, which the 8080 executes as RST 7\n";
+    if (watchers.empty()) {
+        head("88-VI", "(none)", "nothing watches VI0-VI7; an acknowledged interrupt");
+        out << std::string(2 + 6 + 2 + wState + 1, ' ')
+            << "floats to FF, which the 8080 executes as RST 7\n";
+    }
 
     // ---- the eight wires ----
+    //
+    // Gathered first, so the VECTOR and STRAPPED columns can be as wide as their widest
+    // entry: an octal vector is wider than a hex one, and two boards strapped to one line
+    // print both ids (#920).
+    struct Wire {
+        std::string vector, who;
+        bool        pulling;
+    };
     uint8_t lines = m_.bus.viLines();
-    if (table) out << "\n  LINE  VECTOR             STRAPPED             NOW\n";
+    Wire    wires[8];
+    size_t  wVector = 17, wWho = 20;
+    for (int i = 0; i < 8; ++i) {
+        Wire& wr = wires[i];
+        for (const auto& s : straps)
+            if (s.where == (IrqJumper)((int)IrqJumper::Vi0 + i))
+                wr.who += (wr.who.empty() ? "" : ",") + s.who;
+        if (wr.who.empty()) wr.who = "--";
+        wr.pulling = (lines >> i) & 1;
+        wr.vector  = "RST " + std::to_string(i) + "  " + fmtByte(rstOpcode(i)) + " -> " +
+                    fmtWord((uint16_t)(i * 8));
+        wVector = std::max(wVector, wr.vector.size());
+        wWho    = std::max(wWho, wr.who.size());
+    }
+    if (table)
+        out << "\n  LINE  " << padRight("VECTOR", wVector) << "  " << padRight("STRAPPED", wWho)
+            << " NOW\n"
+            << "  ----  " << std::string(wVector, '-') << "  " << std::string(wWho, '-') << " "
+            << std::string(7, '-') << "\n";  // 7: "PULLING", the widest state
 
     for (int i = 0; i < 8; ++i) {
-        std::string who;
-        for (const auto& s : straps)
-            if (s.where == (IrqJumper)((int)IrqJumper::Vi0 + i)) who += (who.empty() ? "" : ",") + s.who;
-        bool pulling = (lines >> i) & 1;
+        const std::string& who     = wires[i].who;
+        const bool         pulling = wires[i].pulling;
 
         // A summary prints only the lines that exist; the table prints the backplane.
-        if (!table && who.empty() && !pulling) continue;
+        if (!table && who == "--" && !pulling) continue;
 
         const char* now = "--";
         std::string tail;
@@ -2653,10 +2750,9 @@ void Monitor::showBusIrq(std::ostream& out, bool table) {
             }
         }
 
-        std::snprintf(buf, sizeof buf, "  VI%d   RST %d  %s -> %s  %-20s %s%s", i, i,
-                      fmtByte(rstOpcode(i)).c_str(), fmtWord((uint16_t)(i * 8)).c_str(),
-                      who.empty() ? "--" : who.c_str(), now, tail.c_str());
-        out << buf << "\n";
+        out << "  " << padRight("VI" + std::to_string(i), 4) << "  "
+            << padRight(wires[i].vector, wVector) << "  " << padRight(who, wWho) << " " << now
+            << tail << "\n";
     }
 
     // ---- and now the part that earns the command its keep ----
@@ -2735,11 +2831,14 @@ void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {
             return x.lo < y.lo || (x.lo == y.lo && x.id < y.id);
         });
         if (rows.empty()) out << "  (nothing -- every address floats to FF)\n";
+        // The id column is as wide as the longest board id here (#920): BOARDS ADD takes
+        // an id of any length.
+        size_t wId = 8;
+        for (const auto& r : rows) wId = std::max(wId, r.id.size());
         for (const auto& r : rows) {
             std::string span = fmtWord((uint16_t)r.lo) + "-" + fmtWord((uint16_t)r.hi);
-            std::snprintf(buf, sizeof buf, "  %-*s  %-8s %-4s %s", aw, span.c_str(),
-                          r.id.c_str(), r.what.c_str(), r.note.c_str());
-            std::string line = buf;
+            std::string line = "  " + padRight(span, (size_t)aw) + "  " + padRight(r.id, wId) +
+                               " " + padRight(r.what, 4) + " " + r.note;
             while (!line.empty() && line.back() == ' ') line.pop_back();
             out << line << "\n";
         }
@@ -2766,7 +2865,10 @@ void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {
 
     if (what == "IO" || what.empty()) {
         out << "I/O\n";
-        bool any = false;
+        bool   any = false;
+        size_t wId = 8;  // as wide as the longest id that decodes a port (#920)
+        for (const auto& b : m_.boards())
+            if (!b->ioMap().empty()) wId = std::max(wId, b->id.size());
         for (const auto& b : m_.boards())
             for (const auto& e : b->ioMap()) {
                 // Direction is what the bus actually decodes, not the board's prose:
@@ -2783,10 +2885,10 @@ void Monitor::showBus(const std::vector<std::string>& a, std::ostream& out) {
                 };
                 std::string ports = fmtByte((uint8_t)e.lo);
                 if (e.hi != e.lo) ports += "-" + fmtByte((uint8_t)e.hi);
-                std::snprintf(buf, sizeof buf, "  %-*s  %-8s %-3s %-3s    %s", aw, ports.c_str(),
-                              b->id.c_str(), answers(Cycle::IoRead) ? "IN" : "--",
-                              answers(Cycle::IoWrite) ? "OUT" : "--", e.note.c_str());
-                out << buf << "\n";
+                out << "  " << padRight(ports, (size_t)aw) << "  " << padRight(b->id, wId) << " "
+                    << padRight(answers(Cycle::IoRead) ? "IN" : "--", 3) << " "
+                    << padRight(answers(Cycle::IoWrite) ? "OUT" : "--", 3) << "    " << e.note
+                    << "\n";
                 any = true;
             }
         if (!any) out << "  (no board decodes any port)\n";

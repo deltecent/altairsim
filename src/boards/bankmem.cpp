@@ -827,7 +827,7 @@ std::vector<Property> MemBankBoard::properties() {
         Property x;
         x.name = "active";
         x.help = "the live bank(s) right now -- the guest sets this by writing the select "
-                 "port. Read-only here";
+                 "port. Show-only here";
         x.kind = Kind::Str;
         x.get = [this] {
             if (card_ == Card::Expandoram3) {

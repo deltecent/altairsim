@@ -1214,6 +1214,158 @@ void test_cli() {
         std::filesystem::remove_all(dir);
     }
 
+    SECTION("SHOW tables size each column from its entries (#920)");
+    {
+        // A column was a fixed `%-16s` (or 7, 8, 14, 20), so a longer entry pushed the next
+        // column along and its text read as part of this one. Each check finds a header
+        // word's column, then asserts a row's text starts in that same column.
+        auto splitLines = [](const std::string& text) {
+            std::vector<std::string> v;
+            std::istringstream       is(text);
+            for (std::string l; std::getline(is, l);) v.push_back(l);
+            return v;
+        };
+        // The line that starts with `lead` (after its indent), or "" if none does.
+        auto row = [&](const std::string& text, const std::string& lead) {
+            for (const auto& l : splitLines(text)) {
+                size_t i = l.find_first_not_of(' ');
+                if (i != std::string::npos && l.compare(i, lead.size(), lead) == 0) return l;
+            }
+            return std::string();
+        };
+        // The column where `word` starts in the header line that holds `header`.
+        auto col = [&](const std::string& text, const std::string& header,
+                       const std::string& word) {
+            std::string h = row(text, header);
+            return h.empty() ? std::string::npos : h.find(word);
+        };
+        // The column where the next field starts after the first field of `line`.
+        auto field = [](const std::string& line, int n) {
+            size_t i = line.find_first_not_of(' ');
+            for (int k = 0; k < n && i != std::string::npos; ++k) {
+                i = line.find(' ', i);
+                if (i != std::string::npos) i = line.find_first_not_of(' ', i);
+            }
+            return i;
+        };
+
+        Machine mw;
+        Monitor monW(mw);
+        auto    show = [&](const std::string& cmd) {
+            std::ostringstream os;
+            monW.exec(cmd, os);
+            return os.str();
+        };
+
+        // ---- SHOW <id>: the value column, wider than 16 and under the cap ----
+        show("BOARDS ADD memory mem0");
+        show("REGION ADD mem0 type=ram at=0000 size=4096");
+        show("REGION ADD mem0 type=ram at=F000 size=256");
+        std::string t = show("SHOW mem0");
+        CHECK(row(t, "pages").find("0000-0FFF,F000-F0FF") != std::string::npos,
+              "pages is 19 characters -- wider than the old column");
+        const size_t legal = col(t, "property", "legal");
+        CHECK(legal != std::string::npos && row(t, "pages").find("(show-only)") == legal,
+              "pages: the legal column starts under 'legal'");
+        CHECK(row(t, "phantom").find("none|read|all") == legal,
+              "every other row's legal text is in the same column");
+        CHECK(t.find("  property         value               legal\n"
+                     "  ---------------- ------------------- -------------\n") != std::string::npos,
+              "a line of dashes under the header, one run per column, each as wide as it");
+
+        // ---- SHOW <id>: the name column, wider than 16 ----
+        show("BOARDS ADD disk1a dsk0");
+        t = show("SHOW dsk0");
+        CHECK(field(row(t, "mini_motor_control"), 1) == col(t, "property", "value"),
+              "mini_motor_control (18): its value starts under 'value'");
+        CHECK(field(row(t, "port"), 1) == col(t, "property", "value"),
+              "and so does every short name's value");
+        CHECK(field(row(t, "port"), 2) == col(t, "property", "legal"), "and the legal column");
+
+        // ---- SHOW BOARD <type>'s sub-unit schema: the key column ----
+        CHECK(field(row(t, "writeprotect"), 1) == col(t, "key", "type"),
+              "an alias's text starts under 'type'");
+
+        // ---- SHOW <id>: units, and a unit name longer than 7 ----
+        show("BOARDS ADD vgfwii fw0 base=E000");
+        t = show("SHOW fw0");
+        const std::string kb = row(t, "keyboard");
+        CHECK(!kb.empty() && field(kb, 1) == col(t, "unit", "kind"),
+              "unit 'keyboard' (8): its kind starts under 'kind'");
+        CHECK(field(kb, 2) == col(t, "unit", "holds"), "and what it holds under 'holds'");
+
+        // ---- SHOW <id>: a value over the cap puts its legal text on the next line ----
+        namespace fs        = std::filesystem;
+        const fs::path root = fs::temp_directory_path() /
+                              "altairsim-920-a-folder-whose-name-is-longer-than-the-cap";
+        fs::create_directories(root);
+        show("BOARDS ADD hostbridge hb0");
+        show("SET hb0 hostdir=" + root.generic_string());
+        t                  = show("SHOW hb0");
+        const std::string r = row(t, "hostdir_root");
+        CHECK(r.find("(show-only)") == std::string::npos,
+              "a long hostdir_root has nothing after it on its line");
+        const auto ls = splitLines(t);
+        auto       it = std::find(ls.begin(), ls.end(), r);
+        CHECK(it != ls.end() && it + 1 != ls.end() &&
+                  *(it + 1) == std::string(col(t, "property", "legal"), ' ') + "(show-only)",
+              "its legal text is on the next line, under 'legal'");
+        CHECK(field(row(t, "readonly"), 2) == col(t, "property", "legal"),
+              "and the rows below still line up");
+
+        // ---- SHOW <id>: a value of any length prints whole ----
+        std::string longDir = root.generic_string();
+        while (longDir.size() < 300) longDir += "/.";
+        show("SET hb0 hostdir=" + longDir);
+        CHECK(show("SHOW hb0").find("  hostdir          " + longDir + "\n") != std::string::npos,
+              "a 300-character value is not cut off");
+        fs::remove_all(root);
+
+        // ---- SHOW BUS MAP and IO: a board id longer than 8 ----
+        show("BOARDS ADD memory memorylongname0");
+        show("REGION ADD memorylongname0 type=ram at=8000 size=256");
+        t = show("SHOW BUS MAP");
+        CHECK(field(row(t, "8000-80FF"), 2) == field(row(t, "F000-F0FF"), 2),
+              "SHOW BUS MAP: 'ram' after a long id is in the same column as after a short one");
+        show("BOARDS ADD 2sio serialboard1");
+        t = show("SHOW BUS IO");
+        CHECK(field(row(t, "10-11"), 2) == field(row(t, "B0"), 2),
+              "SHOW BUS IO: IN/-- after a long id is in the same column as after a short one");
+
+        // ---- SHOW BUS IRQ: two boards strapped to one line ----
+        show("SET serialboard1:a interrupt=vi3");
+        show("SET serialboard1:b interrupt=vi3");
+        t = show("SHOW BUS IRQ");
+        const size_t now = col(t, "LINE", "NOW");
+        CHECK(row(t, "VI3").find("serialboard1:a,serialboard1:b") != std::string::npos,
+              "VI3 lists both straps");
+        CHECK(now != std::string::npos && row(t, "VI3").rfind("--") == now &&
+                  row(t, "VI0").rfind("--") == now,
+              "the NOW column lines up under 'NOW' on every line");
+
+        // ---- SHOW SYMBOLS: a source file name longer than 14 ----
+        const fs::path symDir = fs::temp_directory_path() / "altairsim-920-sym";
+        fs::create_directories(symDir);
+        const std::string symA = (symDir / "a-long-file-name.SYM").generic_string();
+        const std::string symB = (symDir / "B.SYM").generic_string();
+        {
+            std::ofstream f(symA, std::ios::binary);
+            f << "0100 START\r\n\x1a";
+        }
+        {
+            std::ofstream f(symB, std::ios::binary);
+            f << "0200 OTHER\r\n\x1a";
+        }
+        show("SYMBOLS LOAD " + symA);
+        show("SYMBOLS LOAD " + symB);
+        t = show("SHOW SYMBOLS");
+        // Each row ends in the EQU flag, after the source column: a short source is padded
+        // to the long one's width, so both rows end in the same column.
+        CHECK(!row(t, "START").empty() && row(t, "START").size() == row(t, "OTHER").size(),
+              "a short source is padded to the long one's width");
+        fs::remove_all(symDir);
+    }
+
     // -----------------------------------------------------------------------
     SECTION("BOARDS -- UNITS and MEMORY wrap at 32, only between items, and never cut");
     {
