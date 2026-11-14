@@ -25,6 +25,7 @@
 // STOP were, and were dropped (test_cli.cpp checks REC/REP/STO no longer resolve).
 
 #include "core/command.h"  // CommandDef itself -- a BOARD can declare one, so it lives in core
+#include "core/value.h"    // Property, for keyListHelp()
 
 #include <initializer_list>
 #include <string>
@@ -88,9 +89,17 @@ const std::vector<HelpTopic>& helpTopics();
 // there is none.
 const HelpTopic* findHelpTopic(const std::string& verb, const std::string& typed);
 
+// A list of keys for a help text, printed from their schema: each key with its legal values,
+// then its own help under it. A command that takes a board's sub-unit keys (REGION ADD)
+// lists them from the board's declaration, so the help cannot leave one out (#921).
+std::string keyListHelp(const std::vector<Property>& keys);
+
 // A help text as a reader sees it: `{endpoints}` becomes `endpoints` (the caller asks
-// endpointHelp(), which this layer does not reach), and `{topic:VERB WORD}` becomes that
-// topic's text. The live HELP and the reference emitter both print through this.
-std::string expandHelp(const std::string& detail, const std::string& endpoints);
+// endpointHelp(), which this layer does not reach), `{region-keys}` becomes `regionKeys`
+// (the caller asks keyListHelp(MemoryBoard::regionKeys()), for the same reason), and
+// `{topic:VERB WORD}` becomes that topic's text. The live HELP and the reference emitter
+// both print through this.
+std::string expandHelp(const std::string& detail, const std::string& endpoints,
+                       const std::string& regionKeys);
 
 } // namespace altair

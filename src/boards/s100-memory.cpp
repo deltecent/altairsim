@@ -480,8 +480,15 @@ std::vector<MapEntry> MemoryBoard::memMap() const {
 // The radix is the property's own and it is the whole of DESIGN.md 10.0.1 in four lines: `at`
 // is an address, the machine sees it, it is HEX; `size` is a count, the machine never sees it,
 // it is DECIMAL -- and takes a K or an M free, from the one number parser.
+//
+// Static, because the keys are the board TYPE's, not one board's: HELP REGION lists them with
+// no memory board in the machine at all.
 std::vector<Property> MemoryBoard::subUnitProperties(const std::string& table) const {
     if (table != "region") return {};
+    return regionKeys();
+}
+
+std::vector<Property> MemoryBoard::regionKeys() {
     std::vector<Property> p;
     {
         Property x;

@@ -29,6 +29,7 @@
 //   gen-reference <manual-ref-dir> <monitor-ref-dir>
 
 #include "boards/registry.h"
+#include "boards/s100-memory.h"
 #include "cli/commands.h"
 #include "core/board.h"
 #include "core/machines.h"
@@ -84,7 +85,9 @@ std::string legal(const Property& p) {
         for (char c : p.values) { if (c == '|') o += "\\|"; else o += c; }
         return o;
     }
-    if (p.kind == Kind::Bool) return "`on` \\| `off`";
+    // true | false, as SHOW BOARD prints it (monitor.cpp legalValues): the spelling the
+    // default column, CONFIG SAVE and TOML all use.
+    if (p.kind == Kind::Bool) return "`true` \\| `false`";
     if (p.kind == Kind::Enum) {
         std::string o;
         for (size_t i = 0; i < p.choices.size(); i++) {
@@ -414,7 +417,9 @@ void detailBlock(std::ostream& o, const char* detail) {
     // full, platform-independent list -- see endpointHelp() -- so this file stays byte-
     // identical across builds and the docs-reference check cannot break on the printer flag.
     // {topic:...} too: a shortcut (CONSOLE) prints its primary's text (SET CONSOLE).
-    std::string text = expandHelp(detail, endpointHelp(true));
+    // {region-keys} is the [[board.region]] key list, from the memory board's schema.
+    std::string text =
+        expandHelp(detail, endpointHelp(true), keyListHelp(MemoryBoard::regionKeys()));
 
     std::istringstream in(text);
     std::string line;

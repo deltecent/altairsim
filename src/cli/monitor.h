@@ -229,9 +229,6 @@ private:
     void showBoards(std::ostream& out, const Machine& m);  // the backplane: BOARDS
     void showProps(const std::vector<Property>& ps, std::ostream& out);
 
-    // A sub-unit table's KEYS -- no value column, because the thing they describe does
-    // not exist yet. (Board::subUnitProperties.)
-    void showSchema(const std::vector<Property>& ps, std::ostream& out);
     void showBus(const std::vector<std::string>& args, std::ostream& out);
 
     // SHOW BUS IRQ -- the eight VI lines, who is strapped to them, who is pulling
