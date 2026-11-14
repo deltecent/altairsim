@@ -36,13 +36,26 @@ prints in full. The mark `(read-only)` is now `(show-only)` in `SHOW`, in `HELP`
 from `SET` and in the reference. `SHOW` prints the value, and `SET` cannot change it. A ROM or a
 disk that is mounted read-only keeps the word `read-only`.
 
-**`SIMCLK` sets the processor's crystal from a CP/M guest.** `SIMCLK 0` runs the processor at
-full speed, and `SIMCLK 2000000` sets 2 MHz. `SIMCLK` with no number shows the rate. A `SUBMIT`
-file can now run `ASM` at full speed and go back to 2 MHz after it. Before, only the monitor
-could change `clock_hz`. `SIMCLK` uses two new `hostbridge` commands, `SET_CLOCK` and
-`GET_CLOCK`, and the processor board checks the rate, as for `SET cpu0 clock_hz=N`. `SIMCLK.COM`
-is in `hostbridge/` and on the CP/M disk in `examples/cpm`. A monitor `RUN` and the MCP `run`
-tool now follow a rate that changes during the run.
+**The `hostbridge` board has two new commands that set and show the processor's crystal from
+the guest.** Before, only the monitor could change `clock_hz`. Any guest program can send the
+commands to the board's command port, `B0` by default. Command `0AH` sets the rate. Send the
+rate in Hz as decimal digits and a NUL. `0` is full speed. Command `0BH` returns the rate in
+force. The processor board checks the rate, as for `SET cpu0 clock_hz=N`. `hostbridge/HB.INC`
+lists the commands as `CSETCK` and `CGETCK`, with the status bits. A monitor `RUN` and the MCP
+`run` tool now follow a rate that changes during the run.
+
+**`SIMCLK.COM` is a new CP/M program that sets the processor's crystal.** It runs only under
+CP/M. It sends the two new `hostbridge` clock commands. `SIMCLK 0` runs the processor at full
+speed, and `SIMCLK 2000000` sets 2 MHz. `SIMCLK` with no number shows the rate. A `SUBMIT` file
+can now run `ASM` at full speed and go back to 2 MHz after it. `SIMCLK.COM` is in `hostbridge/`
+and on the CP/M disks in `examples/cpm` and `examples/ai-mcp`.
+
+**`R`, `W`, `HDIR` and `SIMCLK` say what to do when they find no `hostbridge` board.** Before,
+they printed ``This machine has no `hostbridge` card in it, or it is at another port.`` The
+backticks printed on the CP/M console, and "it" could mean the machine or the board. Now they
+print `R: no hostbridge board at port B0H.` and then
+`Add a hostbridge board to the machine, or set its port to B0.` The disks in `examples` have
+`R` 1.3, `W` 1.4 and `HDIR` 1.2. `R` and `W` show the version in their help.
 
 **`-x` and `-s` stop at the first command that fails.** Before, the program ran every command,
 and only the exit status showed the failure. For example, `-x "SET fdc0 baud=115200"` printed an

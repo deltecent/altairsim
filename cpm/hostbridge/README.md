@@ -11,9 +11,11 @@ W  <pattern> [hostfolder] [B|T]                   W *.ASM SRC
 SIMCLK [hz]                     set or show the crystal: SIMCLK 0   SIMCLK 2000000
 ```
 
-They talk to the `hostbridge` card (`docs/boards/hostbridge.md`), which is in the default
-machine at port **0xB0** and is rooted at a sandboxed `hostdir` — by default, the directory
-you ran `altairsim` from.
+They talk to the `hostbridge` board, which is in the default machine at port **0xB0** and is
+rooted at a sandboxed `hostdir` — by default, the directory you ran `altairsim` from. Any
+program in the machine can use the board, not only these four. `HB.INC` lists the ports, the
+commands, the status bits and the error codes. The source repository describes the board in
+`docs/boards/hostbridge.md`.
 
 ## What is in here
 

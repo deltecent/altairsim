@@ -26,7 +26,7 @@
 #     R SIMCLK.COM
 #
 # Only ONE hex file is ever on the disk, and it is deleted before the others arrive.
-# The card bootstraps its own utilities, which is a pleasing thing for a card to do.
+# The board bootstraps its own utilities, which is a pleasing thing for a board to do.
 # Cost: 10K on the buffered floppy (26K free -> 16K). SIMCLK.COM came later (#918).
 #
 # It is idempotent: LOAD and R both overwrite, so running it twice is running it once.

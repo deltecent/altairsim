@@ -13,6 +13,7 @@
 ;       1.0  2026-08-27  Version banner. Byte count after each file.
 ;       1.1  2026-09-20  The CP/M name is folded to upper case.
 ;       1.2  2026-10-02  A space does not go into a CP/M name.
+;       1.3  2026-11-14  The no-board message says what to do.
 ;
 ; R uses only BDOS calls for the disk, and only ports B0H and B1H. It
 ; does not use the BIOS or a disk controller, so the same R.COM runs on
@@ -805,11 +806,11 @@ ILLCHR: DB	'<>.,'
 	DB	':=?*[]|'
 	DB	5CH,2FH,0
 
-MNOHB:	DB	CR,LF,'R: no host bridge at B0H.',CR,LF
-	DB	'This machine has no `hostbridge` card in it, or it is at'
-	DB	' another port.',CR,LF,'$'
+MNOHB:	DB	CR,LF,'R: no hostbridge board at port B0H.',CR,LF
+	DB	'Add a hostbridge board to the machine, or set its port'
+	DB	' to B0.',CR,LF,'$'
 
-MUSAGE: DB	CR,LF,'R -- copy a file from the host into CP/M.  (1.2)',CR,LF,CR,LF
+MUSAGE: DB	CR,LF,'R -- copy a file from the host into CP/M.  (1.3)',CR,LF,CR,LF
 	DB	'   R <hostfile> [cpmfile]',CR,LF
 	DB	'   R <pattern>',CR,LF,CR,LF
 	DB	'Examples',CR,LF

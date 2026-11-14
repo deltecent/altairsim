@@ -15,7 +15,7 @@ LICENSE                  the MIT license of altairsim.
 LICENSE-SDL3             the license of SDL3, which is built into the program.
 LICENSE-MAME-HD63484     the notice for the source of the HD63484 model's structure (MAME).
 examples/                machines that boot, with their media.
-hostbridge/              the file-transfer utilities: source, HEX and COM.
+hostbridge/              the host bridge utilities: source, HEX and COM.
 tools/                   scripts that show a mirror, and scripts that open LBR files.
 skills/                  the AI briefing again, and the rules for guest programs, as Agent Skills.
 ```
@@ -123,11 +123,12 @@ it to another person. The machines chapter tells you how the paths in a machine 
 The examples chapter describes some of the examples in detail. More examples, with their
 documentation, are at https://altairsim.com.
 
-## The file-transfer utilities
+## The host bridge utilities
 
-`hostbridge/` contains `R`, `W` and `HDIR`. The file-transfer chapter uses these programs to
-move files between CP/M and your computer. The folder has the 8080 **source**, and the assembled
-`.HEX` and `.COM` files.
+`hostbridge/` contains `R`, `W`, `HDIR` and `SIMCLK`. The file-transfer chapter uses `R`, `W`
+and `HDIR` to move files between CP/M and your computer. `SIMCLK` sets the processor's crystal.
+*The crystal is on the board*, in the boards chapter, describes it. The folder has the 8080
+**source**, and the assembled `.HEX` and `.COM` files.
 
 You do not need this folder to use the utilities on the CP/M disk in the package. That disk
 already has the `.COM` files. The folder is for a disk that does not have the utilities. The
@@ -179,7 +180,7 @@ the MIT license. You can get the source here:
 
 **<https://github.com/deltecent/altairsim>**
 
-The only source in the package is in `hostbridge/`. That is the 8080 source of the file-transfer
+The only source in the package is in `hostbridge/`. That is the 8080 source of the host bridge
 utilities, not the source of the simulator.
 
 You do not need the source to use anything in this manual. If you want to **build a board of

@@ -14,6 +14,7 @@
 ;       1.1  2026-09-23  Attribute bits do not go into a host name.
 ;       1.2  2026-10-12  With no switch, the extension selects T or B.
 ;       1.3  2026-10-21  A wildcard can copy into a host folder.
+;       1.4  2026-11-14  The no-board message says what to do.
 ;
 ; W uses only BDOS calls for the disk, and only ports B0H and B1H. It
 ; does not use the BIOS or a disk controller, so the same W.COM runs on
@@ -1005,11 +1006,11 @@ EXTTAB: DB	'ASM','MAC','Z80','HEX','PRN'
 	DB	0
 DRIVE:	DB	0
 
-MNOHB:	DB	CR,LF,'W: no host bridge at B0H.',CR,LF
-	DB	'This machine has no `hostbridge` card in it, or it is at'
-	DB	' another port.',CR,LF,'$'
+MNOHB:	DB	CR,LF,'W: no hostbridge board at port B0H.',CR,LF
+	DB	'Add a hostbridge board to the machine, or set its port'
+	DB	' to B0.',CR,LF,'$'
 
-MUSAGE: DB	CR,LF,'W -- copy a file from CP/M out to the host.  (1.3)',CR,LF,CR,LF
+MUSAGE: DB	CR,LF,'W -- copy a file from CP/M out to the host.  (1.4)',CR,LF,CR,LF
 	DB	'   W <cpmfile> [hostfile] [B|T]',CR,LF
 	DB	'   W <pattern> [hostfolder] [B|T]',CR,LF,CR,LF
 	DB	'Examples',CR,LF

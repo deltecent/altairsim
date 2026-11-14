@@ -11,8 +11,9 @@
 ;       LOAD HDIR               -> HDIR.COM
 ;
 ; Revisions:
-;       2026-07-14  First version.
-;       2026-07-28  The long listing: size and date.
+;       1.0  2026-07-14  First version.
+;       1.1  2026-07-28  The long listing: size and date.
+;       1.2  2026-11-14  The no-board message says what to do.
 ;
 ; HDIR prints each host name as it is on the host, in its own case and
 ; at its full length. R and W change a name to fit 8.3.
@@ -399,9 +400,9 @@ DV3:	MOV	A,L		; the remainder, before L changes
 ;=======================================================================
 IDWANT: DB	'ALTAIRSIM HOSTBRIDGE',0
 
-MNOHB:	DB	CR,LF,'HDIR: no host bridge at B0H.',CR,LF
-	DB	'This machine has no `hostbridge` card in it, or it is at'
-	DB	' another port.',CR,LF,'$'
+MNOHB:	DB	CR,LF,'HDIR: no hostbridge board at port B0H.',CR,LF
+	DB	'Add a hostbridge board to the machine, or set its port'
+	DB	' to B0.',CR,LF,'$'
 
 MERR:	DB	'HDIR: $'
 MCRLF:	DB	CR,LF,'$'

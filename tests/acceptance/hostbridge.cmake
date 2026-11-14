@@ -342,7 +342,7 @@ endif()
 #
 # `PIP FOO=CON:` echoes every character it is fed, so most of this transcript is the file we
 # poured in -- and in build mode that file is the SOURCE, INCLUDING the text of every message
-# the programs can print. Search the whole thing for "no host bridge" and you find it, in the
+# the programs can print. Search the whole thing for "no hostbridge board" and you find it, in the
 # DB that defines it, on a run where the card worked perfectly.
 #
 # So the runtime checks look only at what came after the last LOAD, which is the part where
@@ -442,7 +442,7 @@ want_ran("outside the host directory" "R was not stopped from escaping hostdir w
 
 # A machine with no bridge in it prints this, and so does one where a utility found 0FFH on
 # a floating bus and believed it. Either way, everything above would be a lie.
-string(FIND "${ran}" "no host bridge" hit)
+string(FIND "${ran}" "no hostbridge board" hit)
 if(NOT hit LESS 0)
   message(FATAL_ERROR
     "hostbridge(${MODE}): IDENT failed -- a utility could not find the card.\n${ran}")
