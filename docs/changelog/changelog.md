@@ -12,6 +12,14 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**`SIMCLK` sets the processor's crystal from a CP/M guest.** `SIMCLK 0` runs the processor at
+full speed, and `SIMCLK 2000000` sets 2 MHz. `SIMCLK` with no number shows the rate. A `SUBMIT`
+file can now run `ASM` at full speed and go back to 2 MHz after it. Before, only the monitor
+could change `clock_hz`. `SIMCLK` uses two new `hostbridge` commands, `SET_CLOCK` and
+`GET_CLOCK`, and the processor board checks the rate, as for `SET cpu0 clock_hz=N`. `SIMCLK.COM`
+is in `hostbridge/` and on the CP/M disk in `examples/cpm`. A monitor `RUN` and the MCP `run`
+tool now follow a rate that changes during the run.
+
 **`-x` and `-s` stop at the first command that fails.** Before, the program ran every command,
 and only the exit status showed the failure. For example, `-x "SET fdc0 baud=115200"` printed an
 error and left the rate at 403200. The next `-x` commands then ran at 403200, and their output

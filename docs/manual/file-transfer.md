@@ -18,7 +18,7 @@ already have it.**
 
 The default port is **B0**. `BASE+0` is command and status, and `BASE+1` is data.
 
-## The three utilities, and where they are
+## The four utilities, and where they are
 
 The utilities are **on the disk**, not in the board. They are ordinary CP/M `.COM` files. They
 were assembled in the machine, with the machine's own assembler, from source that ships with it.
@@ -32,6 +32,11 @@ not have them*, below, tells you what to do.
 | `HDIR [pattern]` | List what is on the host. |
 | `R <hostfile> [cpmfile]` | Read host → CP/M. |
 | `W <cpmfile> [hostfile] [B\|T]` | Write CP/M → host. |
+| `SIMCLK [hz]` | Set or show the processor's crystal. |
+
+`SIMCLK` moves no file. It sets `clock_hz` on the processor board, so that a `SUBMIT` file can
+run `ASM` at full speed and then go back to 2 MHz. The boards chapter describes it, in *The
+crystal is on the board*.
 
 ### `HDIR`
 
@@ -332,8 +337,9 @@ digits and line ends, about 5.2 KB of them, and every byte can be printed.
 
 **It ships with the package.** The utilities are in `hostbridge/`, with the 8080 sources, the
 `.HEX` files and the assembled `.COM` files. The CP/M disk in `examples/cpm` already has
-`R.COM`, `W.COM` and `HDIR.COM`. For this reason, this section is about the other kind of disk:
-a new disk, or a minidisk image that you brought. For the paste below, open `hostbridge/R.HEX`.
+`R.COM`, `W.COM`, `HDIR.COM` and `SIMCLK.COM`. For this reason, this section is about the
+other kind of disk: a new disk, or a minidisk image that you brought. For the paste below, open
+`hostbridge/R.HEX`.
 
 1. **Tell PIP to write a file from the console.**
 
@@ -390,9 +396,10 @@ a new disk, or a minidisk image that you brought. For the paste below, open `hos
    ```
    A>R W.COM
    A>R HDIR.COM
+   A>R SIMCLK.COM
    ```
 
-   `R.COM` now exists, so the other two utilities come across the board as ordinary binary
+   `R.COM` now exists, so the other utilities come across the board as ordinary binary
    files, with no HEX, no `LOAD` and no paste. `hostdir` must point at the folder that holds
    them. On a built-in machine, such as `minidisk`, that you started in the package folder,
    type:

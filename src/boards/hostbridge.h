@@ -84,7 +84,7 @@ public:
     // ---- the wire, as the guest sees it. Public because the tests speak it. ----
 
     enum Status : uint8_t {
-        RDY = 0x01,  // ready for a command
+        RDY = 0x01,  // ready for a command -- clear only while a SET_CLOCK is applied
         DAV = 0x02,  // a byte is waiting at BA+1
         TBE = 0x04,  // BA+1 will accept a byte
         EOFF = 0x08, // the current stream is exhausted ("EOF" is a macro on some hosts)
@@ -103,7 +103,17 @@ public:
         Error     = 0x07,
         Reset     = 0x08,
         DirLong   = 0x09, // like DirFirst, but each entry streams name\0 size\0 date\0
+        SetClock  = 0x0A, // a decimal rate in Hz, NUL-terminated; 0 = flat out (#918)
+        GetClock  = 0x0B, // BA+1 yields the rate as decimal text + NUL; 0 = flat out
     };
+
+    // ---- the guest's crystal request (#918), the Board half of Debugger::run's poll ----
+    bool takeClockRequest(long long& hz) override;
+    void clockRequestDone(bool ok, const std::string& err) override;
+
+    // Ten digits is above any rate a CPU board takes (100 MHz is nine) and well inside a
+    // long long, so the parse can never overflow. More is refused as a bad value.
+    static constexpr size_t kMaxClockDigits = 10;
 
     // The signature IDENT hands back. A guest that does not see this is not talking
     // to a host bridge, and must say so rather than hang -- an IN from a port no card
@@ -207,6 +217,13 @@ private:
     size_t                 idx_     = 0;
     bool                   dirOpen_ = false;  // what DIR_NEXT tests, since mode_ has moved on
     bool                   dirLong_ = false;  // DIR_LONG built the list, so stream the long form
+
+    // A SET_CLOCK THE DEBUGGER HAS NOT APPLIED YET. While it is set, RDY reads clear: the
+    // guest waits for the CPU board's answer, so it reports the real result -- a range
+    // error included -- and not merely that the request was sent. Any command drops it,
+    // by the rule in command(); so do both resets.
+    bool      clockPending_ = false;
+    long long clockHz_      = 0;
 };
 
 } // namespace altair

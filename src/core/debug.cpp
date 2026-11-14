@@ -851,8 +851,29 @@ RunResult Debugger::run(uint64_t maxSteps, bool clearPending) {
 
     m_.running = false;
     disarmObserver();
+    applyClockRequests();
     r.pc = cpu->pc();
     return r;
+}
+
+// A GUEST'S REQUEST FOR A NEW CRYSTAL (Board::takeClockRequest, #918), applied between
+// slices -- every run path calls run() in slices of at most a few thousand steps, so the
+// guest waits no longer than one slice and no run loop needs code of its own. Applied as
+// the operator's `SET cpu0 CLOCK_HZ=n` would be: through the CPU board's property, so the
+// range check, publishPolicy() and SHOW all agree. One poll per run() call, not per
+// instruction.
+void Debugger::applyClockRequests() {
+    for (const auto& bd : m_.boards()) {
+        long long hz = 0;
+        if (!bd->takeClockRequest(hz)) continue;
+        Board* cpuBoard = nullptr;
+        for (const auto& b : m_.boards())
+            if (dynamic_cast<CpuCard*>(b.get())) { cpuBoard = b.get(); break; }
+        std::string err;
+        bool ok = cpuBoard && setProperty(*cpuBoard, "clock_hz", std::to_string(hz), err);
+        if (!cpuBoard) err = "no CPU board";
+        bd->clockRequestDone(ok, err);
+    }
 }
 
 } // namespace altair

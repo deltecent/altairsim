@@ -575,6 +575,63 @@ set, and `free` when `clock_hz` is 0. A crystal is always kept, also when you st
 from a script with no terminal. If a script must be fast, leave `clock_hz` at 0, or put
 `SET cpu0 clock_hz=0` at the start of the script.
 
+#### The guest can set the crystal: `SIMCLK`
+
+**`SIMCLK` is a CP/M program that sets `clock_hz` from the guest.** It uses the `hostbridge`
+board, and it is on the CP/M disk in `examples/cpm`. `SIMCLK 0` runs the processor at full
+speed. `SIMCLK 2000000` sets a 2 MHz crystal. `SIMCLK` with no number shows the crystal. Give
+the rate in Hz, with digits only.
+
+`SIMCLK` does the same as `SET cpu0 clock_hz=N`. The processor board checks the rate, and
+`SHOW cpu0` shows the new value.
+
+A `SUBMIT` file can use it. At 2 MHz, `ASM` is slow. The file `BUILD.SUB` below assembles
+`HELLO.ASM`, a program of your own, at full speed. It then sets 2 MHz again:
+
+```
+SIMCLK 0
+ASM HELLO
+LOAD HELLO
+SIMCLK 2000000
+HELLO
+```
+
+Write the file on your computer, with CR/LF line ends, and copy it in with `R BUILD.SUB`.
+`SUBMIT BUILD` then prints:
+
+```
+A>SIMCLK 0
+SIMCLK: flat out
+
+A>ASM HELLO
+CP/M ASSEMBLER - VER 2.0
+0118
+000H USE FACTOR
+END OF ASSEMBLY
+
+A>LOAD HELLO
+
+FIRST ADDRESS 0100
+LAST  ADDRESS 0117
+BYTES READ    0018
+RECORDS WRITTEN 01
+
+
+A>SIMCLK 2000000
+SIMCLK: 2000000 Hz
+
+A>HELLO
+HELLO, WORLD
+```
+
+If the processor board refuses the rate, `SIMCLK` prints the reason, and the crystal does not
+change:
+
+```
+A>SIMCLK 999999999
+SIMCLK: clock_hz must be 0..100000000
+```
+
 ### `idle`: the processor rests at a prompt
 
 At a prompt, a guest only reads the serial status register again and again, and waits for a key.
@@ -2597,14 +2654,16 @@ It moves **files between the guest and your computer**, in both directions. It i
 The guest sees one folder that you choose, and **it cannot leave that folder**. It cannot use
 `..` or an absolute path to leave it. This is a fixed rule, not a setting.
 
-The default port is `B0`. **The utilities are not in the board.** `R`, `W` and `HDIR` are
-ordinary CP/M `.COM` programs. They are on a disk, they run at the `A>` prompt, and they use the
-two ports of the board, as any other CP/M program could. They were assembled *in the machine*,
-with the machine's own assembler, from 8080 source that ships with the package. You can read
-their code.
+The default port is `B0`. **The utilities are not in the board.** `R`, `W`, `HDIR` and
+`SIMCLK` are ordinary CP/M `.COM` programs. They are on a disk, they run at the `A>` prompt,
+and they use the two ports of the board, as any other CP/M program could. They were assembled
+*in the machine*, with the machine's own assembler, from 8080 source that ships with the
+package. You can read their code.
 
-The file-transfer chapter describes this board. It is the fastest way to get your own code into
-CP/M. XMODEM also works, over an ordinary serial line, as it did on real machines.
+`SIMCLK` sets the crystal of the processor board from the guest. *The crystal is on the board*,
+above, describes it. The file-transfer chapter describes the other three utilities. The board is
+the fastest way to get your own code into CP/M. XMODEM also works, over an ordinary serial line,
+as it did on real machines.
 
 ## PROM programmers
 

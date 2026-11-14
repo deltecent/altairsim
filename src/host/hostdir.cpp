@@ -25,6 +25,7 @@ const char* hbErrorText(HbError e) {
     case HbError::TooLarge:   return "file too large";
     case HbError::BadName:    return "bad file name";
     case HbError::Ambiguous:  return "ambiguous name -- several host files differ only in case";
+    case HbError::Refused:    return "the machine refused the request";
     }
     return "unknown error";
 }

@@ -48,7 +48,7 @@ void HostBridgeBoard::write(const BusCycle& c) {
 // utilities use -- this just means a program that forgets to probe fails loudly.
 // ---------------------------------------------------------------------------
 uint8_t HostBridgeBoard::status() const {
-    uint8_t s = RDY;  // nothing this card does takes long enough to be busy. See below.
+    uint8_t s = clockPending_ ? 0 : RDY;  // busy only while a SET_CLOCK waits. See below.
 
     if (pos_ < out_.size()) s |= DAV;
     if (mode_ == Mode::WantName || mode_ == Mode::Writing) s |= TBE;
@@ -63,18 +63,15 @@ uint8_t HostBridgeBoard::status() const {
     return s;
 }
 
-// RDY IS ALWAYS SET, AND THAT IS AN HONEST ANSWER, NOT A STUB.
+// RDY IS CLEAR ONLY WHILE A SET_CLOCK WAITS, AND THAT IS THE ONLY WAIT THIS CARD HAS.
 //
-// Every host operation this card performs -- the slurp at OPEN, the spill at CLOSE,
-// the directory scan -- completes inside the OUT that requested it. There is never a
-// moment when the guest could observe the card working, so there is never a moment
-// when RDY could be clear.
-//
-// It is in the interface anyway because the guest polls it, and a guest that polls
-// it is a guest that keeps working if this card ever grows a real EventQueue-backed
-// open (`docs/boards/hostbridge.md` principle 4 asks for one). Publishing a flag the
-// guest already honors costs one bit; retrofitting the poll into three .COM files
-// after the fact costs a reassembly of all of them.
+// Every host operation -- the slurp at OPEN, the spill at CLOSE, the directory scan --
+// completes inside the OUT that requested it. SET_CLOCK cannot: the crystal is on the
+// CPU board, and the card may not write the Clock itself (board.h takeClockRequest).
+// The debugger applies the request at the end of the run slice the OUT happened in, a
+// few thousand instructions at most, and RDY comes back with ERR set if the CPU board
+// refused the rate. The utilities poll RDY before every command, which is why the flag
+// was published while it was still always set.
 
 // ---------------------------------------------------------------------------
 // The data port.
@@ -139,6 +136,7 @@ void HostBridgeBoard::command(uint8_t c) {
     const Mode           was          = mode_;
 
     clearStreams();
+    clockPending_ = false;  // a request not yet applied is in flight too: the rule drops it
 
     const Cmd cmd = (Cmd)c;
 
@@ -178,10 +176,12 @@ void HostBridgeBoard::command(uint8_t c) {
     case Cmd::DirNext:
     case Cmd::Delete:
     case Cmd::Reset:
+    case Cmd::SetClock:
         err_ = {};
         break;
     case Cmd::Ident:
     case Cmd::Error:
+    case Cmd::GetClock:
         break;
     }
 
@@ -194,9 +194,11 @@ void HostBridgeBoard::command(uint8_t c) {
     case Cmd::Delete:
     case Cmd::DirFirst:
     case Cmd::DirLong:
+    case Cmd::SetClock:
         // All want a NUL-terminated string next. A DIR_FIRST/DIR_LONG glob may be empty
         // -- that means "everything" -- but the NUL is still required, so the guest never
-        // has to know which commands take a name and which do not. DIR_LONG differs from
+        // has to know which commands take a name and which do not. SET_CLOCK's "name" is
+        // the rate in decimal. DIR_LONG differs from
         // DIR_FIRST only in what each entry streams back, decided by dirLong_.
         pending_ = cmd;
         mode_    = Mode::WantName;
@@ -246,6 +248,12 @@ void HostBridgeBoard::command(uint8_t c) {
         mode_ = Mode::TextOut;
         break;
     }
+
+    case Cmd::GetClock:
+        // A report, read through the clock this card was handed. 0 is flat out, which is
+        // what `clock_hz = 0` means; hz() is never 0, so it has to be asked as free().
+        emit(std::to_string(!clock_ ? 0LL : clock_->free() ? 0LL : clock_->hz()));
+        break;
 
     case Cmd::Reset:
         // Everything is already gone -- clearStreams() did it and the latch was
@@ -318,10 +326,39 @@ void HostBridgeBoard::nameComplete() {
         break;
     }
 
+    case Cmd::SetClock: {
+        // DECIMAL DIGITS ONLY: no sign, no suffix, no spaces. A guest that sent anything
+        // else is out of step with this protocol, and is told so at once -- the CPU board
+        // never sees it. The range is the CPU board's to judge, not ours.
+        bool good = !name.empty() && name.size() <= kMaxClockDigits;
+        for (char ch : name)
+            if (ch < '0' || ch > '9') good = false;
+        if (!good) {
+            fail({HbError::BadName, "bad clock rate -- give the rate in Hz as decimal digits"});
+            return;
+        }
+        clockHz_      = std::stoll(name);
+        clockPending_ = true;  // RDY clears until clockRequestDone()
+        mode_         = Mode::Idle;
+        break;
+    }
+
     default:
         fail({HbError::BadName, "no operation is expecting a name"});
         break;
     }
+}
+
+bool HostBridgeBoard::takeClockRequest(long long& hz) {
+    if (!clockPending_) return false;
+    hz = clockHz_;
+    return true;  // still pending -- RDY stays clear until the answer comes back
+}
+
+void HostBridgeBoard::clockRequestDone(bool ok, const std::string& err) {
+    if (!clockPending_) return;  // a command or a reset dropped it in between
+    clockPending_ = false;
+    if (!ok) fail({HbError::Refused, err});
 }
 
 void HostBridgeBoard::emit(const std::string& s) {
@@ -459,6 +496,8 @@ void HostBridgeBoard::reset(Reset) {
     dirOpen_ = false;
     dirLong_ = false;
     err_     = {};
+    clockPending_ = false;  // a crystal request dies with the transfer it belonged to
+    clockHz_      = 0;
 
     // `hostdir`, `port` and `readonly` survive. They are CONFIGURATION -- jumpers and
     // a cable -- and a reset does not move a jumper (DESIGN.md 6).
@@ -486,6 +525,8 @@ void HostBridgeBoard::serialize(StateWriter& w) const {
     w.u32((uint32_t)idx_);
     w.boolean(dirOpen_);
     w.boolean(dirLong_);
+    w.boolean(clockPending_);
+    w.u64((uint64_t)clockHz_);
 }
 
 void HostBridgeBoard::deserialize(StateReader& r) {
@@ -512,6 +553,8 @@ void HostBridgeBoard::deserialize(StateReader& r) {
     idx_        = (size_t)r.u32();
     dirOpen_    = r.boolean();
     dirLong_    = r.boolean();
+    clockPending_ = r.boolean();
+    clockHz_      = (long long)r.u64();
     // dir_ is a host handle rebuilt lazily from the (unchanged) sandbox config; the
     // enumerator's entries_ travel, so DIR_NEXT resumes where it was.
 }

@@ -1782,15 +1782,19 @@ Two complementary mechanisms, serving different needs.
 
 ### 12.1 The Host Bridge board (guest-initiated) — **BUILT**
 
-A board of our own design (`docs/boards/hostbridge.md`), documented to the same standard as any period card. It is an ordinary `Board` — it decodes two I/O ports, has `properties()`, and honors both resets. No bus special cases. (It does **not** serialize: `Board::serialize()` is designed and unbuilt, and no card implements it — see §4.)
+A board of our own design (`docs/boards/hostbridge.md`), documented to the same standard as any period card. It is an ordinary `Board` — it decodes two I/O ports, has `properties()`, and honors both resets. No bus special cases. It serializes a transfer in flight, as every board does (§13).
 
-It is also **the project's first genuinely new piece of hardware**, which makes it a real test of the board API rather than a rehash of a known card. The API held: it needed nothing.
+It is also **the project's first genuinely new piece of hardware**, which makes it a real test of the board API rather than a rehash of a known card. The API held for file transfer: it needed nothing.
+
+**The guest can also ask for a new crystal (#918).** `SET_CLOCK` takes a rate in Hz, and `GET_CLOCK` reports the rate in force; `SIMCLK.COM` is the utility. The crystal stays on the CPU board (§8): the bridge never writes the `Clock`. It holds the request, and `Debugger::run()` collects it through `Board::takeClockRequest()` at the end of the run slice, applies it with `setProperty(<cpu board>, "clock_hz", n)`, and answers through `Board::clockRequestDone()`. The property's own range check and `publishPolicy()` therefore run, exactly as for a typed `SET`, and `SHOW cpu0` cannot disagree with the clock. `RDY` reads clear while the request waits, so the guest learns the CPU board's real answer, a refusal included (`ERR` 0x09). Any command, and both resets, drop a request that has not been applied. The debugger's "no CPU board" answer is defensive only: `run()` returns `NoCpu` before it gets there.
+
+A rate that changes in the middle of a run is why the run loops pace with `CrystalPacer` (`src/cli/monitor.h`). It re-bases when the rate changes; without it, the monitor `RUN` and the MCP `run` tool kept the rate and start time of the run, and a switch from flat out to 2 MHz owed the guest every flat-out T-state, which froze it for many seconds.
 
 **Sandboxing is a hard requirement**, not a nicety: guest-supplied filenames resolve against a configured `hostdir` root and **cannot escape it** — no `..` component, no absolute path, no drive letter, and no symlink that resolves out. A guest program must never be able to write anywhere on the host disk. The card itself touches no file handle (§7): all of it lives in `src/host/hostdir.{h,cpp}`, where it is tested against a **real** filesystem with **real** symlinks, because a symlink escape cannot be tested against a fake one.
 
 The card sits at **0xB0**, and that number took a census. `0x30` was the obvious pick and it is wrong — the WD179X floppy controller defaults there and the Cromemco 64FDC sits on top of it, which is exactly the mistake AltairZ80 made with 0xFE. `B0–BF` and `D0–DF` are the only empty 16-port holes left in either catalog.
 
-Guest-side utilities (`R.COM`, `W.COM`, `HDIR.COM`) are ours, written in 8080 assembly and assembled **inside the machine** with the period toolchain — `ASM.COM` and `LOAD.COM`, off the CP/M disk. No cross-assembler, no host tooling: `cpm/hostbridge/*.ASM` reaches the disk by `PIP R.ASM=CON:` and is built from there, which is what the acceptance test does on every run.
+Guest-side utilities (`R.COM`, `W.COM`, `HDIR.COM`, `SIMCLK.COM`) are ours, written in 8080 assembly and assembled **inside the machine** with the period toolchain — `ASM.COM` and `LOAD.COM`, off the CP/M disk. No cross-assembler, no host tooling: `cpm/hostbridge/*.ASM` reaches the disk by `PIP R.ASM=CON:` and is built from there, which is what the acceptance test does on every run.
 
 **Every disk operation in them is a BDOS call** — no BIOS entries, no `IN`/`OUT` to a controller, no assumption about a DPB, a sector size or a skew table. That is what makes one `R.COM` work on an 8″ 88-DCDD, an 8 MB image, an 88-MDS minidisk, and any BIOS anybody writes later. It is proved, not asserted: the acceptance test builds the utilities on an 8 MB 88-DCDD image and then `LOAD`s the same hex on a minidisk behind a **different controller**, and round-trips the same 256 bytes.
 

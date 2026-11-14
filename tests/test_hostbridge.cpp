@@ -18,6 +18,7 @@
 #include "test.h"
 
 #include "boards/hostbridge.h"
+#include "boards/s100-memory.h"
 #include "core/machine.h"
 #include "host/hostdir.h"
 
@@ -39,13 +40,26 @@ struct Rig {
 
     static constexpr uint8_t kBase = 0xB0;
 
-    Rig() {
+    // `withCpu` adds 64K of zeroed RAM and an 8080 board, so m.debug.run() has a
+    // processor to step (NOPs) and a CPU board to apply a SET_CLOCK to (#918).
+    explicit Rig(bool withCpu = false) {
         std::string err;
 
         // PARANOID MODE, as every board suite runs. It re-derives the decode and the
         // interrupt wire the slow way on every cycle and aborts the moment the card
         // disagrees with the bus's cached copy.
         m.bus.setVerify(true);
+
+        if (withCpu) {
+            auto* mem = dynamic_cast<MemoryBoard*>(m.add("memory", "mem0", err));
+            Region rg;
+            rg.kind = RegionKind::Ram;
+            rg.at   = 0;
+            rg.size = 0x10000;
+            mem->addRegion(rg, err);
+            setProperty(*mem, "fill", "zero", err);
+            m.add("8080", "cpu0", err);
+        }
 
         hb = dynamic_cast<HostBridgeBoard*>(m.add("hostbridge", "hb0", err));
 
@@ -119,6 +133,25 @@ struct Rig {
     }
 
     bool err() { return (status() & HostBridgeBoard::ERR) != 0; }
+    bool rdy() { return (status() & HostBridgeBoard::RDY) != 0; }
+
+    // ---- the crystal (#918) ----
+    void setClock(const std::string& digits) {
+        cmd(Cmd::SetClock);
+        name(digits);
+    }
+    std::string getClock() {
+        cmd(Cmd::GetClock);
+        return text();
+    }
+    // What `SHOW cpu0` prints for clock_hz: the CPU board's own property.
+    long long cpuClockHz() {
+        for (auto& b : m.boards())
+            if (b->id == "cpu0")
+                for (auto& p : b->properties())
+                    if (p.name == "clock_hz") return p.get().i();
+        return -1;
+    }
 };
 
 std::vector<uint8_t> bytes(const std::string& s) { return {s.begin(), s.end()}; }
@@ -671,5 +704,106 @@ void test_hostbridge() {
         r.cmd(Cmd::OpenRead);
         r.name("ROUND.BIN");
         CHECK(r.slurp() == payload, "and it comes back byte for byte, all 300 of them");
+    }
+
+    SECTION("hostbridge: GET_CLOCK reports the crystal, 0 for flat out (#918)");
+    {
+        Rig r(true);
+        std::string err;
+        CHECK(setProperty(*r.m.find("cpu0"), "clock_hz", "0", err), "cpu0 flat out");
+        CHECK(r.getClock() == "0", "flat out reads 0, not the 2 MHz divisor hz() keeps");
+        CHECK(setProperty(*r.m.find("cpu0"), "clock_hz", "2000000", err), "cpu0 at 2 MHz");
+        CHECK(r.getClock() == "2000000", "2 MHz reads 2000000");
+        CHECK(r.rdy() && !r.err(), "a report: RDY set, no ERR");
+    }
+
+    SECTION("hostbridge: SET_CLOCK waits on RDY, then the CPU board holds the rate (#918)");
+    {
+        Rig r(true);
+        std::string err;
+        setProperty(*r.m.find("cpu0"), "clock_hz", "0", err);
+
+        r.setClock("2000000");
+        CHECK(!r.rdy(), "RDY clears until the debugger applies the request");
+        CHECK(!r.err(), "no error yet");
+        CHECK(r.m.clock.free(), "nothing applied before the run slice ends");
+        r.m.debug.run(1);
+        CHECK(r.rdy() && !r.err(), "after one slice: RDY back, no ERR");
+        CHECK(r.cpuClockHz() == 2000000, "cpu0's clock_hz (what SHOW prints) is 2000000");
+        CHECK(!r.m.clock.free() && r.m.clock.hz() == 2000000, "and the Clock agrees with it");
+        CHECK(r.getClock() == "2000000", "GET_CLOCK reads the new rate back");
+
+        r.setClock("0");
+        r.m.debug.run(1);
+        CHECK(r.rdy() && !r.err(), "SET_CLOCK 0 is accepted");
+        CHECK(r.cpuClockHz() == 0 && r.m.clock.free(), "0 is flat out, on the board and the Clock");
+    }
+
+    SECTION("hostbridge: a rate the CPU board refuses comes back as ERR 0x09 (#918)");
+    {
+        Rig r(true);
+        std::string err;
+        setProperty(*r.m.find("cpu0"), "clock_hz", "2000000", err);
+
+        r.setClock("999999999");
+        r.m.debug.run(1);
+        CHECK(r.rdy(), "RDY comes back on a refusal too");
+        CHECK(r.err(), "ERR is set");
+        CHECK(r.errCode() == (uint8_t)HbError::Refused, "...as Refused (0x09)");
+        const std::string why = r.errText();
+        CHECK(why.find("clock_hz") != std::string::npos, ("the text is the property check's own: " + why).c_str());
+        CHECK(r.cpuClockHz() == 2000000 && r.m.clock.hz() == 2000000, "the rate is unchanged");
+    }
+
+    SECTION("hostbridge: SET_CLOCK takes decimal digits only, and says so at once (#918)");
+    {
+        for (const char* bad : {"", "2MHZ", "-1", " 2000000", "12345678901"}) {
+            Rig r(true);
+            std::string err;
+            setProperty(*r.m.find("cpu0"), "clock_hz", "2000000", err);
+            r.setClock(bad);
+            const std::string q = std::string("'") + bad + "'";
+            CHECK(r.rdy(), (q + ": RDY stays set -- nothing is pending").c_str());
+            CHECK(r.err() && r.errCode() == (uint8_t)HbError::BadName,
+                  (q + ": ERR 0x07 before any run").c_str());
+            r.m.debug.run(1);
+            CHECK(r.cpuClockHz() == 2000000, (q + ": the rate is untouched").c_str());
+        }
+    }
+
+    SECTION("hostbridge: RESET, any command, and a bus reset drop a pending SET_CLOCK (#918)");
+    {
+        auto pendingThen = [](auto&& drop) {
+            Rig r(true);
+            std::string err;
+            setProperty(*r.m.find("cpu0"), "clock_hz", "2000000", err);
+            r.setClock("4000000");
+            drop(r);
+            bool ready = r.rdy();
+            r.m.debug.run(1);
+            return ready && r.cpuClockHz() == 2000000 && !r.err();
+        };
+        CHECK(pendingThen([](Rig& r) { r.cmd(Cmd::Reset); }), "RESET drops it");
+        CHECK(pendingThen([](Rig& r) { r.cmd(Cmd::Ident); }), "any command drops it (the one rule)");
+        CHECK(pendingThen([](Rig& r) { r.hb->reset(Reset::Bus); }), "a bus reset drops it");
+        CHECK(pendingThen([](Rig& r) { r.hb->reset(Reset::PowerOn); }), "a power-on reset drops it");
+    }
+
+    SECTION("hostbridge: a pending SET_CLOCK survives SNAPSHOT/RESTORE (#918)");
+    {
+        Rig r(true);
+        std::string err;
+        setProperty(*r.m.find("cpu0"), "clock_hz", "2000000", err);
+        r.setClock("3000000");
+        std::string path =
+            (std::filesystem::temp_directory_path() / "altairsim-hb-clock.snap").string();
+        CHECK(r.m.snapshot(path, err), "snapshot with a request pending");
+        r.cmd(Cmd::Reset);  // drop it here, so only the restore can bring it back
+        std::vector<std::string> notes;
+        CHECK(r.m.restore(path, err, notes), "restore");
+        CHECK(!r.rdy(), "restored: still waiting, RDY clear");
+        r.m.debug.run(1);
+        CHECK(r.rdy() && !r.err() && r.cpuClockHz() == 3000000, "and it is applied after restore");
+        std::filesystem::remove(path);
     }
 }

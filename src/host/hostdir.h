@@ -40,6 +40,7 @@ enum class HbError : uint8_t {
     TooLarge   = 0x06,
     BadName    = 0x07,
     Ambiguous  = 0x08,  // the case-folded name matches more than one host file
+    Refused    = 0x09,  // the machine refused a SET_CLOCK rate (#918); the text says why
 };
 
 // What went wrong, and what to TELL THE HUMAN.

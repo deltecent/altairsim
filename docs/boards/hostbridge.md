@@ -13,6 +13,8 @@ A guest running under CP/M has no way to reach a file on the host, and the host 
 
 So the Host Bridge is not a convenience. **It is the supported guest↔host file path**, which is why it ships in the default machine rather than off in an example, and why its sandbox is load-bearing rather than defensive.
 
+The board also lets a guest set the processor's crystal (issue #918). A `SUBMIT` file can run `SIMCLK 0` before a slow assembly and `SIMCLK 2000000` after it. Before this, only the monitor could change `clock_hz`, and a `SUBMIT` file cannot reach the monitor.
+
 It is also the first genuinely new card built against the board API, which makes it a real test of that API rather than a rehash of a card whose shape we already knew.
 
 ## The port, and why not 0x30
@@ -40,7 +42,7 @@ If you move the card with `SET hb0 PORT=..`, **reassemble the utilities** — th
 
 | Bit | Name | Meaning |
 |---|---|---|
-| 0 | `RDY` | Ready for a command. Always set — see *Buffering*. |
+| 0 | `RDY` | Ready for a command. Clear only while a `SET_CLOCK` waits — see *The clock*. |
 | 1 | `DAV` | A byte is waiting at BA+1 |
 | 2 | `TBE` | BA+1 will accept a byte |
 | 3 | `EOF` | The stream you are draining has run dry |
@@ -63,18 +65,20 @@ Bits 5–7 read zero on purpose: an `IN` from an undecoded port floats the bus a
 | `0x07` | `ERROR` | BA+1 yields the code byte, **then a NUL-terminated message** |
 | `0x08` | `RESET` | Abort, discard any uncommitted write, clear the error latch |
 | `0x09` | `DIR_LONG` | Like `DIR_FIRST`, but each entry streams **three** NUL-terminated fields — `name`, `size`, `date`. Walk it with `DIR_NEXT`. |
+| `0x0A` | `SET_CLOCK` | Then the rate in Hz as decimal digits, NUL-terminated. `0` is flat out. Wait for `RDY`, then check `ERR`. |
+| `0x0B` | `GET_CLOCK` | BA+1 yields the rate in force as decimal digits, NUL-terminated. `0` is flat out. |
 
 `DIR_LONG` is what `HDIR` uses for its `ls -l`-style listing. `size` is a decimal byte count, or the literal `<DIR>` for a directory; `date` is the host mtime as `MM/DD/YY`. It builds and walks the very same enumerator as `DIR_FIRST` (so `DIR_NEXT` advances either, and `DIR_FIRST` and `RESET` clear either) — the only difference is how many fields each entry hands back. `DIR_FIRST` still streams a bare name, so a guest built against the older, name-only protocol is unaffected.
 
 Error codes — these are on the wire, so they are published and will not be renumbered:
 
-`0x00` none · `0x01` no such file · `0x02` permission denied · `0x03` **outside the sandbox** · `0x04` host I/O error · `0x05` no file open · `0x06` too large (8 MB cap) · `0x07` bad name · `0x08` ambiguous (see *Case*).
+`0x00` none · `0x01` no such file · `0x02` permission denied · `0x03` **outside the sandbox** · `0x04` host I/O error · `0x05` no file open · `0x06` too large (8 MB cap) · `0x07` bad name, or a bad clock rate · `0x08` ambiguous (see *Case*) · `0x09` the machine refused the request (see *The clock*).
 
 ### The one rule
 
 > **Any OUT to the command port abandons the stream in flight.**
 
-You can walk away from a half-finished transfer at any point, for any reason, and the next command simply works. That single invariant deletes the entire family of caveats that would otherwise attach to a streaming device — *the calling program must request every byte of a result, or the device is left in an undefined state* — and with it any reason for a utility to open by resetting the card repeatedly. Ours reset it once.
+You can walk away from a half-finished transfer at any point, for any reason, and the next command simply works. A `SET_CLOCK` that has not been applied yet is dropped too, so a guest must wait for `RDY` before its next command. That single invariant deletes the entire family of caveats that would otherwise attach to a streaming device — *the calling program must request every byte of a result, or the device is left in an undefined state* — and with it any reason for a utility to open by resetting the card repeatedly. Ours reset it once.
 
 The one thing a command does **not** abandon is the **directory enumerator**. That is not an exception — a listing is not a stream — and it is what lets `R *.ASM` do a whole `OPEN_READ` and transfer *between* two `DIR_NEXT`s without losing its place. `DIR_FIRST`, `DIR_LONG` and `RESET` are the only things that disturb it.
 
@@ -84,7 +88,24 @@ The one thing a command does **not** abandon is the **directory enumerator**. Th
 
 Two properties fall out for free rather than being rules someone has to remember: *an unclosed write is not committed*, and *a bus reset discards a partial write*.
 
-**The deviation, stated plainly:** the slurp at `OPEN` and the spill at `CLOSE` are **synchronous** — they are not routed through the `EventQueue`. They are single, bounded, non-recurring host operations, not per-byte work in a hot loop. `RDY` is therefore always set and no guest ever waits. The guest side already polls status, so this can be made asynchronous later without touching a single line of 8080. Files above a hard **8 MB** cap (a full CP/M volume) are refused with `0x06` — and the size is asked for *before* anything is allocated.
+**The deviation, stated plainly:** the slurp at `OPEN` and the spill at `CLOSE` are **synchronous** — they are not routed through the `EventQueue`. They are single, bounded, non-recurring host operations, not per-byte work in a hot loop. No file operation clears `RDY`, and no guest waits for one. The guest side already polls status, so this can be made asynchronous later without touching a single line of 8080. Files above a hard **8 MB** cap (a full CP/M volume) are refused with `0x06` — and the size is asked for *before* anything is allocated.
+
+## The clock
+
+`SET_CLOCK` asks for a new crystal on the processor board, and `GET_CLOCK` reports the crystal in force. The rate is in Hz, and `0` means flat out, as `clock_hz = 0` does.
+
+**The crystal stays on the processor board.** The Host Bridge does not change the clock itself. It holds the request, and the debugger applies it at the end of the run slice, a few thousand instructions at most. The debugger does a `SET cpu0 clock_hz=N`, so the CPU board's own range check runs, and `SHOW cpu0` shows the new rate.
+
+**`SET_CLOCK` is the one command that makes the guest wait.** After the NUL, `RDY` reads clear until the debugger has applied the rate. When `RDY` comes back, `ERR` tells the guest the result:
+
+- **Refused** (`0x09`): the CPU board did not take the rate. `ERROR` returns the board's own words, for example `clock_hz must be 0..100000000`. The rate is unchanged.
+- **Bad name** (`0x07`): the text was not decimal digits, or it had more than ten. The board refuses it at once, and `RDY` stays set. `ERROR` returns `bad clock rate -- give the rate in Hz as decimal digits`.
+
+**Any command drops a request that is still waiting**, by the rule above. A guest that does not wait for `RDY` loses its request. `RESET` and both bus resets drop it too.
+
+`SET_CLOCK` clears the error latch, like every operation. `GET_CLOCK` is a report, like `IDENT`, and leaves the latch alone.
+
+An older altairsim does not know these commands. It sets `ERR` with `unknown host bridge command`, and `SIMCLK` prints that text.
 
 ## The sandbox
 
@@ -137,20 +158,23 @@ So the two answer different questions. `configDir_` answers *where does this pat
 
 ## Reset
 
-`Reset::PowerOn` and `Reset::Bus` both abort any transfer, **discard any uncommitted write**, clear the error latch and reset the enumerator. `port`, `hostdir` and `readonly` survive both — they are jumpers, not state.
+`Reset::PowerOn` and `Reset::Bus` both abort any transfer, **discard any uncommitted write**, drop a `SET_CLOCK` that has not been applied, clear the error latch and reset the enumerator. `port`, `hostdir` and `readonly` survive both — they are jumpers, not state.
 
 ## Guest utilities
 
-`cpm/hostbridge/{R,W,HDIR}.ASM`. 8080 only, `ORG 100H`, assembled **inside the machine** with `ASM.COM` and `LOAD.COM` — no host toolchain, no cross-assembler.
+`cpm/hostbridge/{R,W,HDIR,SIMCLK}.ASM`. 8080 only, `ORG 100H`, assembled **inside the machine** with `ASM.COM` and `LOAD.COM` — no host toolchain, no cross-assembler.
 
 ```
 R  <hostfile> [cpmfile]         host -> CP/M      R *.ASM     R SRC/FOO.ASM
 W  <cpmfile> [hostfile] [B|T]   CP/M -> host      W *.HEX     W FOO.DAT T
 W  <pattern> [hostfolder] [B|T]                   W *.ASM SRC
 HDIR [pattern]                  what is on the host
+SIMCLK [hz]                     set or show the crystal   SIMCLK 0    SIMCLK 2000000
 ```
 
 `R` and `W` are short because they are typed constantly. `HDIR` exists because without a way to see what is there to read, you type a host name from memory, get it wrong, and cannot tell whether the file is missing or your spelling is.
+
+`SIMCLK` with a rate sends `SET_CLOCK`, waits for `RDY`, and then prints the rate in force, `SIMCLK: 2000000 Hz` or `SIMCLK: flat out`. If the board set `ERR`, it prints the board's error text, for example `SIMCLK: clock_hz must be 0..100000000`. With no rate, it prints the rate in force. The command tail goes to the board as typed: the board checks the digits, so `SIMCLK` has no parser of its own.
 
 ### Every disk operation is a BDOS call
 
@@ -191,5 +215,5 @@ The CP/M name defaults to the host name uppercased, with characters CP/M cannot 
 ## Verification
 
 - `tests/test_hostdir.cpp` — the sandbox, against a **real** filesystem: `../SECRET.TXT`, `../../etc/passwd`, `/etc/passwd`, `\etc\passwd`, `C:\windows`, and a **symlink pointing out** (both a file and a directory) must each fail `0x03` and touch nothing.
-- `tests/test_hostbridge.cpp` — the protocol, against a `MemHostDir` with `bus.setVerify(true)`: `IDENT`; the stream rule; the enumerator surviving a transfer; an unclosed write discarded; both resets; `readonly`; every error code; and `!decodes(0x30)`, *because that is a floppy controller*.
-- `tests/acceptance/hostbridge.cmake` — the whole chain, on a scratch copy of the image, in two modes. `acceptance-hostbridge` `PIP`s the committed `.HEX` in through the console, `LOAD`s each, and round-trips **256 bytes containing every value from `00` to `FF`** — including `00`, `1A` and `FF`, the three a careless transfer mangles. It runs on the **tracked** floppy, so it needs no download. `acceptance-hostbridge-build` (`slow`) instead `PIP`s the three `.ASM` in and assembles them, proving the sources still build the committed artifacts; 57 KB of source needs the 8 MB image, which is not in git, so that one skips without it. Both modes also pin `W`'s choice of mode: a `.TXT` with no switch comes back trimmed, a switch wins over the extension in both directions, and one `W MIX.*` brings back two text files trimmed and a binary whole. Either way the verdict is read off the host's disk, not the terminal: *"2 records"* means the guest counted to two, not that the bytes are right.
+- `tests/test_hostbridge.cpp` — the protocol, against a `MemHostDir` with `bus.setVerify(true)`: `IDENT`; the stream rule; the enumerator surviving a transfer; an unclosed write discarded; both resets; `readonly`; every error code; and `!decodes(0x30)`, *because that is a floppy controller*. In a machine with a CPU board: `GET_CLOCK`; `SET_CLOCK` through `Debugger::run()` to `clock_hz` and the `Clock`; a refused rate; bad digits; a request dropped by a command, a reset and a bus reset; and a snapshot with a request waiting.
+- `tests/acceptance/hostbridge.cmake` — the whole chain, on a scratch copy of the image, in two modes. `acceptance-hostbridge` `PIP`s the committed `.HEX` in through the console, `LOAD`s each, and round-trips **256 bytes containing every value from `00` to `FF`** — including `00`, `1A` and `FF`, the three a careless transfer mangles. It runs on the **tracked** floppy, so it needs no download. `acceptance-hostbridge-build` (`slow`) instead `PIP`s the four `.ASM` in and assembles them, proving the sources still build the committed artifacts; 64 KB of source needs the 8 MB image, which is not in git, so that one skips without it. Both modes also pin `W`'s choice of mode: a `.TXT` with no switch comes back trimmed, a switch wins over the extension in both directions, and one `W MIX.*` brings back two text files trimmed and a binary whole. Both modes run `SIMCLK`: a refused rate and bad digits, then 2 MHz and back to flat out, then 2 MHz to the end. A run loop that does not re-base its pacing when the rate changes freezes the guest at the switch, and the test then fails as a hung machine. `SHOW cpu0`, from the host side, must show `clock_hz 2000000` at the end. Either way the verdict is read off the host's disk, not the terminal: *"2 records"* means the guest counted to two, not that the bytes are right.

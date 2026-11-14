@@ -437,4 +437,33 @@ private:
     clk::time_point w_{};
 };
 
+// THE THROTTLE: how long a run loop sleeps so wall time keeps up with the crystal. The
+// monitor's RUN and the MCP `run` tool use it. (The MCP free run paces between requests,
+// not inside one call, and keeps its own count -- FreeRun in mcp/server.cpp.)
+//
+// The baseline is the T-state and the wall time at which the CURRENT rate began. A new rate
+// starts a new baseline, because the T-states run at the old rate say nothing about the new
+// one. The rate CAN change while a run is under way: SIMCLK asks the Host Bridge for it from
+// inside the guest (#918). A baseline kept from the start of the run counted a whole flat-out
+// build at the new 2 MHz, and the loop then slept for as long as that build "should" have
+// taken at 2 MHz -- tens of seconds of a stopped guest.
+//
+// `hz` is 0 for flat out (Clock::free()), the crystal otherwise. The caller passes its own
+// T-state count and wall time, so a test can drive it with no clock at all.
+class CrystalPacer {
+public:
+    using clk = std::chrono::steady_clock;
+
+    void start(uint64_t t, long long hz, clk::time_point now) { t_ = t; hz_ = hz; w_ = now; }
+
+    // Seconds to sleep now. 0 when flat out, at a new rate (the new baseline starts here), or
+    // when the guest is behind wall time.
+    double sleepFor(uint64_t t, long long hz, clk::time_point now);
+
+private:
+    uint64_t        t_  = 0;
+    long long       hz_ = 0;
+    clk::time_point w_{};
+};
+
 } // namespace altair

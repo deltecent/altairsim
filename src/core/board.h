@@ -702,6 +702,18 @@ public:
     // deliberate first cut.
     virtual bool takeAutoStop() { return false; }
 
+    // A GUEST ASKS FOR A NEW CRYSTAL (#918) -- the Host Bridge's SET_CLOCK. A board may
+    // not write the Clock itself: the crystal is on the CPU board, and a second writer is
+    // how `SHOW cpu0` and the clock came to disagree (#34). So the board only RECORDS the
+    // request, and the debugger applies it at the end of Debugger::run() through the CPU
+    // board's own `clock_hz` property -- the range check and publishPolicy() included --
+    // then reports back. True hands over `hz` (0 = flat out); the debugger answers with
+    // clockRequestDone() in the same call, and that answer ends the request. Default: no
+    // board asks.
+    virtual bool takeClockRequest(long long& hz) { (void)hz; return false; }
+    // The answer to a request taken above. `err` is the property's own words on refusal.
+    virtual void clockRequestDone(bool ok, const std::string& err) { (void)ok; (void)err; }
+
     // The machine's clock, set when the card goes into the backplane (DESIGN.md
     // 7.5). A card with nothing time-dependent on it never looks at this, and
     // most don't. A UART absolutely does: TDRE is a deadline, not a flag.
