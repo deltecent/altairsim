@@ -11,7 +11,7 @@
 ;	LOAD SIMCLK		-> SIMCLK.COM
 ;
 ; Revisions:
-;	2026-11-14  First version (issue #918).
+;	1.0  2026-11-14  First version (issue #918).
 ;
 ; The rate is in Hz, as decimal digits. The CPU board checks the range,
 ; as it does for SET cpu0 CLOCK_HZ=n at the monitor. SIMCLK prints the
@@ -251,9 +251,9 @@ PSTR:	MOV	A,M
 ;=======================================================================
 IDWANT: DB	'ALTAIRSIM HOSTBRIDGE',0
 
-MNOHB:	DB	CR,LF,'SIMCLK: no host bridge at B0H.',CR,LF
-	DB	'This machine has no `hostbridge` board in it, or it is at'
-	DB	' another port.',CR,LF,'$'
+MNOHB:	DB	CR,LF,'SIMCLK: no hostbridge board at port B0H.',CR,LF
+	DB	'Add a hostbridge board to the machine, or set its port'
+	DB	' to B0.',CR,LF,'$'
 
 MPFX:	DB	'SIMCLK: $'
 MFLAT:	DB	'flat out',CR,LF,'$'

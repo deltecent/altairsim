@@ -18,6 +18,10 @@ already have it.**
 
 The default port is **B0**. `BASE+0` is command and status, and `BASE+1` is data.
 
+Any program in the machine can use the board, not only the utilities below. The file
+`hostbridge/HB.INC` in the package lists the ports, the commands, the status bits and the error
+codes.
+
 ## The four utilities, and where they are
 
 The utilities are **on the disk**, not in the board. They are ordinary CP/M `.COM` files. They

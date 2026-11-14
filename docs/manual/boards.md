@@ -2656,9 +2656,9 @@ The guest sees one folder that you choose, and **it cannot leave that folder**. 
 
 The default port is `B0`. **The utilities are not in the board.** `R`, `W`, `HDIR` and
 `SIMCLK` are ordinary CP/M `.COM` programs. They are on a disk, they run at the `A>` prompt,
-and they use the two ports of the board, as any other CP/M program could. They were assembled
-*in the machine*, with the machine's own assembler, from 8080 source that ships with the
-package. You can read their code.
+and they use the two ports of the board, as any other program in the machine could. They were
+assembled *in the machine*, with the machine's own assembler, from 8080 source that ships with
+the package. You can read their code.
 
 `SIMCLK` sets the crystal of the processor board from the guest. *The crystal is on the board*,
 above, describes it. The file-transfer chapter describes the other three utilities. The board is

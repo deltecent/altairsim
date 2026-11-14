@@ -13,8 +13,9 @@
                 ;       LOAD HDIR               -> HDIR.COM
                 ;
                 ; Revisions:
-                ;       2026-07-14  First version.
-                ;       2026-07-28  The long listing: size and date.
+                ;       1.0  2026-07-14  First version.
+                ;       1.1  2026-07-28  The long listing: size and date.
+                ;       1.2  2026-11-14  The no-board message says what to do.
                 ;
                 ; HDIR prints each host name as it is on the host, in its own case and
                 ; at its full length. R and W change a name to fit 8.3.
@@ -59,7 +60,7 @@
                 ;=======================================================================
                 ; MAIN
                 ;=======================================================================
- 0100 318004    START:	LXI	SP,STACK
+ 0100 318104    START:	LXI	SP,STACK
                 
  0103 3E08      	MVI	A,CRESET	; one byte puts the board in a known
  0105 D3B0      	OUT	HBCMD		; state
@@ -69,11 +70,11 @@
                 				; empty pattern as `*`.
                 
  010D 210000    	LXI	H,0		; a 16-bit count: a host directory can
- 0110 223704    	SHLD	COUNT		; hold more than 255 files
+ 0110 223804    	SHLD	COUNT		; hold more than 255 files
                 
  0113 3E09      	MVI	A,CDIRL
  0115 D3B0      	OUT	HBCMD
- 0117 217203    	LXI	H,PAT
+ 0117 217303    	LXI	H,PAT
  011A CD0402    	CALL	SENDZ		; the NUL commits the command
                 
                 ;---- the listing loop -------------------------------------------------
@@ -88,41 +89,41 @@
                 
                 ; Each entry is three strings: the name, the size ("<DIR>" for a folder,
                 ; else a decimal byte count) and the date.
- 012B 21B303    	LXI	H,NAME
+ 012B 21B403    	LXI	H,NAME
  012E 0640      	MVI	B,HNMAX
  0130 CD0D02    	CALL	RECVZ
- 0133 21F403    	LXI	H,SIZE
+ 0133 21F503    	LXI	H,SIZE
  0136 0614      	MVI	B,SZMAX
  0138 CD0D02    	CALL	RECVZ
- 013B 210904    	LXI	H,DATE
+ 013B 210A04    	LXI	H,DATE
  013E 060C      	MVI	B,DTMAX
  0140 CD0D02    	CALL	RECVZ
                 
  0143 CD8101    	CALL	SHOW		; one line: <size>  <date>  <name>
                 
- 0146 2A3704    	LHLD	COUNT
+ 0146 2A3804    	LHLD	COUNT
  0149 23        	INX	H
- 014A 223704    	SHLD	COUNT
+ 014A 223804    	SHLD	COUNT
                 
  014D 3E05      	MVI	A,CDIRN
  014F D3B0      	OUT	HBCMD
  0151 C31D01    	JMP	DIR1
                 
                 ;---- the count --------------------------------------------------------
- 0154 2A3704    DIRE:	LHLD	COUNT
+ 0154 2A3804    DIRE:	LHLD	COUNT
  0157 7C        	MOV	A,H
  0158 B5        	ORA	L
  0159 CA7001    	JZ	DIRNON
                 
  015C CD8802    	CALL	CRLF
- 015F 2A3704    	LHLD	COUNT
+ 015F 2A3804    	LHLD	COUNT
  0162 CD9002    	CALL	PRDEC
- 0165 114F03    	LXI	D,MFILES
+ 0165 115003    	LXI	D,MFILES
  0168 0E09      	MVI	C,PRSTR
  016A CD0500    	CALL	BDOS
  016D C30000    	JMP	0		; warm boot
                 
- 0170 115903    DIRNON: LXI	D,MNONE
+ 0170 115A03    DIRNON: LXI	D,MNONE
  0173 0E09      	MVI	C,PRSTR
  0175 CD0500    	CALL	BDOS
  0178 C30000    	JMP	0
@@ -140,14 +141,14 @@
                 ; is 8 characters. The name goes last, because it has no fixed length.
                 ; A folder name ends in '/', and its size is "<DIR>".
                 ;-----------------------------------------------------------------------
- 0181 21F403    SHOW:	LXI	H,SIZE
+ 0181 21F503    SHOW:	LXI	H,SIZE
  0184 0E08      	MVI	C,SIZEW
  0186 CD9E01    	CALL	RJUST
  0189 CDBC01    	CALL	SPC2		; two spaces between the columns
- 018C 210904    	LXI	H,DATE
+ 018C 210A04    	LXI	H,DATE
  018F CD7302    	CALL	PSTR
  0192 CDBC01    	CALL	SPC2
- 0195 21B303    	LXI	H,NAME
+ 0195 21B403    	LXI	H,NAME
  0198 CD7302    	CALL	PSTR
  019B C38802    	JMP	CRLF		; tail call: end the line
                 
@@ -207,7 +208,7 @@
  01D0 3E00      IDENT:	MVI	A,CIDENT
  01D2 D3B0      	OUT	HBCMD
                 
- 01D4 211604    	LXI	H,IDBUF
+ 01D4 211704    	LXI	H,IDBUF
  01D7 0620      	MVI	B,IDMAX
  01D9 DBB1      ID1:	IN	HBDATA
  01DB 77        	MOV	M,A
@@ -218,7 +219,7 @@
  01E2 C2D901    	JNZ	ID1
  01E5 3600      	MVI	M,0		; no terminator: 0FFH, so no board
                 
- 01E7 211604    ID2:	LXI	H,IDBUF
+ 01E7 211704    ID2:	LXI	H,IDBUF
  01EA 11C702    	LXI	D,IDWANT
  01ED 1A        ID3:	LDAX	D
  01EE B7        	ORA	A
@@ -267,7 +268,7 @@
  021C D3B0      	OUT	HBCMD
  021E DBB1      	IN	HBDATA		; the code byte: skip it
                 
- 0220 114503    	LXI	D,MERR
+ 0220 114603    	LXI	D,MERR
  0223 0E09      	MVI	C,PRSTR
  0225 CD0500    	CALL	BDOS
                 
@@ -296,7 +297,7 @@
  023E 23        	INX	H
                 
  023F CD4B02    	CALL	SKIPSP
- 0242 117203    	LXI	D,PAT
+ 0242 117303    	LXI	D,PAT
  0245 0E40      	MVI	C,HNMAX
  0247 CD5702    	CALL	TOKEN
  024A C9        	RET
@@ -353,14 +354,14 @@
  0283 0E02      	MVI	C,CONOUT
  0285 C30500    	JMP	BDOS
                 
- 0288 114C03    CRLF:	LXI	D,MCRLF
+ 0288 114D03    CRLF:	LXI	D,MCRLF
  028B 0E09      	MVI	C,PRSTR
  028D C30500    	JMP	BDOS
                 
                 ;-----------------------------------------------------------------------
                 ; PRDEC: print HL in decimal. The digits go into a buffer from the end.
                 ;-----------------------------------------------------------------------
- 0290 113F04    PRDEC:	LXI	D,NUMEND
+ 0290 114004    PRDEC:	LXI	D,NUMEND
  0293 3E24      	MVI	A,'$'
  0295 12        	STAX	D
  0296 1B        PD1:	DCX	D
@@ -401,27 +402,27 @@
                 ;=======================================================================
  02C7 414C544149IDWANT: DB	'ALTAIRSIM HOSTBRIDGE',0
                 
- 02DC 0D0A484449MNOHB:	DB	CR,LF,'HDIR: no host bridge at B0H.',CR,LF
- 02FC 5468697320	DB	'This machine has no `hostbridge` card in it, or it is at'
- 0334 20616E6F74	DB	' another port.',CR,LF,'$'
+ 02DC 0D0A484449MNOHB:	DB	CR,LF,'HDIR: no hostbridge board at port B0H.',CR,LF
+ 0306 4164642061	DB	'Add a hostbridge board to the machine, or set its port'
+ 033C 20746F2042	DB	' to B0.',CR,LF,'$'
                 
- 0345 484449523AMERR:	DB	'HDIR: $'
- 034C 0D0A24    MCRLF:	DB	CR,LF,'$'
- 034F 2066696C65MFILES: DB	' files.',CR,LF,'$'
- 0359 484449523AMNONE:	DB	'HDIR: nothing matches.',CR,LF,'$'
+ 0346 484449523AMERR:	DB	'HDIR: $'
+ 034D 0D0A24    MCRLF:	DB	CR,LF,'$'
+ 0350 2066696C65MFILES: DB	' files.',CR,LF,'$'
+ 035A 484449523AMNONE:	DB	'HDIR: nothing matches.',CR,LF,'$'
                 
                 ;---- variables --------------------------------------------------------
- 0372           PAT:	DS	HNMAX+1		; the pattern as typed. Empty = everything.
- 03B3           NAME:	DS	HNMAX+1		; the name from the board. +1: RECVZ can
+ 0373           PAT:	DS	HNMAX+1		; the pattern as typed. Empty = everything.
+ 03B4           NAME:	DS	HNMAX+1		; the name from the board. +1: RECVZ can
                 				; write its NUL one byte past the count.
- 03F4           SIZE:	DS	SZMAX+1		; its size as decimal text, or "<DIR>"
- 0409           DATE:	DS	DTMAX+1		; its date, MM/DD/YY
- 0416           IDBUF:	DS	IDMAX+1
- 0437           COUNT:	DS	2		; the names printed
- 0439           NUMBUF: DS	6
- 043F           NUMEND: DS	1		; PRDEC ends here
+ 03F5           SIZE:	DS	SZMAX+1		; its size as decimal text, or "<DIR>"
+ 040A           DATE:	DS	DTMAX+1		; its date, MM/DD/YY
+ 0417           IDBUF:	DS	IDMAX+1
+ 0438           COUNT:	DS	2		; the names printed
+ 043A           NUMBUF: DS	6
+ 0440           NUMEND: DS	1		; PRDEC ends here
                 
- 0440           	DS	64		; the stack
- 0480 =         STACK	EQU	$
+ 0441           	DS	64		; the stack
+ 0481 =         STACK	EQU	$
                 
- 0480           	END	START
+ 0481           	END	START
