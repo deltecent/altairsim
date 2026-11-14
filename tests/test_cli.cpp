@@ -2777,6 +2777,61 @@ void test_may_nap() {
     CHECK(!mayNap(/*idle=*/true, true, false, /*paced=*/false), "a piped console is a script -> never");
 }
 
+// ---------------------------------------------------------------------------
+// THE THROTTLE'S BASELINE (cli/monitor.h, CrystalPacer).
+//
+// The guest can change the crystal during a run (SIMCLK, #918). The throttle kept the rate
+// and the baseline from the start of the run, so a switch from flat out to 2 MHz counted
+// every flat-out T-state at 2 MHz and slept for all of them. Driven with synthetic T-states
+// and wall times: no clock, no sleep.
+// ---------------------------------------------------------------------------
+void test_crystal_pacer() {
+    using clk = CrystalPacer::clk;
+    const clk::time_point t0{};
+    auto at = [&](double s) {
+        return t0 + std::chrono::duration_cast<clk::duration>(std::chrono::duration<double>(s));
+    };
+    auto near = [](double a, double b) { return a > b - 1e-6 && a < b + 1e-6; };
+
+    SECTION("CrystalPacer: steady pacing at one crystal");
+    {
+        CrystalPacer p;
+        p.start(0, 2000000, at(0));
+        // 1,000,000 T-states at 2 MHz are 0.5 s. 0.1 s of wall time has gone.
+        CHECK(near(p.sleepFor(1000000, 2000000, at(0.1)), 0.4), "ahead -> sleep the difference");
+        CHECK(p.sleepFor(1000000, 2000000, at(0.6)) == 0, "behind wall time -> no sleep");
+    }
+
+    SECTION("CrystalPacer: flat out never sleeps");
+    {
+        CrystalPacer p;
+        p.start(0, 0, at(0));
+        CHECK(p.sleepFor(500000000, 0, at(0.01)) == 0, "hz 0 is flat out");
+    }
+
+    SECTION("CrystalPacer: flat out, then 2 MHz, owes nothing for the flat-out work");
+    {
+        CrystalPacer p;
+        p.start(0, 0, at(0));
+        // A flat-out build: 100,000,000 T-states in 1 s of wall time.
+        CHECK(p.sleepFor(100000000, 0, at(1.0)) == 0, "flat out");
+        // The guest asks for 2 MHz. At the old baseline this is a 49 s sleep.
+        CHECK(p.sleepFor(100000000, 2000000, at(1.0)) == 0, "the switch itself starts a new baseline");
+        // 2,000 more T-states at 2 MHz are 1 ms.
+        CHECK(near(p.sleepFor(100002000, 2000000, at(1.0)), 0.001),
+              "paced from the switch, not from the start of the run");
+    }
+
+    SECTION("CrystalPacer: 2 MHz, then 4 MHz, paces at the new rate");
+    {
+        CrystalPacer p;
+        p.start(0, 2000000, at(0));
+        CHECK(near(p.sleepFor(2000000, 2000000, at(0.5)), 0.5), "1 s owed at 2 MHz, 0.5 s gone");
+        CHECK(p.sleepFor(2000000, 4000000, at(1.0)) == 0, "new crystal, new baseline");
+        CHECK(near(p.sleepFor(6000000, 4000000, at(1.0)), 1.0), "4,000,000 T-states at 4 MHz are 1 s");
+    }
+}
+
 // The achieved crystal, as the reflection layer sees it: read-only, and the run loop's
 // measurement reaches it through the CpuCard seam -- not the wall-clock timing itself
 // (that needs a run loop and a real clock), but the plumbing SHOW depends on.

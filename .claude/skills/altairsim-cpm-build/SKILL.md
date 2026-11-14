@@ -75,12 +75,14 @@ must be shows that a symbol was not defined.
 
 ## Disk space
 
-The disk in `examples/cpm` has 18K free, and each file takes 2K or more. One build makes
+The disk in `examples/cpm` has 6K free, and each file takes 2K or more. One build makes
 three files beside the source. When the disk is full, `ASM` prints `OUTPUT FILE WRITE ERROR`,
 and the `.HEX` file is empty or not complete.
 
 - Look at the space: `run {input: "STAT\r", until: "\nA>"}`.
 - Erase the files of a build after you copy them out: `ERA FOO.HEX`, `ERA FOO.PRN`.
+- 6K does not hold most builds. Mount a copy of the disk, and erase a file that the build does
+  not need, such as `ERA LADDER.COM`. Do not change the disk in `examples/cpm`.
 
 ## The steps, with `M80` and `L80`
 

@@ -2,7 +2,8 @@
 ; HB.INC: the Host Bridge, as the guest sees it.
 ;
 ; No program includes this file. ASM.COM has no INCLUDE, so R.ASM,
-; W.ASM and HDIR.ASM each have their own copy of the equates they use.
+; W.ASM, HDIR.ASM and SIMCLK.ASM each have their own copy of the
+; equates they use.
 ; This file is the master list. If a value here and a value in a
 ; program are different, this one is correct.
 ;
@@ -31,7 +32,8 @@ HBDATA	EQU	HBBASE+1	; OUT = data         IN = data
 ; Bits 5-7 always read 0. A port that no board decodes reads 0FFH, but
 ; IDENT is the correct test for the board.
 ;
-RDY	EQU	01H		; ready for a command (always set)
+RDY	EQU	01H		; ready for a command. Clear only while
+				; the machine applies a CSETCK rate.
 DAV	EQU	02H		; a byte is waiting at HBDATA
 TBE	EQU	04H		; HBDATA will take a byte
 HEOF	EQU	08H		; the stream has no more data
@@ -56,6 +58,13 @@ CDIRL	EQU	9		; as CDIRF, but each entry is three strings:
 				; name<0> size<0> date<0>. The size is "<DIR>"
 				; for a folder, else a decimal byte count. The
 				; date is MM/DD/YY. Use CDIRN for the next one.
+CSETCK	EQU	0AH		; then a rate in Hz as decimal digits and a
+				; NUL. 0 = flat out. RDY clears until the
+				; machine applies the rate. Then HERR is set
+				; if the CPU board refused it. Send no command
+				; before RDY: a command drops the request.
+CGETCK	EQU	0BH		; -> the rate in Hz as decimal text and a NUL.
+				; 0 = flat out.
 
 ;---- Error codes (the first byte from CERROR) -------------------------
 ;
@@ -70,6 +79,8 @@ ENOOPEN EQU	5		; no file open
 EBIG	EQU	6		; larger than the board holds (8 MB)
 EBADNAM EQU	7		; bad file name
 EAMBIG	EQU	8		; two or more host files differ only in case
+EREFUSD EQU	9		; the machine refused the request, for
+				; example a clock rate out of range
 
 ;---- The sandbox ------------------------------------------------------
 ;

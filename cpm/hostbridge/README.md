@@ -1,12 +1,14 @@
 # The Host Bridge utilities
 
 `R.COM`, `W.COM` and `HDIR.COM` — how a file gets into and out of a running CP/M guest.
+`SIMCLK.COM` — how a guest sets the processor's crystal.
 
 ```
 HDIR [pattern]                  what is on the host, ls -l style: size, date, name
 R  <hostfile> [cpmfile]         host -> CP/M      R *.ASM     R SRC/FOO.ASM
 W  <cpmfile> [hostfile] [B|T]   CP/M -> host      W *.HEX     W FOO.DAT T
 W  <pattern> [hostfolder] [B|T]                   W *.ASM SRC
+SIMCLK [hz]                     set or show the crystal: SIMCLK 0   SIMCLK 2000000
 ```
 
 They talk to the `hostbridge` card (`docs/boards/hostbridge.md`), which is in the default
@@ -17,11 +19,11 @@ you ran `altairsim` from.
 
 | | |
 |---|---|
-| `R.ASM` `W.ASM` `HDIR.ASM` | the sources. 8080, `ORG 100H`, BDOS only. |
+| `R.ASM` `W.ASM` `HDIR.ASM` `SIMCLK.ASM` | the sources. 8080, `ORG 100H`, BDOS only. |
 | `HB.INC` | the master equates — ports, commands, status bits, error codes |
-| `R.COM` `W.COM` `HDIR.COM` | **the programs, ready to run** |
-| `R.HEX` `W.HEX` `HDIR.HEX` | what `ASM` produced, and what `LOAD` turned into the `.COM` |
-| `R.PRN` `W.PRN` `HDIR.PRN` | the assembler listings |
+| `R.COM` `W.COM` `HDIR.COM` `SIMCLK.COM` | **the programs, ready to run** |
+| `R.HEX` `W.HEX` `HDIR.HEX` `SIMCLK.HEX` | what `ASM` produced, and what `LOAD` turned into the `.COM` |
+| `R.PRN` `W.PRN` `HDIR.PRN` `SIMCLK.PRN` | the assembler listings |
 
 **The `.COM`, `.HEX` and `.PRN` are the only build artifacts committed anywhere in this
 repository**, and they are here for one reason: so that somebody who clones it has working
@@ -49,7 +51,7 @@ A> W R.PRN
 ```
 
 ...with `hostdir` pointed at this directory. After the first one is built, `R.COM` itself is
-how the other two sources get in, so nothing needs pasting twice.
+how the other sources get in, so nothing needs pasting twice.
 
 **If you change a `.ASM`, rebuild and commit all three of its artifacts.** A checked-in
 binary that nobody checks is a binary that rots — edit `R.ASM`, forget to rebuild, and
@@ -63,8 +65,8 @@ of the chain — and **only one of them runs by default**:
 | `acceptance-hostbridge` | the committed `.HEX` still `LOAD`s to the committed `.COM`, and that `.COM` works | nothing — the disk is tracked |
 | `acceptance-hostbridge-build` | the committed `.ASM` still *assembles* to the committed `.HEX`, `.PRN` and `.COM` | the 8 MB image, which is **not** in git |
 
-**So the `.ASM` → `.HEX` half is not checked on a fresh clone.** `PIP`ping 57 KB of source
-into the guest needs 57 KB of free disk, and the tracked floppy has 18K; no choice of
+**So the `.ASM` → `.HEX` half is not checked on a fresh clone.** `PIP`ping 64 KB of source
+into the guest needs 64 KB of free disk, and the tracked floppy has 18K; no choice of
 fixture fixes that. If you edit a `.ASM`, fetch the 8 MB image
 (`disks/mits-88dcdd/cpm22/8mb/README.md`) and run `ctest -R hostbridge-build` before you
 commit — otherwise nothing will tell you the `.HEX` beside it went stale.

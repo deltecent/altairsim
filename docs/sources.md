@@ -278,15 +278,16 @@ MITS's own table of what each BASIC release does — is kept beside the sources 
 for it, and is where the C/O/Q answer set comes from.
 
 **`cpm22b23-56k.dsk` is not byte-identical to the download**, and that is deliberate: it ships with
-our `R.COM`, `W.COM` and `HDIR.COM` installed (26K free → 18K), so the host-bridge utilities exist
+our `R.COM`, `W.COM`, `HDIR.COM` and `SIMCLK.COM` installed (26K free → 16K), so the host-bridge utilities exist
 somewhere other than as `.HEX` in `cpm/hostbridge/`. The SHA above is the **pristine upstream** file;
 the recipe that turns it into the tracked one is `tools/install-hostbridge-utils.sh`, which is what
 makes the blob auditable rather than mysterious. Everything else on the disk is untouched.
 
 **The shipped copy, `examples/cpm/cpm22b23-56k.dsk`, differs from the test copy.** On 2026-10-17
 the maintainer took WordMaster (`WM.COM`, `WM.HLP`) and `OTHELLO.COM` off it and put `vi`
-(`VI.COM`, `VI.DOC`) on, which leaves 8K free. The copy in `tests/media/cpm/` keeps WordMaster
-and 18K free, because the acceptance tests depend on that disk.
+(`VI.COM`, `VI.DOC`) on, which left 8K free. `SIMCLK.COM` (#918) then took 2K, which leaves 6K free.
+The copy in `tests/media/cpm/` keeps WordMaster, has no `SIMCLK.COM` and has 18K free,
+because the acceptance tests depend on that disk.
 
 **`cpm22b23-56k-drawdemo.dsk` is derived from that tracked disk in turn**, so it has no download
 to check against. 18K free did not hold the 18K `DRAWDEMO.COM`, so `MBASIC.COM` and the four

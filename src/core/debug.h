@@ -343,6 +343,7 @@ public:
 private:
     bool armObserver();
     void disarmObserver();
+    void applyClockRequests();  // a guest's SET_CLOCK, applied between slices (#918)
 
     // Match one bus cycle against the CYCLE-kind breakpoints (MEM/IO, read/write) --
     // count the hit, flip trace for a tracepoint, and set cycleHit_ for a Stop. Called

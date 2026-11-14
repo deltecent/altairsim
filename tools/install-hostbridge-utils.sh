@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Put R.COM, W.COM and HDIR.COM onto a CP/M disk image.
+# Put R.COM, W.COM, HDIR.COM and SIMCLK.COM onto a CP/M disk image.
 #
 # WHY THIS SCRIPT EXISTS AT ALL. The manual's file-transfer chapter tells the reader to
 # type HDIR, R and W at the A> prompt. Those are ordinary CP/M programs and they have to
@@ -9,7 +9,7 @@
 #     tools/install-hostbridge-utils.sh examples/cpm/cpm22b23-56k.dsk
 #     tools/install-hostbridge-utils.sh "disks/mits-88dcdd/cpm22/8mb/CPM22-8MB-56K.DSK"
 #
-# THE TRACKED IMAGE ALREADY HAS THEM. cpm22b23-56k.dsk is in git WITH R/W/HDIR installed --
+# THE TRACKED IMAGE ALREADY HAS THEM. cpm22b23-56k.dsk is in git WITH all four installed --
 # this script is how they got there, and it is the recipe that makes that blob auditable.
 # For the images that are NOT tracked, prefer running this against a SCRATCH COPY: a fetched
 # image that has been written to can never match its pinned checksum again, which is why
@@ -23,10 +23,11 @@
 #     PIP R.HEX=CON:   ...   LOAD R   ...   ERA R.HEX      <- R.COM, and the hex is gone
 #     R W.COM                                              <- and now R fetches the rest
 #     R HDIR.COM                                              off the host, ITSELF
+#     R SIMCLK.COM
 #
-# Only ONE hex file is ever on the disk, and it is deleted before the other two arrive.
+# Only ONE hex file is ever on the disk, and it is deleted before the others arrive.
 # The card bootstraps its own utilities, which is a pleasing thing for a card to do.
-# Cost: 8K on the buffered floppy (26K free -> 18K).
+# Cost: 10K on the buffered floppy (26K free -> 16K). SIMCLK.COM came later (#918).
 #
 # It is idempotent: LOAD and R both overwrite, so running it twice is running it once.
 
@@ -75,6 +76,7 @@ for img in "$@"; do
     printf '%s' "$CR"; printf 'ERA R.HEX\r'        # ...and the hex is gone before the rest
     printf '%s' "$CR"; printf 'R W.COM\r'          # R fetches its own siblings
     printf '%s' "$CR"; printf 'R HDIR.COM\r'
+    printf '%s' "$CR"; printf 'R SIMCLK.COM\r'
     printf '%s' "$CR"; printf 'STAT\r'
     printf '%s' "$CR"; printf 'DIR *.HEX\r'        # expect: No file
 
@@ -111,6 +113,7 @@ EOF
     printf '%s' "$CR"; printf 'W R.COM BACK-R.COM\r'
     printf '%s' "$CR"; printf 'W W.COM BACK-W.COM\r'
     printf '%s' "$CR"; printf 'W HDIR.COM BACK-HDIR.COM\r'
+    printf '%s' "$CR"; printf 'W SIMCLK.COM BACK-SIMCLK.COM\r'
     i=0; while [ $i -lt 10 ]; do printf '%s' "$CR"; i=$((i+1)); done
   } > "$work/vkeys"
   cat > "$work/vcmd" <<EOF
@@ -123,7 +126,7 @@ EOF
   "$sim" $macharg -s "$work/vcmd" < "$work/vkeys" > "$work/vlog" 2>&1 || true
 
   ok=yes
-  for u in R W HDIR; do
+  for u in R W HDIR SIMCLK; do
     if [ ! -f "$work/out/BACK-$u.COM" ]; then
       echo "  FAIL  $u.COM did not come back off the disk" >&2; ok=no
     elif ! cmp -s "$work/out/BACK-$u.COM" "$hb/$u.COM"; then

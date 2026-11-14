@@ -1667,10 +1667,11 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         // waiting -- the same bargain the standalone monitor RUN already makes (#424). The
         // deadline below still bounds the call; pacing only declines to do all the emulated work
         // at once. Baseline is per-call: each run() re-bases, and there is no idle nap to rebase
-        // against (this loop STOPS on idle rather than napping).
-        const long long hz     = m.clock.hz();
-        const uint64_t  startT = m.clock.now();
-        const auto      start  = clk::now();
+        // against (this loop STOPS on idle rather than napping). A new crystal during the call
+        // -- SIMCLK from inside the guest (#918) -- starts a new baseline (CrystalPacer).
+        const auto   start = clk::now();
+        CrystalPacer pacer;
+        pacer.start(m.clock.now(), m.clock.free() ? 0 : m.clock.hz(), start);
 
         // IS A REAL DEVICE ON A LINE? -- a serial cable, a socket, anything but the MCP console
         // and an empty jack. This governs ONLY the idle-stop grace below (`idleDwell`): on such a
@@ -1756,12 +1757,10 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
 
             // Keep wall-clock in step with the crystal (see the baseline above). Only when a
             // clock_hz was asked for; free() is the flat-out default and never sleeps here.
-            if (!m.clock.free()) {
-                double want = (double)(m.clock.now() - startT) / (double)hz;
-                double got  = std::chrono::duration<double>(clk::now() - start).count();
-                if (want > got)
-                    std::this_thread::sleep_for(std::chrono::duration<double>(want - got));
-            }
+            if (const double s =
+                    pacer.sleepFor(m.clock.now(), m.clock.free() ? 0 : m.clock.hz(), clk::now());
+                s > 0)
+                std::this_thread::sleep_for(std::chrono::duration<double>(s));
             meter.sample(card, tStates, clk::now());
 
             const size_t wroteBefore = out.size();

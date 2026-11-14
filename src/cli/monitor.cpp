@@ -130,6 +130,17 @@ void AchievedHzMeter::finish(CpuCard* card, uint64_t t, clk::time_point now) {
     if (card && real >= kFloor) card->reportAchievedHz((long long)((double)(t - t_) / real));
 }
 
+double CrystalPacer::sleepFor(uint64_t t, long long hz, clk::time_point now) {
+    if (hz != hz_) {
+        start(t, hz, now);
+        return 0;
+    }
+    if (hz <= 0) return 0;
+    const double want = (double)(t - t_) / (double)hz;
+    const double got  = std::chrono::duration<double>(now - w_).count();
+    return want > got ? want - got : 0;
+}
+
 // SET MACHINE's table: the settings that belong to the machine as a whole rather than to
 // any board in it. Today that is only the name -- what SHOW MACHINE prints, the video
 // window's title, and what CONFIG SAVE saves as `[machine] name`. Before this it was set only by the
@@ -1814,9 +1825,8 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     char     buf[96];
 
     using clk = std::chrono::steady_clock;
-    const long long hz     = m_.clock.hz();
-    uint64_t        startT = m_.clock.now();  // the throttle's baseline
-    auto            start  = clk::now();
+    CrystalPacer pacer;  // the throttle's baseline; a new rate starts a new one (#918)
+    pacer.start(m_.clock.now(), m_.clock.free() ? 0 : m_.clock.hz(), clk::now());
     const bool      tty    = con.isTty();
     const char      attn   = (char)('A' + con.attn() - 1);
 
@@ -2130,12 +2140,12 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
         // was at full speed when the operator had set a crystal, and a video window was
         // the next. The same machine file kept time from a terminal and not from a
         // script, and nothing in the file said so.
-        if (pace) {
-            double want = (double)(m_.clock.now() - startT) / (double)hz;
-            double got  = std::chrono::duration<double>(clk::now() - start).count();
-            if (want > got) {
-                std::this_thread::sleep_for(std::chrono::duration<double>(want - got));
-            }
+        //
+        // The guest can change the crystal during this run (SIMCLK, #918), so the pacer
+        // is asked with the rate as it is NOW, and starts a new baseline when it moved.
+        if (const double s = pacer.sleepFor(m_.clock.now(), pace ? m_.clock.hz() : 0, clk::now());
+            s > 0) {
+            std::this_thread::sleep_for(std::chrono::duration<double>(s));
         }
 
         // Sample the achieved crystal once the window has enough real time behind it

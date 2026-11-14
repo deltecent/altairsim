@@ -7,13 +7,13 @@
 #                files. This is the test of THE CARD, and it is the one that runs on every
 #                edit. A few seconds.
 #
-#   MODE=build   Assemble R.ASM, W.ASM and HDIR.ASM FROM SOURCE inside the machine, and
+#   MODE=build   Assemble R.ASM, W.ASM, HDIR.ASM and SIMCLK.ASM FROM SOURCE inside the machine, and
 #                prove that what comes out is bit-for-bit what is committed beside them.
 #                This is the test of THE SOURCES, and it only has anything to say when a
 #                .ASM changes. Labelled `slow`, and it also carries the minidisk phase.
 #
-# WHY THE SPLIT, in one number: `PIP FOO.ASM=CON:` is the only slow thing here. The three
-# sources are 57 KB, PIP ECHOES every byte it is fed, and a 2SIO is a real serial line --
+# WHY THE SPLIT, in one number: `PIP FOO.ASM=CON:` is the only slow thing here. The four
+# sources are 64 KB, PIP ECHOES every byte it is fed, and a 2SIO is a real serial line --
 # so the bootstrap is ~156 KB of wire time and nothing else. R and W themselves never touch
 # the console at all: they read the disk and OUT to the bridge, so a whole transfer costs
 # about as much as one prompt. Rebuilding the assembler on every edit to test a card that
@@ -28,6 +28,14 @@
 if(NOT DEFINED MODE)
   set(MODE fast)
 endif()
+
+# ABSOLUTE PATHS, because the by-hand command in CMakeLists.txt gives relative ones. The
+# paths are written into dcdd.cmd, and a monitor script reads a relative path from the
+# script's own folder. `-DBIN=build` then mounts build/hostbridge-build/build/... and the
+# MOUNT fails before the machine starts.
+foreach(v SIM SRC BIN)
+  get_filename_component(${v} "${${v}}" ABSOLUTE)
+endforeach()
 
 string(ASCII 13 CR)                     # a CCP command line ends in CR AND NOTHING ELSE
 string(ASCII 26 SUB)                    # ^Z -- what ends a PIP from the console
@@ -119,8 +127,8 @@ endmacro()
 set(keys "")
 
 if(MODE STREQUAL build)
-  # FROM SOURCE. 57 KB through the console, and this is the whole cost of this mode.
-  foreach(u R W HDIR)
+  # FROM SOURCE. 64 KB through the console, and this is the whole cost of this mode.
+  foreach(u R W HDIR SIMCLK)
     pip("${SRC}/cpm/hostbridge/${u}.ASM" "${u}.ASM")
     cmd("ASM ${u}")                     # -> .HEX and .PRN
     cmd("LOAD ${u}")                    # -> .COM
@@ -128,7 +136,8 @@ if(MODE STREQUAL build)
 else()
   # ERASE THE UTILITIES THE DISK ARRIVES WITH, BEFORE BUILDING THEM AGAIN.
   #
-  # The tracked image ships R/W/HDIR.COM already installed -- that is what makes it not
+  # The tracked image ships R/W/HDIR.COM already installed (but not SIMCLK.COM, which is
+  # only on the disk in examples/cpm) -- that is what makes it not
   # byte-identical to upstream (tools/install-hostbridge-utils.sh). Leaving them there
   # would MASK THE FAILURE THIS MODE EXISTS TO CATCH: if LOAD stopped producing a working
   # .COM, the pre-installed one would run instead and every check below would pass while
@@ -136,9 +145,14 @@ else()
   # one we just built out of the committed .HEX.
   #
   # It also buys back the ~5K they occupy, and on an 18K disk that is not spare change.
-  foreach(u R W HDIR)
+  foreach(u R W HDIR SIMCLK)
     cmd("ERA ${u}.COM")
   endforeach()
+
+  # ...AND A GAME, FOR ROOM. With SIMCLK.COM (#918) added to the three, the run ended with
+  # 0K free: every file still fit, but the next file added to this test would not. LADDER.COM
+  # is 40K and no step uses it. This is the scratch copy, never the tracked image.
+  cmd("ERA LADDER.COM")
 
   # FROM THE COMMITTED HEX. Six times less wire, no assembler -- and LOADing the hex that
   # is checked in is what makes the .COM beside it provable rather than merely present.
@@ -147,8 +161,8 @@ else()
   # housekeeping. 12.5 KB of .HEX against 18K free left the disk with EXACTLY 0K remaining
   # at the end of the run -- passing, but one file away from failing, and failing as a
   # silently truncated PIP that LOADs into a subtly wrong .COM. Freeing each .HEX as we
-  # finish with it holds the peak down and leaves ~12K spare instead of nothing.
-  foreach(u R W HDIR)
+  # finish with it holds the peak down. (With SIMCLK.HEX, the four are 15.6 KB.)
+  foreach(u R W HDIR SIMCLK)
     pip("${SRC}/cpm/hostbridge/${u}.HEX" "${u}.HEX")
     cmd("LOAD ${u}")
     cmd("ERA ${u}.HEX")
@@ -184,10 +198,29 @@ cmd("W SPACED1.TXT SPBACK.TXT T")       # ...and the CCP can name what R stored
 cmd("R MY-NOTES(2).TXT")                # `-` stays; `(2)` is legal too, but past the 8
 cmd("HDIR *.TXT")
 
+# THE GUEST SETS THE CRYSTAL (issue #918). Everything above ran flat out -- the default
+# machine has clock_hz = 0, and SIMCLK with no word only reports it. A rate out of the CPU
+# board's range is refused by the board's property check, a word that is not decimal digits
+# is refused by the card, and the SIMCLK after them shows that neither changed the rate.
+#
+# `SIMCLK 2000000` then turns the crystal on, and it is the regression check for the RUN
+# throttle. A throttle that kept counting from the start of RUN would owe 2 MHz time for
+# every T-state run flat out above it, and sit there far past the leash below. With the
+# rate re-based when it changes, the next prompt arrives at once.
+#
+# The refusals go BEFORE the crystal is on: each SIMCLK is a load from an 8" floppy and a
+# warm boot, which at 2 MHz is the real drive's speed, about a second each.
+cmd("SIMCLK")
+cmd("SIMCLK 999999999")
+cmd("SIMCLK 2MHZ")
+cmd("SIMCLK")
+cmd("SIMCLK 2000000")
+cmd("SIMCLK 0")                         # flat out again for the rest of the run
+
 # The .COM of each, byte for byte, to hold up against what is checked in. In `fast` mode
 # this proves the committed .HEX still LOADs to the committed .COM; in `build` mode it
 # proves the committed .ASM still assembles to it.
-foreach(u R W HDIR)
+foreach(u R W HDIR SIMCLK)
   cmd("W ${u}.COM")
 endforeach()
 
@@ -195,11 +228,16 @@ if(MODE STREQUAL build)
   # ...and in build mode, the OTHER two artifacts as well, so all nine are pinned. These
   # are text, and W knows .HEX and .PRN are: with no switch it stops at the ^Z that ends
   # each. The compare against the committed files below fails on a single byte past it.
-  foreach(u R W HDIR)
+  foreach(u R W HDIR SIMCLK)
     cmd("W ${u}.HEX")
     cmd("W ${u}.PRN")
   endforeach()
 endif()
+
+# The last word on the clock goes to the guest, and the host reads it back: SHOW cpu0 runs
+# from dcdd.cmd after the RUN ends, so it reports what the CPU board holds, not what SIMCLK
+# printed about it.
+cmd("SIMCLK 2000000")
 
 # The CCP prints its prompt and then waits. Ending the input there is how a scripted run
 # stops -- but CP/M's DIR, TYPE and PIP all ABORT ON A PENDING KEYSTROKE, so anything still
@@ -217,11 +255,11 @@ file(WRITE "${work}/dcdd.keys" "${keys}")
 #
 #   fast   the TRACKED 8" floppy, which is in git. This test therefore runs on a fresh
 #          clone and in CI instead of skipping silently, which is the entire point of
-#          tracking the image. It arrives with 18K free and this mode needs about 14 of
-#          them: 12.5 KB of .HEX, plus the three small files we move in. Tight, and
-#          deliberately so -- see the ERA below.
+#          tracking the image. It arrives with 18K free: 15.6 KB of .HEX passes through
+#          it one file at a time, and the four .COM and the files we move in stay. Tight,
+#          and deliberately so -- see the ERA below, and the ERA LADDER.COM above it.
 #
-#   build  the 8 MB image, because PIPing R/W/HDIR.ASM in needs 57 KB of free disk. It is
+#   build  the 8 MB image, because PIPing R/W/HDIR/SIMCLK.ASM in needs 64 KB of free disk. It is
 #          not in git, so CMakeLists.txt gates this mode on finding it.
 #
 # NEVER MUTATE A REPO IMAGE: both are copied to scratch first. For the tracked one that is
@@ -237,7 +275,7 @@ configure_file("${image}" "${work}/work.dsk" COPYONLY)
 # NO `SET ... BAUD` HERE, AND RESIST THE URGE.
 #
 # The console is a 9600-baud line and this test lives with it, which is why `fast` PIPs the
-# 12 KB of .HEX and only `build` PIPs the 57 KB of source.
+# 16 KB of .HEX and only `build` PIPs the 64 KB of source.
 #
 # An earlier draft turned the line up to 76800 to make the bootstrap bearable, and it was
 # chasing the wrong thing: at the time the test took 17 seconds and only ~2 of them were the
@@ -249,7 +287,8 @@ file(WRITE "${work}/dcdd.cmd"
   "SET CONSOLE UPPER=OFF\n"                     # the sources have lower case IN STRINGS
   "SET hb0 HOSTDIR=${work}/host\n"
   "MOUNT dsk0:drive0 \"${work}/work.dsk\"\n"
-  "RUN FF00\n")
+  "RUN FF00\n"
+  "SHOW cpu0\n")
 
 # EVERY RUN IS ON A LEASH, AND THE LEASH IS SHORT.
 #
@@ -362,6 +401,38 @@ if(NOT spback STREQUAL spsent)
   message(FATAL_ERROR
     "hostbridge(${MODE}): the file with a space in its host name came back different.\n"
     "  sent: ${spsent}\n  got : ${spback}")
+endif()
+
+# THE GUEST SET THE CRYSTAL (issue #918), in the order the commands were typed. Each line is
+# searched for after the one before it, because `SIMCLK: flat out` is printed three times and
+# only the order shows which command printed which. The match starts at `>`, because the
+# 8 MB disk in build mode prints `A0>` where the floppy prints `A>`.
+set(at 0)
+foreach(line
+    ">SIMCLK${CR}"                      "SIMCLK: flat out"
+    ">SIMCLK 999999999"                 "SIMCLK: clock_hz must be 0..100000000"
+    ">SIMCLK 2MHZ"                      "SIMCLK: bad clock rate -- give the rate in Hz as decimal digits"
+    ">SIMCLK${CR}"                      "SIMCLK: flat out"
+    ">SIMCLK 2000000"                   "SIMCLK: 2000000 Hz"
+    ">SIMCLK 0"                         "SIMCLK: flat out"
+    ">SIMCLK 2000000"                   "SIMCLK: 2000000 Hz")
+  string(SUBSTRING "${ran}" ${at} -1 rest)
+  string(FIND "${rest}" "${line}" hit)
+  if(hit LESS 0)
+    message(FATAL_ERROR
+      "hostbridge(${MODE}): SIMCLK did not print '${line}' where it should have.\n"
+      "  full transcript: ${work}/dcdd.log\n--- from there on ---\n${rest}")
+  endif()
+  string(LENGTH "${line}" len)
+  math(EXPR at "${at} + ${hit} + ${len}")
+endforeach()
+
+# ...and the host agrees. SHOW cpu0 runs after the RUN, so this is the CPU board's own
+# property, set by the last SIMCLK, and not the guest's report of it.
+if(NOT ran MATCHES "\n  clock_hz +2000000 ")
+  message(FATAL_ERROR
+    "hostbridge(${MODE}): the guest's last `SIMCLK 2000000` did not reach the CPU board.\n"
+    "  SHOW cpu0 after the run should list clock_hz 2000000.\n--- what ran ---\n${ran}")
 endif()
 
 # THE SANDBOX, PROVED THROUGH THE WHOLE STACK -- the CCP, R.COM, the card, HostDir. The unit
@@ -522,7 +593,7 @@ else()
   set(artifacts COM)
 endif()
 
-foreach(u R W HDIR)
+foreach(u R W HDIR SIMCLK)
   foreach(ext IN LISTS artifacts)
     file(READ "${SRC}/cpm/hostbridge/${u}.${ext}" committed HEX)
     file(READ "${work}/host/${u}.${ext}"          fresh     HEX)
@@ -536,7 +607,7 @@ foreach(u R W HDIR)
 endforeach()
 
 if(MODE STREQUAL fast)
-  message(STATUS "hostbridge: the committed R/W/HDIR moved 256 binary bytes host -> CP/M -> "
+  message(STATUS "hostbridge: the committed R/W/HDIR/SIMCLK moved 256 binary bytes host -> CP/M -> "
                  "host EXACTLY, T trimmed ${origsz} bytes clean, and the sandbox held.")
   return()
 endif()

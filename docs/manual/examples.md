@@ -42,10 +42,11 @@ A: MOVCPM8  COM : NSWP     COM : SYSGEN   COM : W        COM
 A: ACOPY    COM : VI       DOC : STARTRK  BAS : TICTAK   BAS
 A: VI       COM : CRC      COM : PCPUT    COM : AFORMAT  COM
 A: STARINS  BAS : IOBYTE   TXT : R        COM : HDIR     COM
+A: SIMCLK   COM
 A>
 ```
 
-There are 36 files: a macro assembler, a linker, Microsoft BASIC, `DDT`, `PIP`, a text editor, a
+There are 37 files: a macro assembler, a linker, Microsoft BASIC, `DDT`, `PIP`, a text editor, a
 disk formatter and Star Trek. It is a complete development system of 1977. `STAT *.*` gives the
 size of each file, and the space that is left:
 
@@ -62,7 +63,7 @@ A>STAT *.*
   168    22k    2 R/W A:VI.COM
   123    16k    1 R/W A:VI.DOC
     6     2k    1 R/W A:XSUB.COM
-Bytes Remaining On A: 8k
+Bytes Remaining On A: 6k
 ```
 
 ### Out, and back in

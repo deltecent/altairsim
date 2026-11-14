@@ -1216,7 +1216,7 @@ set_tests_properties(acceptance-io4 PROPERTIES LABELS acceptance TIMEOUT 120)
 #                           is the only place the answer actually is. About 1.5 seconds, on
 #                           a fresh clone and in CI, with nothing to download.
 #
-#   MODE=build              THE SOURCES. Assembles R/W/HDIR.ASM from scratch inside the
+#   MODE=build              THE SOURCES. Assembles R/W/HDIR/SIMCLK.ASM from scratch inside the
 #                           machine (PIP through the console, ASM, LOAD) and proves the
 #                           result is bit-for-bit the .COM/.HEX/.PRN committed beside them.
 #                           NOT A REGISTERED TEST -- see below.
@@ -1227,9 +1227,10 @@ set_tests_properties(acceptance-io4 PROPERTIES LABELS acceptance TIMEOUT 120)
 # handed, a stale .ASM breaks the next person to edit them -- but it is a gap, not a
 # coincidence. Edit a .ASM and the check is YOURS to run.
 #
-# WHY IT CANNOT SIMPLY MOVE TO THE TRACKED DISK: PIPing three .ASM into the guest needs
-# 78 KB of free disk and the floppy arrives with 18K. Nothing about that is fixable by
-# choosing a different fixture, which is why the mode still wants the 8 MB image.
+# WHY IT CANNOT SIMPLY MOVE TO THE TRACKED DISK: PIPing four .ASM into the guest needs
+# 64 KB of free disk before ASM writes a byte, and the floppy arrives with 18K. Nothing about
+# that is fixable by choosing a different fixture, which is why the mode still wants the 8 MB
+# image.
 # ---------------------------------------------------------------------------
 add_test(NAME acceptance-hostbridge
          COMMAND ${CMAKE_COMMAND}
