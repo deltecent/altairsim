@@ -466,7 +466,7 @@ void test_pmmi() {
         CHECK(s.find("frame") != std::string::npos, "and the read-only frame");
         CHECK(s.find("baud") != std::string::npos, "and the read-only baud");
         CHECK(s.find("lines") != std::string::npos, "and the decoded modem lines");
-        CHECK(s.find("(read-only)") != std::string::npos, "status fields render as read-only");
+        CHECK(s.find("(show-only)") != std::string::npos, "status fields render as show-only");
         CHECK(s.find("scripted") != std::string::npos, "and the connection shows the endpoint");
 
         // The SH/RI shadow is visible in the decoded 'lines' string.

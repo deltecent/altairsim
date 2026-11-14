@@ -250,23 +250,26 @@ mem0  (memory)
     0  ram  0000-DFFF  56K
     1  rom  FF00-FFFF  builtin:dbl
 
-  unit     kind    holds
-    rom0    rom     builtin:dbl  (read-only)
+  unit    kind    holds
+  ------- ------- ------------------------
+  rom0    rom     builtin:dbl  (read-only)
 
-  property         value            legal
-  honors_phantom   all              none|read|all
-  phantom          all              none|read|all
-  fill             random           zero|random
-  seed             1                
-  pages            0000-DFFF,FF00-FFFF (read-only)
+  property         value               legal
+  ---------------- ------------------- -------------
+  honors_phantom   all                 none|read|all
+  phantom          all                 none|read|all
+  fill             random              zero|random
+  seed             1                   
+  pages            0000-DFFF,FF00-FFFF (show-only)
 
   [[board.region]]  (in a machine file)
 
   key              type             legal
+  ---------------- ---------------- ----------
   type             enum             ram|rom
   at               int              0000..FFFF
   size             int              1..65536
-  mount            string
+  mount            string           
   relocate         bool             true|false
 ```
 

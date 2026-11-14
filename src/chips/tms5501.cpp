@@ -396,7 +396,7 @@ std::vector<Property> Tms5501::properties(const EndpointResolver& resolve) {
     {
         Property x;
         x.name = "lines";
-        x.help = "Live pin state (read-only). CAPITALS = asserted. in: DCD CTS";
+        x.help = "Live pin state (show-only). CAPITALS = asserted. in: DCD CTS";
         x.kind = Kind::Str;
         x.get  = [this] {
             std::string s;

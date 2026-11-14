@@ -80,7 +80,7 @@ Hours-10 (5) has the 24-hour/AM-PM bit, Days-10 (8) has the leap-year bit.
   and returns `rstOpcode(restart_)`. The acknowledge is the dismissal. No driver writes a
   port to clear it. A second that passes while a request is pending is lost.
 - **Properties**: `port` (multiple of 4, default `F0H`), `interrupt` (`none | int`),
-  `restart` (0–7), and a live read-only `time`.
+  `restart` (0–7), and a live show-only `time`.
 
 ### Reset
 

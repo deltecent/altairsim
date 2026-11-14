@@ -498,7 +498,7 @@ std::vector<Property> CadzillaBoard::properties() {
     {
         Property x;
         x.name = "video";
-        x.help = "LIVE: whether the ACRTC is displaying -- OMR STR and DCR SE1 both set. Read-only";
+        x.help = "LIVE: whether the ACRTC is displaying -- OMR STR and DCR SE1 both set. Show-only";
         x.kind = Kind::Str;
         x.get  = [this] { return Value::ofStr(acrtc_.displayOn() ? "on" : "off"); };
         p.push_back(std::move(x));
@@ -507,7 +507,7 @@ std::vector<Property> CadzillaBoard::properties() {
         Property x;
         x.name = "picture";
         x.help = "LIVE: the size in pixels of the picture that the ACRTC is set to show, and the "
-                 "position of its top-left corner in the monitor's frame. Read-only";
+                 "position of its top-left corner in the monitor's frame. Show-only";
         x.kind = Kind::Str;
         x.get  = [this] {
             return Value::ofStr(std::to_string(programmedWidth()) + "x" +
@@ -523,7 +523,7 @@ std::vector<Property> CadzillaBoard::properties() {
         x.help = "LIVE: 'ok' when the ACRTC settings agree with the board's wiring (CCR GBM 8 "
                  "bpp, OMR GAI +8 words, OMR ACM the same as MODE AMODE, no displayed screen "
                  "with MWR CHR set). If not, it names the setting that is wrong, and the "
-                 "picture is scrambled. Read-only";
+                 "picture is scrambled. Show-only";
         x.kind = Kind::Str;
         x.get  = [this] { return Value::ofStr(wiring()); };
         p.push_back(std::move(x));
@@ -535,7 +535,7 @@ std::vector<Property> CadzillaBoard::properties() {
         Property x;
         x.name = "hspol";
         x.help = "LIVE: MODE register bit 0, the horizontal sync polarity. The simulator shows "
-                 "the value but does not use it. Read-only";
+                 "the value but does not use it. Show-only";
         x.kind = Kind::Str;
         x.get  = [this] { return Value::ofStr((modeReg_ & kModeHspol) ? "negative" : "positive"); };
         p.push_back(std::move(x));
@@ -544,7 +544,7 @@ std::vector<Property> CadzillaBoard::properties() {
         Property x;
         x.name = "vspol";
         x.help = "LIVE: MODE register bit 1, the vertical sync polarity. The simulator shows "
-                 "the value but does not use it. Read-only";
+                 "the value but does not use it. Show-only";
         x.kind = Kind::Str;
         x.get  = [this] { return Value::ofStr((modeReg_ & kModeVspol) ? "negative" : "positive"); };
         p.push_back(std::move(x));
@@ -553,7 +553,7 @@ std::vector<Property> CadzillaBoard::properties() {
         Property x;
         x.name = "amode";
         x.help = "LIVE: MODE register bit 2, the access mode of the board's fetch logic: single "
-                 "or interleaved. The ACRTC's OMR ACM bit must agree (see wiring). Read-only";
+                 "or interleaved. The ACRTC's OMR ACM bit must agree (see wiring). Show-only";
         x.kind = Kind::Str;
         x.get  = [this] { return Value::ofStr((modeReg_ & kModeAmode) ? "interleaved" : "single"); };
         p.push_back(std::move(x));
@@ -562,7 +562,7 @@ std::vector<Property> CadzillaBoard::properties() {
         Property x;
         x.name = "olen";
         x.help = "LIVE: MODE register bit 3, overlay display enable. Off, the overlay is not "
-                 "shown; drawing into it still works. Read-only";
+                 "shown; drawing into it still works. Show-only";
         x.kind = Kind::Bool;
         x.get  = [this] { return Value::ofBool((modeReg_ & kModeOlen) != 0); };
         p.push_back(std::move(x));
@@ -572,7 +572,7 @@ std::vector<Property> CadzillaBoard::properties() {
         x.name = "olsel";
         x.help = "LIVE: MODE register bit 4, overlay select. Which half of the overlay memory "
                  "a CHR screen draws into: 0 the half for the lower 1 MB of frame memory, 1 the "
-                 "upper. Read-only";
+                 "upper. Show-only";
         x.kind = Kind::Int;
         x.get  = [this] { return Value::ofInt((modeReg_ & kModeOlsel) ? 1 : 0); };
         p.push_back(std::move(x));
@@ -580,7 +580,7 @@ std::vector<Property> CadzillaBoard::properties() {
     {
         Property x;
         x.name  = "status";
-        x.help  = "LIVE: the ACRTC status register -- CER ARD CED LPD RFF RFR WFR WFE. Read-only";
+        x.help  = "LIVE: the ACRTC status register -- CER ARD CED LPD RFF RFR WFR WFE. Show-only";
         x.kind  = Kind::Int;
         x.radix = 16;
         x.get   = [this] { return Value::ofInt(acrtc_.status()); };
@@ -590,7 +590,7 @@ std::vector<Property> CadzillaBoard::properties() {
         Property x;
         x.name = "irq";
         x.help = "LIVE: whether IRQ* is asserted right now -- an enabled status flag pending "
-                 "AND the interrupt strap not 'none'. Read-only";
+                 "AND the interrupt strap not 'none'. Show-only";
         x.kind = Kind::Bool;
         x.get  = [this] { return Value::ofBool(irq_ != IrqJumper::None && acrtc_.irq()); };
         p.push_back(std::move(x));

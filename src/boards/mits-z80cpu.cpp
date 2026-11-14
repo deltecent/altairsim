@@ -58,7 +58,7 @@ std::vector<Property> CpuZ80Board::properties() {
         Property x;
         x.name  = "achieved_hz";
         x.help  = "LIVE: T-states per real second the run loop last reached -- the crystal "
-                  "you got, beside the one you asked for. Read-only; 0 until it has run.";
+                  "you got, beside the one you asked for. Show-only; 0 until it has run.";
         x.kind  = Kind::Int;
         x.radix = 10;
         x.unit  = "Hz";

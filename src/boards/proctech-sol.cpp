@@ -713,7 +713,7 @@ std::vector<Property> SolBoard::unitProperties(const std::string& unit) {
         // time for a WAV; an estimate from the current baud for a byte tape.
         Property pos;
         pos.name = "position";
-        pos.help = "Where this deck's head is now: mm:ss / total (percent) -- read-only";
+        pos.help = "Where this deck's head is now: mm:ss / total (percent) -- show-only";
         pos.kind = Kind::Str;
         pos.get  = [this, d] {
             return Value::ofStr(d->tape ? tapeCounterText(deckSeconds(d, d->tape->pos()),

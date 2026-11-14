@@ -283,13 +283,13 @@ std::vector<Property> DazzlerBoard::properties() {
     //
     // How the guest currently has the card programmed, decoded from the control/format
     // latches. Read-only IS the absence of a setter (core/value.h): SHOW prints these with
-    // "(read-only)" in the legal column, and CONFIG SAVE skips them (config/toml.cpp) --
+    // "(show-only)" in the legal column, and CONFIG SAVE skips them (config/toml.cpp) --
     // they describe a running state, not a jumper you set in a machine file. The board's
     // own enabled/disabled is already on the SHOW header line, so it is not repeated here.
     {
         Property x;
         x.name = "video";
-        x.help = "LIVE: whether the Dazzler is displaying -- OUT BASE D7 (on/off). Read-only";
+        x.help = "LIVE: whether the Dazzler is displaying -- OUT BASE D7 (on/off). Show-only";
         x.kind = Kind::Str;
         x.get  = [this] { return Value::ofStr(on_ ? "on" : "off"); };
         p.push_back(std::move(x));
@@ -298,7 +298,7 @@ std::vector<Property> DazzlerBoard::properties() {
         Property x;
         x.name = "resolution";
         x.help = "LIVE: picture size in elements, decoded from the format byte (D6 X4, D5 "
-                 "size): 32x32, 64x64 or 128x128. Read-only";
+                 "size): 32x32, 64x64 or 128x128. Show-only";
         x.kind = Kind::Str;
         x.get  = [this] {
             int side = elementsPerSide();
@@ -309,7 +309,7 @@ std::vector<Property> DazzlerBoard::properties() {
     {
         Property x;
         x.name = "color";
-        x.help = "LIVE: color vs black-and-white -- format D4. Read-only";
+        x.help = "LIVE: color vs black-and-white -- format D4. Show-only";
         x.kind = Kind::Str;
         x.get  = [this] { return Value::ofStr(color() ? "color" : "grey"); };
         p.push_back(std::move(x));
@@ -318,7 +318,7 @@ std::vector<Property> DazzlerBoard::properties() {
         Property x;
         x.name = "size";
         x.help = "LIVE: framebuffer footprint -- format D5: 512 bytes (one quadrant) or "
-                 "2 KB (four quadrants). Read-only";
+                 "2 KB (four quadrants). Show-only";
         x.kind = Kind::Str;
         x.get  = [this] {
             return Value::ofStr(twoK() ? "2KB (4 quads)" : "512B (1 quad)");
@@ -328,7 +328,7 @@ std::vector<Property> DazzlerBoard::properties() {
     {
         Property x;
         x.name  = "base";
-        x.help  = "LIVE: framebuffer start address in RAM -- OUT BASE D6-D0 << 9. Read-only";
+        x.help  = "LIVE: framebuffer start address in RAM -- OUT BASE D6-D0 << 9. Show-only";
         x.kind  = Kind::Int;
         x.radix = 16;
         x.get   = [this] { return Value::ofInt((long long)base_); };

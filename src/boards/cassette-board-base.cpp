@@ -271,7 +271,7 @@ std::vector<Property> CassetteBoardBase::unitProperties(const std::string& unit)
     // and an estimate from the 300-baud strap for a byte tape.
     Property pos;
     pos.name = "position";
-    pos.help = "Where the tape head is now: mm:ss / total (percent) -- read-only";
+    pos.help = "Where the tape head is now: mm:ss / total (percent) -- show-only";
     pos.kind = Kind::Str;
     pos.get  = [this] {
         return Value::ofStr(tape_ ? tapeCounterText(tapeSeconds(tape_->pos()), tapeTotalSeconds())

@@ -12,6 +12,17 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**`SHOW` tables line up, and a property that you cannot set is marked `(show-only)`.** Before,
+each column of a `SHOW` table had a fixed width. A longer entry moved the next column to the
+right, and the text of the next column then looked like part of the entry. For example,
+`SHOW hb0` printed `hostdir_root     /home/you/altair/xfer (read-only)`, and the mark looked like
+a fact about the folder. Now each column is as wide as its widest entry, in `SHOW <id>`,
+`SHOW SYMBOLS` and `SHOW BUS`. In `SHOW <id>`, a value longer than 32 characters puts its legal
+text on the next line. A line of dashes under each header separates the header from the rows. A value longer than about 220 characters was also cut off, and now
+prints in full. The mark `(read-only)` is now `(show-only)` in `SHOW`, in `HELP`, in the refusal
+from `SET` and in the reference. `SHOW` prints the value, and `SET` cannot change it. A ROM or a
+disk that is mounted read-only keeps the word `read-only`.
+
 **`SIMCLK` sets the processor's crystal from a CP/M guest.** `SIMCLK 0` runs the processor at
 full speed, and `SIMCLK 2000000` sets 2 MHz. `SIMCLK` with no number shows the rate. A `SUBMIT`
 file can now run `ASM` at full speed and go back to 2 MHz after it. Before, only the monitor

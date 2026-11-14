@@ -102,7 +102,7 @@ So we asked the only real client of this card that exists — **the PS2 monitor'
 | `rtc_divide` | `1` \| `10` \| `100` \| `1000` | `1` | |
 | `rtc_interrupt` | `none` \| `vi0`…`vi7` | **`none`** | The `RI` strap. `none` is what MITS Programming System II needs. |
 
-Those four are **straps** — things you set with a soldering iron. The card also publishes its live control register as four **read-only** properties, because port `0xFE` is write-only and there is otherwise no way to see what the guest has programmed into it:
+Those four are **straps** — things you set with a soldering iron. The card also publishes its live control register as four **show-only** properties, because port `0xFE` is write-only and there is otherwise no way to see what the guest has programmed into it:
 
 | Property | Meaning |
 |---|---|
@@ -111,7 +111,7 @@ Those four are **straps** — things you set with a soldering iron. The card als
 | `current_level` | The current interrupt level, decoded (control bits 0–2) |
 | `rtc_pending` | Has the RTC's interrupt flip-flop set? (cleared by control bit 4) |
 
-They have no setter, so `SHOW vi0` prints them `(read-only)` and `CONFIG SAVE` skips them — a saved machine round-trips to the same *straps*, and none of this live state leaks into it. Setting one would be the monitor reaching into the 8214 and pretending the guest had done it.
+They have no setter, so `SHOW vi0` prints them `(show-only)` and `CONFIG SAVE` skips them — a saved machine round-trips to the same *straps*, and none of this live state leaks into it. Setting one would be the monitor reaching into the 8214 and pretending the guest had done it.
 
 ### Seeing the wiring: `SHOW BUS IRQ`
 

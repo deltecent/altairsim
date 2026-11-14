@@ -805,11 +805,11 @@ std::vector<Property> PmmiBoard::properties() {
         p.push_back(std::move(x));
     }
     // ---- READ-ONLY STATUS. A property with no setter is a PIN, not a jumper: SHOW
-    // renders it `(read-only)`. This is the whole of `SHOW <id>`'s status view. ----
+    // renders it `(show-only)`. This is the whole of `SHOW <id>`'s status view. ----
     {
         Property x;
         x.name = "frame";
-        x.help = "Live UART frame (read-only), e.g. 8N1. Set by OUT BA+0 bits 2-6";
+        x.help = "Live UART frame (show-only), e.g. 8N1. Set by OUT BA+0 bits 2-6";
         x.kind = Kind::Str;
         x.get  = [this] { return Value::ofStr(frameString()); };
         p.push_back(std::move(x));
@@ -817,7 +817,7 @@ std::vector<Property> PmmiBoard::properties() {
     {
         Property x;
         x.name  = "baud";
-        x.help  = "Live line rate (read-only), 250000/(16*N) from the OUT BA+2 divisor";
+        x.help  = "Live line rate (show-only), 250000/(16*N) from the OUT BA+2 divisor";
         x.kind  = Kind::Int;
         x.radix = 10;
         x.unit  = "baud";
@@ -827,7 +827,7 @@ std::vector<Property> PmmiBoard::properties() {
     {
         Property x;
         x.name = "uart";
-        x.help = "Live UART status (read-only). CAPITALS = asserted: TBMT DAV";
+        x.help = "Live UART status (show-only). CAPITALS = asserted: TBMT DAV";
         x.kind = Kind::Str;
         x.get  = [this] { return Value::ofStr(uartString()); };
         p.push_back(std::move(x));
@@ -835,7 +835,7 @@ std::vector<Property> PmmiBoard::properties() {
     {
         Property x;
         x.name = "lines";
-        x.help = "Live modem lines (read-only). CAPITALS = asserted: SH RI DTR ST DT RING "
+        x.help = "Live modem lines (show-only). CAPITALS = asserted: SH RI DTR ST DT RING "
                  "CTS AP (DT/RING/CTS/AP from the phone line + handshake state machine)";
         x.kind = Kind::Str;
         x.get  = [this] { return Value::ofStr(linesString()); };
