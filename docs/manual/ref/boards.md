@@ -138,7 +138,7 @@ MITS 88-CPU: an 8080A CPU board. Decodes nothing -- it drives the bus
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
-| `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
+| `idle` | bool | `true` | `true` \| `false` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
 | `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Show-only; 0 until it has run. **(show-only — not a key you may set)** |
 
 
@@ -153,7 +153,7 @@ Generic 8085 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin,
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
-| `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
+| `idle` | bool | `true` | `true` \| `false` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
 | `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Show-only; 0 until it has run. **(show-only — not a key you may set)** |
 
 
@@ -175,13 +175,13 @@ Vector Graphic ZCB: a Z-80 processor with up to three PROM sockets in E000-EFFF 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
-| `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
+| `idle` | bool | `true` | `true` \| `false` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
 | `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Show-only; 0 until it has run. **(show-only — not a key you may set)** |
 | `group` | int | `0x0` | `0x0` .. `0xE0` | The 32-port group of both chips (area G): 00, 20, 40 ... E0 |
 | `serial_port` | int | `0x4` | `0x0` .. `0x1C` | Base of the 8251 in the group (area E). Data at BASE, status and command at BASE+1, repeated at BASE+2 and BASE+3 |
 | `parallel_port` | int | `0x8` | `0x0` .. `0x1C` | Base of the 8255 in the group (area E): ports A, B, C and control |
-| `boot` | bool | `true` | `on` \| `off` | Jumper B: after a reset every address decodes as the E000 block, until the first memory cycle in E000-FFFF |
-| `phantom` | bool | `true` | `on` \| `off` | Jumper C: the board pulls PHANTOM* from a reset until the first memory cycle in E000-FFFF |
+| `boot` | bool | `true` | `true` \| `false` | Jumper B: after a reset every address decodes as the E000 block, until the first memory cycle in E000-FFFF |
+| `phantom` | bool | `true` | `true` \| `false` | Jumper C: the board pulls PHANTOM* from a reset until the first memory cycle in E000-FFFF |
 | `wait` | enum | `m1` | `m1` \| `none` \| `all` | Area N, the automatic wait state: m1 = one after each M1, none, or all = one on each bus cycle |
 
 #### Unit `serial` — `[board.unit.serial]`
@@ -203,7 +203,7 @@ Generic Z80 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
-| `idle` | bool | `true` | `on` \| `off` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
+| `idle` | bool | `true` | `true` \| `false` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
 | `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Show-only; 0 until it has run. **(show-only — not a key you may set)** |
 
 
@@ -244,7 +244,7 @@ RAM/ROM board: a list of regions and PHANTOM* -- plain, unbanked memory (bank sw
 | `at` | int | `0x0` .. `0xFFFF` | Where it starts. An address: 0000, F800 |
 | `size` | int | `1` .. `65536` | How much. Decimal, and it takes a suffix: 48K, 1024, 2M |
 | `mount` | string | text | The ROM image. A file (relative to THIS FILE), or builtin:<name> |
-| `relocate` | bool | `on` \| `off` | Move a HEX/S-record image to `at` instead of its own record address |
+| `relocate` | bool | `true` \| `false` | Move a HEX/S-record image to `at` instead of its own record address |
 
 #### Board properties
 
@@ -282,13 +282,13 @@ Cromemco 16FDC: WD FD1793 soft-sector floppy (single + double density), up to 4 
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive (0..3) |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
 
 #### Board properties
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
-| `bootstrap` | bool | `true` | `on` \| `off` | The BOOT/MON strap. On (default): the RDOS ROM is mapped at C000 and ¬BOOT reads low, so RDOS boots the disk. Off: the ROM still answers but ¬BOOT reads high (the monitor prompt instead of an auto-boot) |
+| `bootstrap` | bool | `true` | `true` \| `false` | The BOOT/MON strap. On (default): the RDOS ROM is mapped at C000 and ¬BOOT reads low, so RDOS boots the disk. Off: the ROM still answers but ¬BOOT reads high (the monitor prompt instead of an auto-boot) |
 | `boot_drive` | enum | `A` | `A` \| `B` \| `C` \| `D` | The boot-drive switches (16FDC switches 7 and 8, 64FDC switches 3 and 4). RDOS reads them for an automatic boot, and for its B command with no drive letter |
 | `drives` | int | `4` | `1` .. `4` | Drives on the controller (A-D, one-hot select DS4-DS1) |
 | `timing` | enum | `full` | `full` \| `real` | Disk timing. full: a disk access completes at once. real: with Auto Wait armed, IN 34 holds READY until DRQ or the end of the command, so seek, head settle and byte times take emulated time, as on the board |
@@ -317,13 +317,13 @@ Cromemco 64FDC: the 16FDC's 1983 successor -- same FD1793 + TMS 5501, carrying a
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive (0..3) |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
 
 #### Board properties
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
-| `bootstrap` | bool | `true` | `on` \| `off` | The BOOT/MON strap. On (default): the RDOS ROM is mapped at C000 and ¬BOOT reads low, so RDOS boots the disk. Off: the ROM still answers but ¬BOOT reads high (the monitor prompt instead of an auto-boot) |
+| `bootstrap` | bool | `true` | `true` \| `false` | The BOOT/MON strap. On (default): the RDOS ROM is mapped at C000 and ¬BOOT reads low, so RDOS boots the disk. Off: the ROM still answers but ¬BOOT reads high (the monitor prompt instead of an auto-boot) |
 | `boot_drive` | enum | `A` | `A` \| `B` \| `C` \| `D` | The boot-drive switches (16FDC switches 7 and 8, 64FDC switches 3 and 4). RDOS reads them for an automatic boot, and for its B command with no drive letter |
 | `drives` | int | `4` | `1` .. `4` | Drives on the controller (A-D, one-hot select DS4-DS1) |
 | `timing` | enum | `full` | `full` \| `real` | Disk timing. full: a disk access completes at once. real: with Auto Wait armed, IN 34 holds READY until DRQ or the end of the command, so seek, head settle and byte times take emulated time, as on the board |
@@ -352,9 +352,9 @@ MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. 
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive on the daisy chain |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk. The DRIVE senses it, so the guest is never told: it writes, the head is inhibited, the bytes go nowhere *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the disk. The DRIVE senses it, so the guest is never told: it writes, the head is inhibited, the bytes go nowhere *(also `writeprotect`)* |
 | `media` | enum | `8in` \| `fdc8mb` | Force the format instead of probing the image's size |
-| `create` | bool | `on` \| `off` | Make the disk file (empty) if it is not there, then mount it -- a fresh disk to FORMAT. Pair with `media` to pick its geometry |
+| `create` | bool | `true` \| `false` | Make the disk file (empty) if it is not there, then mount it -- a fresh disk to FORMAT. Pair with `media` to pick its geometry |
 
 #### Board properties
 
@@ -377,9 +377,9 @@ CompuPro Disk 1 (1981), the Disk 1A's predecessor: an NEC uPD765A floppy control
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive (0..3) |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
 | `media` | enum | `8ss` \| `8ss-sd` \| `8ss-dd256` \| `8ss-dd512` \| `8ss-dd1024` \| `8ds` \| `8ds-sd` \| `8ds-dd256` \| `8ds-dd512` \| `8ds-dd1024` | The diskette: its size and sides, such as 8ds, or a whole format, such as 8ds-dd1024. A blank disk needs it. Without it, the size of the image decides |
-| `create` | bool | `on` \| `off` | Make an empty disk file if it is not there, then mount it as a blank disk. A blank needs `media` |
+| `create` | bool | `true` \| `false` | Make an empty disk file if it is not there, then mount it as a blank disk. A blank needs `media` |
 
 #### Board properties
 
@@ -388,7 +388,7 @@ CompuPro Disk 1 (1981), the Disk 1A's predecessor: an NEC uPD765A floppy control
 | `port` | int | `0xC0` | `0x0` .. `0xFC` | Base address (S2-3..8). The board decodes four ports: BASE+0 .. BASE+3 (default C0) |
 | `rom` | string | `builtin:DISK1` | text | The boot EPROM: builtin:DISK1 (default), or a 2716 image file (Intel HEX, S-records or binary) |
 | `routine` | int | `4` | `0` .. `7` | Boot routine (S2-1..2 and J17): the 256-byte page of the EPROM at 0000. J17 at A adds 4. In builtin:DISK1, 4-7 are 8080/Z80 code (default 4) |
-| `boot` | bool | `true` | `on` \| `off` | Boot EPROM enable (S1-4). On (default, S1-4 OFF): the ROM answers reads at 0000-00FF over PHANTOM* after a reset. Off: a plain disk controller |
+| `boot` | bool | `true` | `true` \| `false` | Boot EPROM enable (S1-4). On (default, S1-4 OFF): the ROM answers reads at 0000-00FF over PHANTOM* after a reset. Off: a plain disk controller |
 | `port3` | enum | `serial` | `serial` \| `motor` | S1-3: what the port 3 D7 latch drives. serial (default): the RS-232 output line. motor: the MOTOR ON line of the minifloppy cable, D7 = 0 on |
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the 765's INT goes (J0-J7 = vi0-vi7, J8 = int; default none, polled) *(interrupt strap)* |
 
@@ -412,9 +412,9 @@ CompuPro Disk 1A: an NEC uPD765A floppy controller for 8" and 5.25" drives, sing
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive (0..3) |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
 | `media` | enum | `8ss` \| `8ss-sd` \| `8ss-dd256` \| `8ss-dd512` \| `8ss-dd1024` \| `8ds` \| `8ds-sd` \| `8ds-dd256` \| `8ds-dd512` \| `8ds-dd1024` \| `5ss` \| `5ss-sd` \| `5ss-dd256` \| `5ss-dd512` \| `5ss-dd1024` \| `5ds` \| `5ds-sd` \| `5ds-dd256` \| `5ds-dd512` \| `5ds-dd1024` | The diskette: its size and sides, such as 8ds, or a whole format, such as 8ds-dd1024. A blank disk needs it. Without it, the size of the image decides |
-| `create` | bool | `on` \| `off` | Make an empty disk file if it is not there, then mount it as a blank disk. A blank needs `media` |
+| `create` | bool | `true` \| `false` | Make an empty disk file if it is not there, then mount it as a blank disk. A blank needs `media` |
 
 #### Board properties
 
@@ -423,9 +423,9 @@ CompuPro Disk 1A: an NEC uPD765A floppy controller for 8" and 5.25" drives, sing
 | `port` | int | `0xC0` | `0x0` .. `0xFC` | Base address (S3-2..7). The board decodes four ports: BASE+0 .. BASE+3 (default C0) |
 | `rom` | string | `builtin:DISK1A` | text | The boot EPROM: builtin:DISK1A (default), or a 2764 image file (Intel HEX, S-records or binary) |
 | `routine` | int | `0` | `0` .. `15` | Boot routine (S1-2..5): the 512-byte page of the EPROM at 0000. 0-3 are 8080/Z80 code |
-| `boot` | bool | `true` | `on` \| `off` | Boot EPROM enable (S3-8). On (default): the ROM answers reads at 0000-01FF over PHANTOM* after a reset. Off: a plain disk controller |
-| `sense_switch` | bool | `true` | `on` \| `off` | S3-1, read in status bit 2. On (default, reads 0): the CompuPro ROM tells the OS to use a System Support 1 console. Off: an Interfacer 3/4 |
-| `mini_motor_control` | bool | `true` | `on` \| `off` | Jumper J11, in the 5.25" MTR ON line. On (default, J11 installed): bit 7 of the Motor Control Register runs the 5.25" motors, and they stop about 15 seconds after the last access. Off: the 5.25" motors run all the time. The 8" motors always follow bits 4-7 |
+| `boot` | bool | `true` | `true` \| `false` | Boot EPROM enable (S3-8). On (default): the ROM answers reads at 0000-01FF over PHANTOM* after a reset. Off: a plain disk controller |
+| `sense_switch` | bool | `true` | `true` \| `false` | S3-1, read in status bit 2. On (default, reads 0): the CompuPro ROM tells the OS to use a System Support 1 console. Off: an Interfacer 3/4 |
+| `mini_motor_control` | bool | `true` | `true` \| `false` | Jumper J11, in the 5.25" MTR ON line. On (default, J11 installed): bit 7 of the Motor Control Register runs the 5.25" motors, and they stop about 15 seconds after the last access. Off: the 5.25" motors run all the time. The 8" motors always follow bits 4-7 |
 | `interrupt` | enum | `vi4` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the 765's INT goes (J10; CompuPro used vi4) *(interrupt strap)* |
 
 
@@ -441,7 +441,7 @@ S100Computers IDE-AB (CF): the IDE/CompactFlash half of the IDE+ESP32 combinatio
 |---|---|---|---|
 | `unit` | int | `0` .. `1` | Which CF socket (0 = drive A:, 1 = drive B:) |
 | `mount` | string | text | The card image (a .img with a sibling .geo geometry) to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the card *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the card *(also `writeprotect`)* |
 
 #### Board properties
 
@@ -462,7 +462,7 @@ S100Computers Dual SD: two microSD sockets (drives 0/1) presented as raw 512-byt
 |---|---|---|---|
 | `unit` | int | `0` .. `1` | Which SD socket (0 = drive 1 / C:, 1 = drive 2 / D:) |
 | `mount` | string | text | The card image (a .img with a sibling .geo geometry) to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the card *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the card *(also `writeprotect`)* |
 
 #### Board properties
 
@@ -483,7 +483,7 @@ FarmTek FDC+ in serial-drive mode: an 88-DCDD/88-MDS-compatible controller with 
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive: 0-3. Drive type 5 only |
 | `mount` | string | text | The 1.5 MB disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk. The drive tells the card, and the card tells the 8080: status bit 4 *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the disk. The drive tells the card, and the card tells the 8080: status bit 4 *(also `writeprotect`)* |
 
 #### Board properties
 
@@ -507,7 +507,7 @@ MITS 88-HDSK Datakeeper: Pertec hard disk, 256-byte sectors from a linear .DSK. 
 |---|---|---|---|
 | `unit` | int | any | Which logical drive (slot = unit*2 + platter) |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the disk *(also `writeprotect`)* |
 
 #### Board properties
 
@@ -530,7 +530,7 @@ iCOM FD3712/FD3812 8" floppy: a programmed-I/O command/handshake controller on t
 |---|---|---|---|
 | `unit` | int | `0` .. `1` | Which drive (0..3) |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the disk *(also `writeprotect`)* |
 
 #### Board properties
 
@@ -553,7 +553,7 @@ Jade Double D Rev C: an intelligent double-density floppy controller with its ow
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive (0..3) |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
 
 #### Board properties
 
@@ -561,7 +561,7 @@ Jade Double D Rev C: an intelligent double-density floppy controller with its ow
 |---|---|---|---|---|
 | `port` | int | `0x43` | `0x40` .. `0x43` | The host I/O port, set by switches P0 and P1: 40, 41, 42 or 43 (default 43, the port the Jade software uses) |
 | `window` | int | `0xE000` | `0xE000` .. `0xFC00` | Where the host sees the 1 K memory window, set by switches M10-M12: a 1 K boundary from E000 to FC00 (default E000) |
-| `phantom` | bool | `false` | `on` \| `off` | The PHAN* jumper. On: the board pulls PHANTOM* while the host reads the window, so the window can overlap RAM that honors PHANTOM* |
+| `phantom` | bool | `false` | `true` \| `false` | The PHAN* jumper. On: the board pulls PHANTOM* while the host reads the window, so the window can overlap RAM that honors PHANTOM* |
 | `interrupt` | enum | `none` | `none` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | The VI line the board pulls when its Z80 has halted (none by default) *(interrupt strap)* |
 | `size` | enum | `8` | `8` \| `5` | The CLOCK SELECT jumper. 8: 8-inch drives, Z80 at 4 MHz, FD1791 at 2 MHz. 5: 5.25-inch drives, Z80 at 2 MHz, FD1791 at 1 MHz |
 
@@ -578,9 +578,9 @@ MITS 88-MDS: 5.25" minidisk, 4 drives. Same three ports as the dcdd -- but 300 R
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive on the daisy chain |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk. The DRIVE senses it, so the guest is never told: it writes, the head is inhibited, the bytes go nowhere *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the disk. The DRIVE senses it, so the guest is never told: it writes, the head is inhibited, the bytes go nowhere *(also `writeprotect`)* |
 | `media` | enum | `minidisk` | Force the format instead of probing the image's size |
-| `create` | bool | `on` \| `off` | Make the disk file (empty) if it is not there, then mount it -- a fresh disk to FORMAT. Pair with `media` to pick its geometry |
+| `create` | bool | `true` \| `false` | Make the disk file (empty) if it is not there, then mount it -- a fresh disk to FORMAT. Pair with `media` to pick its geometry |
 
 #### Board properties
 
@@ -604,9 +604,9 @@ North Star MDS-A: single-density 5.25" hard-sector floppy, up to 3 drives. No po
 |---|---|---|---|
 | `unit` | int | `0` .. `2` | Which drive. Unit 0 is the drive that North Star calls drive 1 |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the diskette. The guest sees it in the WP status bit *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the diskette. The guest sees it in the WP status bit *(also `writeprotect`)* |
 | `media` | enum | `sd` | Force the format instead of probing the image's size |
-| `create` | bool | `on` \| `off` | Make the disk file (empty) if it is not there, then mount it -- a blank diskette for the guest to format |
+| `create` | bool | `true` \| `false` | Make the disk file (empty) if it is not there, then mount it -- a blank diskette for the guest to format |
 
 #### Board properties
 
@@ -631,9 +631,9 @@ North Star MDS-A-D: double-density 5.25" hard-sector floppy (single, double and 
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive. Unit 0 is the drive that North Star calls drive 1 |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the diskette. The guest sees it in the WP status bit *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the diskette. The guest sees it in the WP status bit *(also `writeprotect`)* |
 | `media` | enum | `sd` \| `dd` \| `quad` | Force the format instead of probing the image's size |
-| `create` | bool | `on` \| `off` | Make the disk file (empty) if it is not there, then mount it -- a blank diskette for the guest to format |
+| `create` | bool | `true` \| `false` | Make the disk file (empty) if it is not there, then mount it -- a blank diskette for the guest to format |
 
 #### Board properties
 
@@ -658,13 +658,13 @@ Tarbell #1011: single-density WD FD1771 floppy, up to 4 drives. Eight ports at B
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive (0..3) |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
 
 #### Board properties
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
-| `bootstrap` | bool | `true` | `on` \| `off` | The boot-PROM enable DIP. On (default): the 32-byte PROM shadows 0000 over PHANTOM* at reset and boots the disk. Off: a plain disk controller, no PROM |
+| `bootstrap` | bool | `true` | `true` \| `false` | The boot-PROM enable DIP. On (default): the 32-byte PROM shadows 0000 over PHANTOM* at reset and boots the disk. Off: a plain disk controller, no PROM |
 | `port` | int | `0xF8` | `0x0` .. `0xF8` | Base address. The board decodes eight ports: BASE+0 .. BASE+7 (default F8) |
 | `drives` | int | `4` | `1` .. `4` | Drives on the controller (binary select 0-3) |
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the card's interrupt is soldered *(interrupt strap)* |
@@ -683,13 +683,13 @@ Tarbell #2022: double-density WD FD1791 floppy (mixed-density media, SD track 0)
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive (0..3) |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
 
 #### Board properties
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
-| `bootstrap` | bool | `true` | `on` \| `off` | The boot-PROM enable DIP. On (default): the 32-byte PROM shadows 0000 over PHANTOM* at reset and boots the disk. Off: a plain disk controller, no PROM |
+| `bootstrap` | bool | `true` | `true` \| `false` | The boot-PROM enable DIP. On (default): the 32-byte PROM shadows 0000 over PHANTOM* at reset and boots the disk. Off: a plain disk controller, no PROM |
 | `port` | int | `0xF8` | `0x0` .. `0xF8` | Base address. The board decodes eight ports: BASE+0 .. BASE+7 (default F8) |
 | `drives` | int | `4` | `1` .. `4` | Drives on the controller (binary select 0-3) |
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the card's interrupt is soldered *(interrupt strap)* |
@@ -709,7 +709,7 @@ SD Systems VersaFloppy I/II: WD FD177x soft-sector floppy, up to 4 drives. Eight
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive (0..3) |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
+| `readonly` | bool | `true` \| `false` | Write-protect the disk. The drive senses it, so the guest is never told *(also `writeprotect`)* |
 | `media` | enum | `8sd` \| `8dd` \| `8dd256` \| `8sd-ds` \| `8dd-ds` \| `8dd256-ds` \| `5sd` \| `5sd-ds` \| `5dd` \| `5dd-ds` | Force the format instead of probing the image's size |
 
 #### Board properties
@@ -735,8 +735,8 @@ Vector Graphic Dual-Mode Disk Controller, floppy half: 4 drives of 77-track 16-h
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive, 0 to 3. Monitor 4.3 boots from drive 1 |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk. The guest reads it at status 0 bit 0, and the drive drops the write *(also `writeprotect`)* |
-| `create` | bool | `on` \| `off` | Make the disk file (empty) if it is not there, then mount it |
+| `readonly` | bool | `true` \| `false` | Write-protect the disk. The guest reads it at status 0 bit 0, and the drive drops the write *(also `writeprotect`)* |
+| `create` | bool | `true` \| `false` | Make the disk file (empty) if it is not there, then mount it |
 
 #### Board properties
 
@@ -757,8 +757,8 @@ Vector Graphic Micropolis Disk Controller Board: 4 drives of 77-track 16-hard-se
 |---|---|---|---|
 | `unit` | int | `0` .. `3` | Which drive, 0 to 3. The boot ROM reads drive 0 |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
-| `readonly` | bool | `on` \| `off` | Write-protect the disk. The guest reads it at status bit 4, and the board drops the write *(also `writeprotect`)* |
-| `create` | bool | `on` \| `off` | Make the disk file (empty) if it is not there, then mount it |
+| `readonly` | bool | `true` \| `false` | Write-protect the disk. The guest reads it at status bit 4, and the board drops the write *(also `writeprotect`)* |
+| `create` | bool | `true` \| `false` | Make the disk file (empty) if it is not there, then mount it |
 
 #### Board properties
 
@@ -826,7 +826,7 @@ Generic SIO: a strap-configurable serial board with TWO independent channels, un
 | `data_port` | int | `0x1` | `0x0` .. `0xFF` | Data port: receive(read)/transmit(write) |
 | `dav` | int | `0` | `0` .. `7` | Status bit (0-7) carrying DAV, data available (a byte to receive) |
 | `tbmt` | int | `7` | `0` .. `7` | Status bit (0-7) carrying TBMT, transmit buffer empty (ready to send) |
-| `inverter_gate` | bool | `true` | `on` \| `off` | Route both status bits through the inverter gate -- asserted DAV/TBMT read 0 (active low) |
+| `inverter_gate` | bool | `true` | `true` \| `false` | Route both status bits through the inverter gate -- asserted DAV/TBMT read 0 (active low) |
 | `baud` | int | `9600` | any | Line rate programmed onto a CONNECTed real serial port (8N1). Inert on a socket/file; does not pace the emulated line |
 | `connect` | string | `null` | text | The endpoint on the serial line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
 
@@ -839,7 +839,7 @@ Generic SIO: a strap-configurable serial board with TWO independent channels, un
 | `data_port` | int | `0x3` | `0x0` .. `0xFF` | Data port: receive(read)/transmit(write) |
 | `dav` | int | `0` | `0` .. `7` | Status bit (0-7) carrying DAV, data available (a byte to receive) |
 | `tbmt` | int | `7` | `0` .. `7` | Status bit (0-7) carrying TBMT, transmit buffer empty (ready to send) |
-| `inverter_gate` | bool | `true` | `on` \| `off` | Route both status bits through the inverter gate -- asserted DAV/TBMT read 0 (active low) |
+| `inverter_gate` | bool | `true` | `true` \| `false` | Route both status bits through the inverter gate -- asserted DAV/TBMT read 0 (active low) |
 | `baud` | int | `9600` | any | Line rate programmed onto a CONNECTed real serial port (8N1). Inert on a socket/file; does not pace the emulated line |
 | `connect` | string | `null` | text | The endpoint on the serial line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
 
@@ -854,14 +854,14 @@ CompuPro Interfacer 1 (Godbout 133H): two serial channels 'a' and 'b', each a re
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
-| `swap_ports` | bool | `false` | `on` \| `off` | J14: move the trace from B-C to A-B, so both channels have status at the switch address and data at +1. Off (factory) = data first, status second |
+| `swap_ports` | bool | `false` | `true` \| `false` | J14: move the trace from B-C to A-B, so both channels have status at the switch address and data at +1. Off (factory) = data first, status second |
 
 #### Unit `a` — `[board.unit.a]`
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `port` | int | `0x0` | `0x0` .. `0xFE` | Switch S2 (Channel A) / S3 (Channel B), positions 1-7: the channel's 2-port block, A7-A1, so an even address |
-| `enabled` | bool | `true` | `on` \| `off` | Switch S2/S3 position 8: off = ON = the channel is removed from the I/O space |
+| `enabled` | bool | `true` | `true` \| `false` | Switch S2/S3 position 8: off = ON = the channel is removed from the I/O space |
 | `baud` | enum | `9600` | `50` \| `75` \| `110` \| `134.5` \| `150` \| `300` \| `600` \| `1200` \| `1800` \| `2000` \| `2400` \| `3600` \| `4800` \| `7200` \| `9600` \| `19200` | Switch S1 (positions 1-4 for A, 5-8 for B): the BR1941 rate |
 | `data_bits` | enum | `8` | `7` \| `8` | Power-up NBI (J7/J8 1-16 = 7, 2-15 = 8). Control bit D7 flips it |
 | `parity_sense` | enum | `odd` | `odd` \| `even` | Power-up EPS (J7/J8 3-14 = odd, 4-13 = even). Control bit D6 flips it |
@@ -882,7 +882,7 @@ CompuPro Interfacer 1 (Godbout 133H): two serial channels 'a' and 'b', each a re
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `port` | int | `0x2` | `0x0` .. `0xFE` | Switch S2 (Channel A) / S3 (Channel B), positions 1-7: the channel's 2-port block, A7-A1, so an even address |
-| `enabled` | bool | `true` | `on` \| `off` | Switch S2/S3 position 8: off = ON = the channel is removed from the I/O space |
+| `enabled` | bool | `true` | `true` \| `false` | Switch S2/S3 position 8: off = ON = the channel is removed from the I/O space |
 | `baud` | enum | `9600` | `50` \| `75` \| `110` \| `134.5` \| `150` \| `300` \| `600` \| `1200` \| `1800` \| `2000` \| `2400` \| `3600` \| `4800` \| `7200` \| `9600` \| `19200` | Switch S1 (positions 1-4 for A, 5-8 for B): the BR1941 rate |
 | `data_bits` | enum | `8` | `7` \| `8` | Power-up NBI (J7/J8 1-16 = 7, 2-15 = 8). Control bit D7 flips it |
 | `parity_sense` | enum | `odd` | `odd` \| `even` | Power-up EPS (J7/J8 3-14 = odd, 4-13 = even). Control bit D6 flips it |
@@ -923,8 +923,8 @@ SSM IO-4 (2P+2S): the real Solid State Music board -- two full-duplex serial cha
 | `stat_ror` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying ROR, receiver over-run (0-7 \| none; always inactive) |
 | `stat_rpe` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying RPE, receiver parity error (0-7 \| none; always inactive) |
 | `stat_rfe` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying RFE, receiver framing error (0-7 \| none; always inactive) |
-| `invert_status` | bool | `true` | `on` \| `off` | Invert every status bit -- a 74368 buffer (negative sense): an asserted signal reads 0, an inactive one reads 1. Off = 74367 (positive sense) |
-| `port_reversal` | bool | `false` | `on` \| `off` | Reverse the channel's two ports (S1/S2-PR): off = status first, data last (MITS, Proc Tech); on = data first, status last (IMSAI) |
+| `invert_status` | bool | `true` | `true` \| `false` | Invert every status bit -- a 74368 buffer (negative sense): an asserted signal reads 0, an inactive one reads 1. Off = 74367 (positive sense) |
+| `port_reversal` | bool | `false` | `true` \| `false` | Reverse the channel's two ports (S1/S2-PR): off = status first, data last (MITS, Proc Tech); on = data first, status last (IMSAI) |
 | `rx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the receive interrupt (a new character, DAV) is strapped on header W4: none \| int \| vi0..vi7. Canonical: vi1 (Serial A) / vi0 (Serial B) *(interrupt strap)* |
 | `tx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the transmit interrupt (buffer empty, TBMT) is strapped on header W4: none \| int \| vi0..vi7. It is a LEVEL -- held while the transmitter is idle. Canonical: vi2 (Serial A) / vi3 (Serial B) *(interrupt strap)* |
 | `baud` | int | `9600` | `50` .. `25000` | Line rate (header W3). RX and TX share one rate here -- a real host serial port cannot be split. Canonical IO-4 rates: 55-9600 |
@@ -944,8 +944,8 @@ SSM IO-4 (2P+2S): the real Solid State Music board -- two full-duplex serial cha
 | `stat_ror` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying ROR, receiver over-run (0-7 \| none; always inactive) |
 | `stat_rpe` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying RPE, receiver parity error (0-7 \| none; always inactive) |
 | `stat_rfe` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit carrying RFE, receiver framing error (0-7 \| none; always inactive) |
-| `invert_status` | bool | `true` | `on` \| `off` | Invert every status bit -- a 74368 buffer (negative sense): an asserted signal reads 0, an inactive one reads 1. Off = 74367 (positive sense) |
-| `port_reversal` | bool | `false` | `on` \| `off` | Reverse the channel's two ports (S1/S2-PR): off = status first, data last (MITS, Proc Tech); on = data first, status last (IMSAI) |
+| `invert_status` | bool | `true` | `true` \| `false` | Invert every status bit -- a 74368 buffer (negative sense): an asserted signal reads 0, an inactive one reads 1. Off = 74367 (positive sense) |
+| `port_reversal` | bool | `false` | `true` \| `false` | Reverse the channel's two ports (S1/S2-PR): off = status first, data last (MITS, Proc Tech); on = data first, status last (IMSAI) |
 | `rx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the receive interrupt (a new character, DAV) is strapped on header W4: none \| int \| vi0..vi7. Canonical: vi1 (Serial A) / vi0 (Serial B) *(interrupt strap)* |
 | `tx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the transmit interrupt (buffer empty, TBMT) is strapped on header W4: none \| int \| vi0..vi7. It is a LEVEL -- held while the transmitter is idle. Canonical: vi2 (Serial A) / vi3 (Serial B) *(interrupt strap)* |
 | `baud` | int | `9600` | `50` .. `25000` | Line rate (header W3). RX and TX share one rate here -- a real host serial port cannot be split. Canonical IO-4 rates: 55-9600 |
@@ -961,7 +961,7 @@ SSM IO-4 (2P+2S): the real Solid State Music board -- two full-duplex serial cha
 | `connect` | string | `null` | text | The endpoint on this parallel port's line (CONNECT sets this): a file, socket, printer, in:/out: file, null. A WRITE latches out; a byte the far end sends is strobed into the input latch |
 | `dav_bit` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit a data-available flag is jumpered onto when this port is read (§3.2.2 status/data console): 0-7, or none |
 | `dav_source` | enum | `self` | `self` \| `sibling` | Whose service request the dav_bit shows: self (this port's) or sibling (the other parallel port's -- the status/data console reads the data port's flag at the status port) |
-| `dav_active_low` | bool | `false` | `on` \| `off` | Present the data-available flag active-low -- the dav_bit reads 0 when a byte is waiting (§3.2.2 "D0 going low"). Off = active-high |
+| `dav_active_low` | bool | `false` | `true` \| `false` | Present the data-available flag active-low -- the dav_bit reads 0 when a byte is waiting (§3.2.2 "D0 going low"). Off = active-high |
 | `int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where this parallel input's interrupt (a byte latched in, service request) is strapped on header W4: none \| int \| vi0..vi7. Canonical: vi6 (Parallel A) / vi5 (Parallel B) *(interrupt strap)* |
 
 #### Unit `pb` — `[board.unit.pb]`
@@ -971,7 +971,7 @@ SSM IO-4 (2P+2S): the real Solid State Music board -- two full-duplex serial cha
 | `connect` | string | `null` | text | The endpoint on this parallel port's line (CONNECT sets this): a file, socket, printer, in:/out: file, null. A WRITE latches out; a byte the far end sends is strobed into the input latch |
 | `dav_bit` | enum | `none` | `none` \| `0` \| `1` \| `2` \| `3` \| `4` \| `5` \| `6` \| `7` | Data-bus bit a data-available flag is jumpered onto when this port is read (§3.2.2 status/data console): 0-7, or none |
 | `dav_source` | enum | `self` | `self` \| `sibling` | Whose service request the dav_bit shows: self (this port's) or sibling (the other parallel port's -- the status/data console reads the data port's flag at the status port) |
-| `dav_active_low` | bool | `false` | `on` \| `off` | Present the data-available flag active-low -- the dav_bit reads 0 when a byte is waiting (§3.2.2 "D0 going low"). Off = active-high |
+| `dav_active_low` | bool | `false` | `true` \| `false` | Present the data-available flag active-low -- the dav_bit reads 0 when a byte is waiting (§3.2.2 "D0 going low"). Off = active-high |
 | `int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where this parallel input's interrupt (a byte latched in, service request) is strapped on header W4: none \| int \| vi0..vi7. Canonical: vi6 (Parallel A) / vi5 (Parallel B) *(interrupt strap)* |
 
 
@@ -989,8 +989,8 @@ PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0.
 | `connect` | string | `null` | text | The endpoint on the phone line (CONNECT sets this). in:/out: a file, ... |
 | `dial` | string |  | text | Originate target host:port (empty = cannot dial). SH off-hook + DTR dials it; the guest's pulse digits are not decoded |
 | `answer` | string |  | text | Auto-answer TCP port (empty/0 = will not answer). DTR arms the listener; an inbound call RINGS until the guest answers with RI |
-| `rtsdtr` | bool | `false` | `on` \| `off` | Mirror DTR onto RTS on a CONNECTed serial port (for cables that need RTS asserted to pass data). Default off |
-| `telnet` | bool | `true` | `on` \| `off` | Speak the Telnet protocol on a dial=/answer= line, for a human telnet client (no double echo, character-at-a-time). Default on; telnet=off for a raw pipe to another simulator |
+| `rtsdtr` | bool | `false` | `true` \| `false` | Mirror DTR onto RTS on a CONNECTed serial port (for cables that need RTS asserted to pass data). Default off |
+| `telnet` | bool | `true` | `true` \| `false` | Speak the Telnet protocol on a dial=/answer= line, for a human telnet client (no double echo, character-at-a-time). Default on; telnet=off for a raw pipe to another simulator |
 | `frame` | string | — | — | Live UART frame (show-only), e.g. 8N1. Set by OUT BA+0 bits 2-6 **(show-only — not a key you may set)** |
 | `baud` | int | — | — | Live line rate (show-only), 250000/(16*N) from the OUT BA+2 divisor **(show-only — not a key you may set)** |
 | `uart` | string | — | — | Live UART status (show-only). CAPITALS = asserted: TBMT DAV **(show-only — not a key you may set)** |
@@ -1012,7 +1012,7 @@ S100Computers Console IO Board (Parallax-Propeller console), unit 'serial'. A st
 | `data_port` | int | `0x1` | `0x0` .. `0xFF` | Data port: receive(read)/transmit(write) |
 | `dav` | int | `1` | `0` .. `7` | Status bit (0-7) carrying DAV, data available (a byte to receive) |
 | `tbmt` | int | `2` | `0` .. `7` | Status bit (0-7) carrying TBMT, transmit buffer empty (ready to send) |
-| `inverter_gate` | bool | `false` | `on` \| `off` | Route both status bits through the inverter gate -- asserted DAV/TBMT read 0 (active low) |
+| `inverter_gate` | bool | `false` | `true` \| `false` | Route both status bits through the inverter gate -- asserted DAV/TBMT read 0 (active low) |
 | `baud` | int | `9600` | any | Line rate programmed onto a CONNECTed real serial port (8N1). Inert on a socket/file; does not pace the emulated line |
 | `connect` | string | `null` | text | The endpoint on the serial line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
 
@@ -1035,11 +1035,11 @@ SD Systems SBC-100/200: Z80 single-board computer. One 8-port block (78-7F): Int
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `variant` | enum | `sbc200` | `sbc100` \| `sbc200` | Which board: sbc100 (2.4576 MHz) or sbc200 (4 MHz). The console, CTC and PROM behave alike here; the CPU crystal is set on the z80 card |
-| `rxd2dsr` | bool | `true` | `on` \| `off` | RxD strapped to /DSR (the SBC auto-baud jumper). Off = a plain 8251 /DSR |
+| `rxd2dsr` | bool | `true` | `true` \| `false` | RxD strapped to /DSR (the SBC auto-baud jumper). Off = a plain 8251 /DSR |
 | `port` | int | `0x7C` | `0x0` .. `0xFE` | Base I/O address (a card jumper). Data at BASE, status/command at BASE+1. The etch default is 7C |
 | `rom_size` | enum | `2K` | `1K` \| `2K` \| `4K` \| `8K` | Size of each PROM socket (the X1 jumpers): 1K, 2K, 4K or 8K. The etch is 2K |
 | `bank` | int | `3` | `0` .. `7` | Which bank the onboard memory is in (the X1 jumpers). A bank is eight sockets' worth: 0-7 for 1K, 0-3 for 2K, 0-1 for 4K, 0 for 8K. The etch is 3 (C000-FFFF) |
-| `ram` | bool | `true` | `on` \| `off` | The onboard 1K static RAM is jumpered in (X3-15 to X3-16). It is the last socket's worth of the bank: F800-FFFF on the etch |
+| `ram` | bool | `true` | `true` \| `false` | The onboard 1K static RAM is jumpered in (X3-15 to X3-16). It is the last socket's worth of the bank: F800-FFFF on the etch |
 | `start` | int | `0x0` | `0x0` .. `0xF000` | Auto-start address (the X16/X17/X18 jumpers): after a reset the Z80 reads the PROM here. A multiple of 1000; 0000 = no auto-start |
 
 #### Unit `tty` — `[board.unit.tty]`
@@ -1616,7 +1616,7 @@ Host Bridge: guest <-> host file transfer, sandboxed. OUR OWN BOARD, not a perio
 | `port` | int | `0xB0` | `0x0` .. `0xFE` | Base port. Two ports: BASE+0 command/status, BASE+1 data |
 | `hostdir` | string |  | text | The sandbox root. Guest names resolve here and CANNOT escape it. Empty = the shell's working directory |
 | `hostdir_root` | string | — | — | LIVE: the sandbox root as RESOLVED -- the actual directory the guest is fenced into. Show-only; `hostdir` is what was written. **(show-only — not a key you may set)** |
-| `readonly` | bool | `false` | `on` \| `off` | Refuse OPEN_WRITE and DELETE -- the guest may read the host, not change it |
+| `readonly` | bool | `false` | `true` \| `false` | Refuse OPEN_WRITE and DELETE -- the guest may read the host, not change it |
 
 
 ### `rtc100`

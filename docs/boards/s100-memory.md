@@ -262,16 +262,12 @@ mem0  (memory)
   seed             1                   
   pages            0000-DFFF,FF00-FFFF (show-only)
 
-  [[board.region]]  (in a machine file)
-
-  key              type             legal
-  ---------------- ---------------- ----------
-  type             enum             ram|rom
-  at               int              0000..FFFF
-  size             int              1..65536
-  mount            string           
-  relocate         bool             true|false
+  [[board.region]] keys: SHOW BOARD memory UNITS
 ```
+
+The last line names the command that lists the keys of a region. `SHOW BOARD memory UNITS`
+prints each key with its help. `HELP REGION` lists the same keys, because `REGION ADD` takes
+them too.
 
 **`pages` is the hole, stated as a range list.** This card answers for `0000-DFFF` and
 `FF00-FFFF` and nothing else, so `E000-FEFF` is unpopulated and reads there float to `FF`. That

@@ -12,6 +12,19 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**`HELP REGION` lists every key, and each key table says where its keys work.** Before,
+`HELP REGION` did not list `relocate`. `SHOW <id>` labelled the keys of `[[board.region]]`
+`(in a machine file)`, but `REGION ADD` takes the same keys. Now `HELP REGION` lists every key
+from the memory board's own list of keys, with the help for each key. `SHOW BOARD memory UNITS`
+labels the region keys `(in a machine file, or REGION ADD)`. `SHOW <id>` now prints one line in
+place of the key table, and the line names `SHOW BOARD <type> UNITS`. The keys are the same for
+every board of a type.
+
+**`SHOW BOARD` and the board reference list a true/false property as `true | false`.** Before,
+they listed `on | off`, but the `default:` line of the same property printed `true`. `SHOW <id>`,
+`CONFIG SAVE` and the error for a wrong value all use `true` and `false`. The monitor still
+accepts `on`, `off`, `yes` and `no`.
+
 **`SHOW` tables line up, and a property that you cannot set is marked `(show-only)`.** Before,
 each column of a `SHOW` table had a fixed width. A longer entry moved the next column to the
 right, and the text of the next column then looked like part of the entry. For example,

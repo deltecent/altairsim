@@ -99,7 +99,7 @@ Type the part before the bracket.
 | `PA[STE]` | Send a host file of any size to the guest's keyboard, as if pasted. | `PASTE <file>` |
 | `P[OWER]` | Power-cycle the machine -- the only thing that clears RAM. | `POWER` |
 | `Q[UIT]` | Leave the simulator. | `QUIT` |
-| `REGI[ON]` | Add a RAM or ROM region to a memory board. | `REGION ADD <id> type=ram\|rom at=<addr> [size=\|mount=]` |
+| `REGI[ON]` | Add a RAM or ROM region to a memory board. | `REGION ADD <id> type=ram\|rom at=<addr> [<key>=<value>...]` |
 | `RE[GS]` | Show the CPU registers (SET REG changes one). | `REGS \| SET REG <r>=<v>` |
 | `RES[ET]` | Reset the machine, keeping RAM (RESET CPU resets just the processor). | `RESET [CPU]` |
 | `REST[ORE]` | Load machine state back from a snapshot. | `RESTORE <file>` |

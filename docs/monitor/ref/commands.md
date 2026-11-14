@@ -1086,7 +1086,7 @@ file's own mounts come from -- as SHOW PATHS describes.
 ### REGION — `REGI[ON]`
 
 ```
-REGION ADD <id> type=ram|rom at=<addr> [size=|mount=]
+REGION ADD <id> type=ram|rom at=<addr> [<key>=<value>...]
 ```
 A region is a POPULATED part of a board. What is not covered by one is an
 empty socket: it decodes nothing and floats to FF. `at` is an address, so it
@@ -1095,6 +1095,24 @@ is hex; `size` is a size, so it is decimal, and K/M work.
 ```
 REGI ADD mem0 type=ram at=0 size=48K
 REGI ADD mem0 type=rom at=FF00 mount=builtin:dbl
+```
+
+REGION ADD takes these keys. A [[board.region]] table in a machine file
+takes the same keys.
+
+```
+type      ram|rom
+          RAM, or ROM (which needs a `mount`, unless you want an empty
+          socket)
+at        0x0..0xFFFF
+          Where it starts. An address: 0000, F800
+size      1..65536
+          How much. Decimal, and it takes a suffix: 48K, 1024, 2M
+mount
+          The ROM image. A file (relative to THIS FILE), or builtin:<name>
+relocate  true|false
+          Move a HEX/S-record image to `at` instead of its own record
+          address
 ```
 
 

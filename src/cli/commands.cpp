@@ -1,5 +1,6 @@
 #include "cli/commands.h"
 
+#include <algorithm>
 #include <cctype>
 
 namespace altair {
@@ -590,13 +591,18 @@ static const std::vector<CommandDef> kCommands = {
      "  SET REG A=3F\n"
      "  SET REG PC=FF00\n"
      "  SET REG IX=8000  ; Z80 only"},
-    {"REGION", true, nullptr, "REGION ADD <id> type=ram|rom at=<addr> [size=|mount=]",  // REGI
+    {"REGION", true, nullptr, "REGION ADD <id> type=ram|rom at=<addr> [<key>=<value>...]",  // REGI
      "A region is a POPULATED part of a board. What is not covered by one is an\n"
      "empty socket: it decodes nothing and floats to FF. `at` is an address, so it\n"
      "is hex; `size` is a size, so it is decimal, and K/M work.\n"
      "\n"
      "  REGI ADD mem0 type=ram at=0 size=48K\n"
-     "  REGI ADD mem0 type=rom at=FF00 mount=builtin:dbl"},
+     "  REGI ADD mem0 type=rom at=FF00 mount=builtin:dbl\n"
+     "\n"
+     "REGION ADD takes these keys. A [[board.region]] table in a machine file\n"
+     "takes the same keys.\n"
+     "\n"
+     "{region-keys}"},
     {"DISASM", true, nullptr, "DISASM [<addr>|<range>] [n] [CPU=8080]",  // DI
      "It needs an INSTRUCTION SET, not a CPU -- so it works on an empty backplane.\n"
      "You normally never type CPU=: the active core says what it speaks, and DISASM\n"
@@ -971,11 +977,62 @@ const HelpTopic* findHelpTopic(const std::string& verb, const std::string& typed
     return nullptr;
 }
 
-std::string expandHelp(const std::string& detail, const std::string& endpoints) {
+// The keys, one entry each: the name and its legal values on one line, the key's help
+// wrapped under it. The legal text is the one SHOW prints for a property -- choices, a range
+// in the key's own radix, true|false, or a Str's own grammar.
+std::string keyListHelp(const std::vector<Property>& keys) {
+    size_t wKey = 0;
+    for (const auto& k : keys) wKey = std::max(wKey, k.name.size());
+    const size_t indent = 2 + wKey + 2;
+    const size_t width  = 76;  // HELP indents every line by two more
+
+    std::string out;
+    for (const auto& k : keys) {
+        std::string legal;
+        if (k.kind == Kind::Enum) {
+            for (const auto& c : k.choices) legal += (legal.empty() ? "" : "|") + c;
+        } else if (k.kind == Kind::Int && !(k.min == 0 && k.max == 0)) {
+            legal = Value::ofInt(k.min).text(k.radix) + ".." + Value::ofInt(k.max).text(k.radix);
+        } else if (k.kind == Kind::Bool) {
+            legal = "true|false";
+        }
+        if (legal.empty() && !k.values.empty()) legal = k.values;
+
+        std::string line = "  " + k.name + std::string(wKey - k.name.size() + 2, ' ') + legal;
+        while (!line.empty() && line.back() == ' ') line.pop_back();
+        out += line + "\n";
+
+        // The help, word-wrapped under the legal column.
+        std::string cur;
+        size_t      pos = 0;
+        while (pos < k.help.size()) {
+            size_t sp = k.help.find(' ', pos);
+            if (sp == std::string::npos) sp = k.help.size();
+            std::string word = k.help.substr(pos, sp - pos);
+            pos              = sp + 1;
+            if (word.empty()) continue;
+            if (!cur.empty() && indent + cur.size() + 1 + word.size() > width) {
+                out += std::string(indent, ' ') + cur + "\n";
+                cur.clear();
+            }
+            cur += (cur.empty() ? "" : " ") + word;
+        }
+        if (!cur.empty()) out += std::string(indent, ' ') + cur + "\n";
+    }
+    if (!out.empty()) out.pop_back();  // the help text supplies the line end after the token
+    return out;
+}
+
+static void replaceToken(std::string& d, const std::string& token, const std::string& with) {
+    for (size_t at = d.find(token); at != std::string::npos; at = d.find(token, at + with.size()))
+        d.replace(at, token.size(), with);
+}
+
+std::string expandHelp(const std::string& detail, const std::string& endpoints,
+                       const std::string& regionKeys) {
     std::string d = detail;
-    const std::string ep = "{endpoints}";
-    for (size_t at = d.find(ep); at != std::string::npos; at = d.find(ep, at + endpoints.size()))
-        d.replace(at, ep.size(), endpoints);
+    replaceToken(d, "{endpoints}", endpoints);
+    replaceToken(d, "{region-keys}", regionKeys);
 
     // {topic:VERB WORD}. A name that matches no topic is left as written, so a typo
     // shows in the output (and in the reference) instead of vanishing.

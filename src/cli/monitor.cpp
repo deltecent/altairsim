@@ -458,7 +458,10 @@ static std::vector<std::string> wrapText(const std::string& s, size_t width) {
 // radix, matching how its default prints.
 static std::string legalValues(const Property& p) {
     if (!p.values.empty()) return p.values;   // a hand-written hint (a free-form Str's grammar)
-    if (p.kind == Kind::Bool) return "on | off";
+    // A bool reads true | false: the spelling SHOW's value column, `default:`, CONFIG SAVE
+    // and the parser's own error all print, and the only one a TOML file allows. The parser
+    // also takes on/off and yes/no, but a list of what is legal names the one form.
+    if (p.kind == Kind::Bool) return "true | false";
     if (p.kind == Kind::Enum) {
         std::string o;
         for (size_t i = 0; i < p.choices.size(); ++i) {
@@ -1101,6 +1104,19 @@ static std::string roNote(const UnitDef& u) {
     return s + ")";
 }
 
+// The table REGION ADD fills. The command passes this name to loadSubUnit(), and the
+// heading below reads it, so the label cannot say a table's keys work in one place only
+// when the monitor takes them too (#921).
+static constexpr const char* kRegionTable = "region";
+
+// The heading of a sub-unit table's keys, with where those keys can be used: always a
+// machine file, and REGION ADD as well for the table it fills.
+static std::string subUnitHeading(const std::string& table) {
+    std::string h = "  [[board." + table + "]]  (in a machine file";
+    if (table == kRegionTable) h += ", or REGION ADD";
+    return h + ")";
+}
+
 void Monitor::showBoard(Board* b, std::ostream& out) {
     char buf[256];
     out << b->id << "  (" << b->type() << ")" << (b->enabled() ? "" : "  [DISABLED]") << "\n";
@@ -1161,76 +1177,15 @@ void Monitor::showBoard(Board* b, std::ostream& out) {
         showProps(up, out);
     }
 
-    // ...AND THE KEYS OF ITS SUB-UNIT TABLES, which is a question SHOW could not answer
-    // until the tables had a schema to answer it from. `readonly` was real, it worked, and
-    // the only way to find out it existed was to read the board's source -- which is how
-    // this bug was found (Patrick asked me to file it as a MISSING FEATURE).
-    //
-    // These have no value column and cannot have one: they describe a drive that does not
-    // exist yet. What is on the card ALREADY is above, in `units` -- this is what you may
-    // write in a machine file to put something there.
+    // ...AND WHERE TO FIND THE KEYS OF ITS SUB-UNIT TABLES. The keys belong to the board
+    // TYPE -- they have no value column, because they describe a drive or a region that
+    // does not exist yet -- so their table, and where each key can be used, is SHOW BOARD
+    // <type> UNITS's. This view points there instead of printing a second copy (#921).
+    // What is on the board ALREADY is above, in `units`.
     for (const auto& t : b->subUnitTables()) {
-        auto sp = b->subUnitProperties(t);
-        if (sp.empty()) continue;
-        out << "\n  [[board." << t << "]]  (in a machine file)\n";
-        showSchema(sp, out);
+        if (b->subUnitProperties(t).empty()) continue;
+        out << "\n  [[board." << t << "]] keys: SHOW BOARD " << b->type() << " UNITS\n";
     }
-}
-
-// The same six facts as showProps(), minus the value -- see above for why there isn't one.
-void Monitor::showSchema(const std::vector<Property>& ps, std::ostream& out) {
-    char buf[64];
-    size_t wKey = 16;
-    for (const auto& p : ps) {
-        wKey = std::max(wKey, p.name.size());
-        for (const auto& a : p.aliases) wKey = std::max(wKey, a.size());
-    }
-    // The rows go to a buffer first: the rule under the header is as wide as the
-    // longest legal text, and that is known only after every row is built.
-    std::ostringstream body;
-    size_t             wLegal = 5;  // "legal"
-    for (const auto& p : ps) {
-        const char* kind = "string";
-        std::string legal;
-        switch (p.kind) {
-        case Kind::Bool:
-            kind  = "bool";
-            legal = "true|false";
-            break;
-        case Kind::Enum:
-            kind = "enum";
-            for (const auto& c : p.choices) legal += (legal.empty() ? "" : "|") + c;
-            break;
-        case Kind::Int:
-            kind = "int";
-            // RADIX-AWARE, because `at` is an address: printing "0..65535" for a thing you
-            // write as F800 would be answering in a base the reader does not use here.
-            if (!(p.min == 0 && p.max == 0)) {
-                if (p.radix == 16)
-                    std::snprintf(buf, sizeof buf, "%04llX..%04llX", (unsigned long long)p.min,
-                                  (unsigned long long)p.max);
-                else
-                    std::snprintf(buf, sizeof buf, "%lld..%lld", p.min, p.max);
-                legal = buf;
-            }
-            break;
-        case Kind::Str: break;
-        }
-        // A free-form Str can still advertise a grammar (the ACR's `stop`); showProps does
-        // the same, so the schema view and the value view agree on that column.
-        if (legal.empty() && !p.values.empty()) legal = p.values;
-        wLegal = std::max(wLegal, std::min(kRuleCap, legal.size()));
-        body << "  " << padRight(p.name, wKey) << " " << padRight(kind, 16) << " " << legal
-             << "\n";
-
-        // A SECOND SPELLING GETS ITS OWN LINE, under the real one. It cannot share the key
-        // column: the name there is what CONFIG SAVE saves, and an operator reading a
-        // slash-separated pair has no way to tell which of the two that is.
-        for (const auto& a : p.aliases)
-            body << "  " << padRight(a, wKey) << " (another spelling of " << p.name << ")\n";
-    }
-    out << "\n  " << padRight("key", wKey) << " type             legal\n"
-        << headerRule({wKey, 16, wLegal}) << body.str();
 }
 
 void Monitor::showProps(const std::vector<Property>& ps, std::ostream& out) {
@@ -1244,8 +1199,8 @@ void Monitor::showProps(const std::vector<Property>& ps, std::ostream& out) {
         if (p.kind == Kind::Enum) {
             for (const auto& c : p.choices) legal += (legal.empty() ? "" : "|") + c;
         } else if (p.kind == Kind::Int && !(p.min == 0 && p.max == 0)) {
-            // RADIX-AWARE, for the reason showSchema() gives above -- and here the reason
-            // is sharper, because the VALUE is in the next column along. Printed decimal,
+            // RADIX-AWARE, because `at` is an address that you write as F800 -- and here
+            // the reason is sharper, because the VALUE is in the next column along. Printed decimal,
             // this row read `port  0xFC  0..252`: two bases side by side in one line, and
             // typing the number the column showed was then refused by an error in a THIRD
             // spelling (`port must be 0x0..0xFC`). Value::text() is what the value column
@@ -3487,7 +3442,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             // `HELP SET CONSOLE` is the console's full help (commands.h, HelpTopic).
             if (!fromBoard && a.size() >= 3)
                 if (const HelpTopic* t = findHelpTopic(h->name, a[2])) {
-                    std::string d = expandHelp(t->detail, endpointHelp());
+                    std::string d = expandHelp(t->detail, endpointHelp(), keyListHelp(MemoryBoard::regionKeys()));
                     out << "\n  " << t->usage << "\n\n  ";
                     for (char ch : d) {
                         out << ch;
@@ -3556,7 +3511,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 // So the literal names the token and the printer asks the owner.
                 // {topic:...} is the same idea for a shortcut: CONSOLE prints SET
                 // CONSOLE's text instead of keeping a copy of it (commands.h).
-                d = expandHelp(d, endpointHelp());
+                d = expandHelp(d, endpointHelp(), keyListHelp(MemoryBoard::regionKeys()));
 
                 out << "  ";
                 for (char ch : d) {
@@ -3710,9 +3665,9 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
     // off the same declaration, as it would be in a machine file. A board that grows a
     // different sub-unit table next year needs no change here.
     if (cmd == "REGION") {
-        if (!need(3, "REGION ADD <id> type=ram|rom at=<addr> [size=<n>|mount=<file>]")) return true;
+        if (!need(3, "REGION ADD <id> type=ram|rom at=<addr> [<key>=<value>...]")) return true;
         if (!is(a[1], "ADD")) {
-            out << "REGION ADD <id> type=... at=... [size=...|mount=...]\n";
+            out << "REGION ADD <id> type=ram|rom at=<addr> [<key>=<value>...]\n";
             failed_ = true;
             return true;
         }
@@ -3733,7 +3688,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             kv.push_back({a[i].substr(0, eq), a[i].substr(eq + 1)});
         }
         std::string err;
-        if (!b->loadSubUnit("region", kv, err)) {
+        if (!b->loadSubUnit(kRegionTable, kv, err)) {
             out << b->id << ": " << err << "\n";
             failed_ = true;
             return true;
@@ -3975,7 +3930,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 for (const auto& tbl : b->subUnitTables()) {
                     auto sp = b->subUnitProperties(tbl);
                     if (sp.empty()) continue;
-                    unitEntries.push_back({"  [[board." + tbl + "]]  (in a machine file)",
+                    unitEntries.push_back({subUnitHeading(tbl),
                                            tbl, std::move(sp)});
                 }
 
