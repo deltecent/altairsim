@@ -106,21 +106,36 @@ gap … 0xFC(index) … gap … 0xFE track side sector N 0xF7 … gap … 0xFB <
         ^ID address mark  ^length code               ^data address mark   ^CRC-generate
 ```
 
-Per sector: `sectorSize = 128 << N`, capture the first sector number as `startSector`, and
+Per sector: record the sector number R and the length code N from the ID field. Then
 **accumulate the data field until `0xF7`** — the CRC-generate byte, which can never appear as
 literal track data, so accumulate-until-`0xF7` is unambiguous (the `0xE5` fill and the `0xDD`
-density signature are ordinary data, not special). Then:
+density signature are ordinary data, not special).
 
-1. Derive `TrackFormat{density = (rate ≥ 500 kbit/s ? DD : SD), sectors, sectorSize, startSector}` and call
-   `img->setTrackFormat(head, side, tf)`. That marks the slot valid and re-runs `rebuild()`, so
-   the following tracks' offsets — and the growth cap — follow.
-2. Write each sector's payload by a **sequential 1..N counter** from `startSector`, ignoring the
-   header's possibly-skewed sector number, so the fill stays contiguous and the file grows in
-   order. **Write exactly the bytes the guest streamed — never fabricate or pad the fill.** A
-   data field shorter than the recorded `sectorSize` is a malformed track and `writeSector`
-   rejects it → WRITE FAULT, which is honest.
+The data address mark is any of `0xF8`-`0xFB`. `0xFB` is a normal data mark, and `0xF8`-`0xFA`
+are deleted data marks. A raw image has no place to keep the mark, so a field with a deleted
+mark is recorded as a normal sector. An ID field that has no data field is not a sector.
 
-Return `false` (→ WRITE FAULT) only if nothing parsed or a write could not land.
+A raw image keeps one `TrackFormat` for each track: one sector size, and sector numbers from
+`startSector` to `startSector + sectors - 1`. The ID fields can come in any order, because an
+interleaved format is the usual case. After the parse:
+
+1. Check that the fields fit one `TrackFormat`. All fields must have the same N. The lowest R is
+   `startSector`, and each number from `startSector` to `startSector + sectors - 1` must occur
+   one time. A track that fails this check has no image form. Return `false` (→ WRITE FAULT)
+   before the image changes. `formatTrack`, the µPD765A path, uses the same rules.
+2. Derive `TrackFormat{density, sectors, sectorSize = 128 << N, startSector}` and call
+   `img->setTrackFormat(head, side, tf)`. The density comes from the chip's DDEN pin, not from
+   the data rate. `setTrackFormat` marks the slot valid and re-runs `rebuild()`, so the
+   following tracks' offsets and the growth cap follow.
+3. Write each field's payload to the sector that its own R names, in ascending order of R. The
+   file then grows in order. A track streamed as R = 2 … 26, 1 is sectors 1-26, and the data
+   of each field of an interleaved track goes to its own sector (#931). **Write exactly the
+   bytes the guest streamed — never fabricate or pad the fill.** A data field shorter than the
+   recorded `sectorSize` is a malformed track and `writeSector` rejects it → WRITE FAULT, which
+   is honest.
+
+Return `false` (→ WRITE FAULT) if nothing parsed, if the track has no image form, or if a write
+could not land.
 
 ### A track that changes size moves the tail
 
