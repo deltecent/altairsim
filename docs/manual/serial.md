@@ -145,7 +145,9 @@ the guest a second terminal, connect unit `b`: write `sio0:b` at the monitor, or
 ### `socket:` or `telnet:`
 
 Both raise carrier when a caller connects, and drop it when the caller leaves. The guest cannot
-tell them apart. They differ in what they send to the far end:
+tell them apart. While no caller is connected, the line discards what the guest sends, and the
+guest does not wait. A caller who connects before `RUN` gets everything from the first byte.
+They differ in what they send to the far end:
 
 | | `socket:` | `telnet:` |
 |---|---|---|

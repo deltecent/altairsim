@@ -1684,6 +1684,64 @@ void test_mcp() {
                   .c_str());
     }
 
+    // #933: A CALLER WHO DIALED BEFORE THE RUN GETS THE GUEST'S FIRST BYTE. A listening line
+    // answers its caller only in pump(), and `run` and the free run each ran a slice of the
+    // guest BEFORE their first pump. So the guest's first output went to a line with no
+    // carrier and was discarded, although the caller had been waiting on it. The program at
+    // 0100 resets the 6850 on sio0:b, prints SEND\r\n there at once, and then loops.
+    // The machine is set up at the monitor, so the MCP session under test is the first one
+    // and the console is still there for `run` to take. The caller dials between the two.
+    auto firstBytesReachCaller = [&](const std::string& runReqs, const std::string& want,
+                                     const char* what) {
+        Machine m;
+        if (!loadAltmon(m)) return;
+        uint16_t port = freePort();
+        CHECK(port != 0, "the OS hands us a free port");
+        Monitor mon(m);
+        std::ostringstream sink;
+        mon.exec("DEPOSIT 100 31 00 02 3E 03 D3 12 3E 15 D3 12 21 30 01 7E B7 CA 21 01", sink);
+        mon.exec("DEPOSIT 113 DB 12 E6 02 CA 13 01 7E D3 13 23 C3 0E 01 C3 21 01", sink);
+        mon.exec("DEPOSIT 130 53 45 4E 44 0D 0A 00", sink);
+        mon.exec("CONNECT sio0:b socket:" + std::to_string(port), sink);
+
+        std::string err;
+        auto client = platform::connectTcp("127.0.0.1", port, err);
+        CHECK(client != nullptr, "the caller dials the listener");
+        if (!client) return;
+        CHECK(waitFor([&] { client->poll(); return client->established(); }),
+              "the caller is on the line before the guest runs");
+
+        auto rep = runScript(m, runReqs);
+        CHECK(!rep[1].at("result").has("isError"),
+              (std::string(what) + " is accepted and runs the guest").c_str());
+
+        std::string got;
+        waitFor([&] {
+            uint8_t buf[64];
+            client->poll();
+            for (size_t r; (r = client->read(buf, sizeof buf)) > 0;) got.append((char*)buf, r);
+            return got.size() >= want.size();
+        });
+        CHECK(got.compare(0, want.size(), want) == 0,
+              (std::string(what) + ": the caller got \"" + got + "\", from the first byte")
+                  .c_str());
+    };
+
+    SECTION("MCP: a caller waiting on a socket line gets a run's first byte (#933)");
+    firstBytesReachCaller(
+        R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"run","arguments":{"from":256,"timeout_ms":300}}})"
+        "\n",
+        "SEND\r\n", "run");
+
+    SECTION("MCP: a caller waiting on a socket line gets a free run's first byte (#933)");
+    // `start` then `stop`, queued together: the worker runs one slice between them.
+    firstBytesReachCaller(
+        R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"start","arguments":{"from":256}}})"
+        "\n"
+        R"({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"stop","arguments":{}}})"
+        "\n",
+        "S", "start");
+
     SECTION("MCP: a SIGINT to the process interrupts a wedged run (#488)");
     {
         // #488: `--mcp`'s stdin IS the JSON-RPC channel, so a caller has no in-band way to

@@ -65,7 +65,15 @@ the CPU. `monitor {command}` runs any one monitor command (`MOUNT`, `SET`, `DISA
 talk to each other, a person taking over through `--mirror` — use `start {from?, input?}`. It
 returns at once and the guest runs until `stop {}`, a HLT or a breakpoint. Every other tool
 still works meanwhile; `recv` collects the output, `status` says `running` or why it stopped.
-`run` and `step` are refused until you `stop`.
+`run`, `step` and `start` are refused until you `stop`.
+
+**When a host program talks to the guest on a `socket:PORT` unit**, read "A host program on
+a serial socket" in `references/driving-with-ai.md`. The rules:
+
+- Connect the host program before `start`. With no caller, the line discards what the guest sends.
+- The host write ends before the guest reads the bytes. Wait for a PC breakpoint, not a sleep.
+- Put the breakpoint after the routine prints, not on its first instruction.
+- Poll `status` until `stop_reason` is `breakpoint`. `start {}` continues from there.
 
 **For a person who wants to watch**, start the server with `--log FILE`: it writes what the
 guest prints to `FILE` as plain text. It is an ordinary file — they can `cat` it, open it, or

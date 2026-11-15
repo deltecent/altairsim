@@ -1975,6 +1975,11 @@ void Monitor::runMachine(std::ostream& out, bool stepOver) {
     // nap, at the bottom of the loop).
     clk::time_point idleSince{};
 
+    // #933: PUMP BEFORE THE FIRST SLICE. A listening line answers its caller only in
+    // pump(), and nothing pumps at the prompt. Without this, a caller who dialed before
+    // RUN lost what the guest printed in its first slice.
+    m_.pump();
+
     for (;;) {
         // A ^C THAT LANDED BETWEEN SLICES -- in the throttle's sleep, the pump, the
         // keyboard poll -- is caught here. Each slice used to clear the flag on entry,

@@ -12,6 +12,17 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**A caller on a `socket:` or `telnet:` line gets the first bytes of a run.** Before, a line
+that listens answered its caller only after the first slice of `RUN`, or of the MCP `run` and
+`start`. A caller who connected before the run lost what the guest sent in that slice. For
+example, a guest that printed `SEND` as it started reached the caller as `ND`. Now the line
+answers the caller before the guest runs, so the caller gets everything from the first byte.
+
+**DRIVING-WITH-AI has a section for a host program on a serial socket (issue #933).** It shows
+how a host program talks to a guest on a `socket:PORT` unit while the guest runs under
+`start`. It gives the rules: connect first, wait for a breakpoint and not for the host write,
+and put the breakpoint after the output.
+
 **Write Track records each sector under the number in its own ID field (issue #931).** Before,
 the WD17xx Write Track command numbered a track from the sector number of the first ID field.
 It stored the data fields in the order they came. A CDOS track streamed as sectors 2 … 16, 1
