@@ -133,21 +133,26 @@ int DiskImageDrive::trackImageBytes(long long rate) const {
 
 // Parse the raw track the guest streamed into `in` and (re)establish the addressed track's
 // geometry as we fill it. The stream is IBM 3740: gap bytes, an index mark (0xFC), then per
-// sector an ID field (0xFE track side sector N, then 0xF7) and a data field (0xFB, `sectorSize`
-// data bytes, then 0xF7). 0xF7 is the CRC-generate byte and can never appear as literal track
-// data, so accumulate-until-0xF7 is unambiguous; 0xE5 fill is ordinary data. See the format FSM
-// in docs/devguide/soft-sector-floppy.md, modelled on simh.mdsk/.../wd_17xx.c.
+// sector an ID field (0xFE track side sector N, then 0xF7) and a data field (a data address
+// mark 0xF8-0xFB, `sectorSize` data bytes, then 0xF7). 0xF7 is the CRC-generate byte and can
+// never appear as literal track data, so accumulate-until-0xF7 is unambiguous; 0xE5 fill is
+// ordinary data. See the format FSM in docs/devguide/soft-sector-floppy.md, modelled on
+// simh.mdsk/.../wd_17xx.c.
+//
+// A raw image keeps payloads only, so what it can record is a TrackFormat: one size and sector
+// numbers that run startSector..startSector+n-1. The fields may come in any order (an
+// interleaved format is the common case), so the start is the lowest sector number and each
+// field's data goes to the sector its own ID names -- the rules formatTrack applies to the
+// µPD765A. A track that does not fit that shape (mixed sizes, a gap in the numbers, a number
+// twice) is refused before the image is touched (#931).
 bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in, bool doubleDensity) {
     if (!img_) return false;
 
-    // Each parsed data field, as an (offset, length) window into `in` -- we copy nothing, and
-    // write straight from the buffer the chip already collected. The per-sector number and size
-    // are only meaningful for the FIRST sector (a track is uniform), so they are captured once
-    // as locals rather than stored per sector.
-    struct Field { size_t off, len; };
+    // Each parsed data field: its sector number and length code from the ID field, and an
+    // (offset, length) window into `in` -- we copy nothing, and write straight from the buffer
+    // the chip already collected.
+    struct Field { int sec, lenN; size_t off, len; };
     std::vector<Field> fields;
-    int startSector = 0;
-    int sectorSize  = 0;
 
     const size_t n = in.size();
     size_t       i = 0;
@@ -163,11 +168,14 @@ bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in, bool double
         const int lenN = in[i + 3] & 0x03;
         i += 4;
 
-        // Skip the ID CRC (0xF7) and the gap up to the data address mark. Bail to the outer
-        // scan if the next ID field arrives first -- an ID with no data field is not a sector.
-        while (i < n && in[i] != 0xFB && in[i] != 0xFE) ++i;
-        if (i >= n || in[i] != 0xFB) continue;
-        ++i;  // consume the 0xFB data address mark
+        // Skip the ID CRC (0xF7) and the gap up to the data address mark. 0xFB is a data mark
+        // and 0xF8-0xFA a deleted data mark; the image has no place to keep which one it was,
+        // so a deleted field is still a sector and its data lands. Bail to the outer scan if
+        // the next ID field arrives first -- an ID with no data field is not a sector.
+        auto isDataMark = [](uint8_t b) { return b >= 0xF8 && b <= 0xFB; };
+        while (i < n && !isDataMark(in[i]) && in[i] != 0xFE) ++i;
+        if (i >= n || !isDataMark(in[i])) continue;
+        ++i;  // consume the data address mark
 
         // The data field is EXACTLY the bytes the software streamed, up to the 0xF7 CRC-generate
         // terminator (which can never be literal data). We reference it in place -- no fabricated
@@ -176,34 +184,47 @@ bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in, bool double
         // writeSector rejects it below -> WRITE FAULT, which is honest.
         const size_t off = i;
         while (i < n && in[i] != 0xF7) ++i;
-        if (fields.empty()) { startSector = sec; sectorSize = 128 << lenN; }
-        fields.push_back({off, i - off});
+        fields.push_back({sec, lenN, off, i - off});
         if (i < n) ++i;  // consume the 0xF7
     }
 
     if (fields.empty()) return false;  // nothing legible -> WRITE FAULT (the chip sets S5)
 
-    // The track's geometry, derived from the stream: sector count from what we found, sector
-    // size and startSector from the first sector. Density comes from the CHIP's DDEN pin, the
-    // single source of truth (Wd17xx::doubleDensity, handed in). It is not read from the data
-    // rate: a 5.25" double-density track streams at 250 kbit/s, the 8" single-density rate.
-    // This is what lets one DD card format a mixed disk -- SD track 0, DD tracks 1-76 -- from
-    // the guest's per-track density bit.
+    // The track must have one image form: one size, and the numbers lo..lo+n-1 once each.
+    // `order[k]` is the field that holds sector lo+k, so the writes below go in ascending order.
+    const int lenN = fields[0].lenN;
+    int       lo   = fields[0].sec;
+    for (const Field& f : fields) {
+        if (f.lenN != lenN) return false;
+        if (f.sec < lo) lo = f.sec;
+    }
+    std::vector<size_t> order(fields.size(), fields.size());
+    for (size_t s = 0; s < fields.size(); ++s) {
+        const int k = fields[s].sec - lo;
+        if (k >= (int)fields.size() || order[(size_t)k] != fields.size()) return false;
+        order[(size_t)k] = s;
+    }
+
+    // Density comes from the CHIP's DDEN pin, the single source of truth (Wd17xx::doubleDensity,
+    // handed in). It is not read from the data rate: a 5.25" double-density track streams at
+    // 250 kbit/s, the 8" single-density rate. This is what lets one DD card format a mixed
+    // disk -- SD track 0, DD tracks 1-76 -- from the guest's per-track density bit.
     // setTrackFormat re-runs rebuild(), so the following tracks' offsets and the growth cap follow,
     // and a track that changes size moves the bytes after it (disk.h).
     TrackFormat tf;
     tf.density     = doubleDensity ? Density::DD : Density::SD;
     tf.sectors     = (int)fields.size();
-    tf.sectorSize  = sectorSize;
-    tf.startSector = startSector;
+    tf.sectorSize  = 128 << lenN;
+    tf.startSector = lo;
     img_->setTrackFormat(head_, side_, tf);
 
-    // Write each sector's fill by a SEQUENTIAL counter from startSector, ignoring the header's
-    // possibly-skewed sector number, so the fill stays contiguous and the file grows in order.
+    // Each field to the sector its own ID names, in ascending order, so a blank image grows in
+    // order with no gap to fill.
     bool ok = true;
-    for (size_t s = 0; ok && s < fields.size(); ++s) {
-        size_t len = fields[s].len;
-        ok = img_->writeSector(head_, side_, startSector + (int)s, in.data() + fields[s].off, &len);
+    for (size_t k = 0; ok && k < order.size(); ++k) {
+        const Field& f   = fields[order[k]];
+        size_t       len = f.len;
+        ok = img_->writeSector(head_, side_, lo + (int)k, in.data() + f.off, &len);
     }
     // One sync for the track (see writeData). setTrackFormat has already changed the image, so a
     // track that faults part way (false -> WRITE FAULT) is synced too: the file holds what landed.

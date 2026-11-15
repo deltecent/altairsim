@@ -12,6 +12,18 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**Write Track records each sector under the number in its own ID field (issue #931).** Before,
+the WD17xx Write Track command numbered a track from the sector number of the first ID field.
+It stored the data fields in the order they came. A CDOS track streamed as sectors 2 … 16, 1
+was recorded as sectors 2-17. A later Write Sector or Read Sector of sector 1
+then got Record Not Found. On an interleaved track, the data of each field went to the wrong
+sector. Write Track also accepted only `FB` as a data mark. A field with a deleted data mark
+(`F8`-`FA`) was not a sector, and the sectors after it moved down by one. Now the track starts
+at its lowest sector number, and the data of each field goes to the sector that its ID names.
+A field with a deleted data mark is a sector. The image cannot keep the deleted mark. A track
+with mixed sector sizes, a gap in the numbers, or one number two times gets WRITE FAULT. The
+µPD765A Format a Track command uses the same rules.
+
 **`R` and `W` refuse a name of more than 64 characters (issue #929).** Before, `R` copied each
 word of the command line with no limit. The buffer for the CP/M name held 20 bytes. A longer
 CP/M name wrote past the buffer into the stack of `R`. `R` then saved the file under a name

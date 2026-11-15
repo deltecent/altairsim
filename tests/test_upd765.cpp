@@ -734,6 +734,80 @@ void test_upd765() {
         CHECK(ro->syncs() == before, "...and syncs nothing");
     }
 
+    SECTION("DiskImageDrive -- Write Track keeps each field's own sector number (#931)");
+    {
+        // A raw IBM 3740 stream of 128-byte fields, one per {R, data mark, fill}. Sized up front
+        // and filled by index: GCC 15 -Warray-bounds misfires on a grown vector.
+        struct F { int r; uint8_t mark; uint8_t fill; uint8_t lenN; };
+        auto stream = [](const std::vector<F>& fs) {
+            const size_t         per = 6 + 11 + 1 + 128 + 1 + 27;  // ID, gap, mark, data, F7, gap
+            std::vector<uint8_t> t(41 + fs.size() * per, 0xFF);
+            t[40] = 0xFC;
+            for (size_t s = 0; s < fs.size(); ++s) {
+                const size_t  b      = 41 + s * per;
+                const uint8_t hdr[6] = {0xFE, 2, 0, (uint8_t)fs[s].r, fs[s].lenN, 0xF7};
+                for (size_t k = 0; k < 6; ++k) t[b + k] = hdr[k];
+                t[b + 17] = fs[s].mark;
+                for (size_t k = 0; k < 128; ++k) t[b + 18 + k] = fs[s].fill;
+                t[b + 18 + 128] = 0xF7;
+            }
+            return t;
+        };
+        auto         owned = std::make_unique<MemoryMedia>("t.dsk", std::vector<uint8_t>(256256, 0x00));
+        MemoryMedia* m     = owned.get();
+        DiskImage    img(std::move(owned));
+        img.init(77, 1, false);
+        img.initFormat(0, 76, 0, 0, Density::SD, 26, 128, 1);
+        DiskImageDrive dd;
+        dd.mount(&img, false);
+        dd.setHeadTrack(2);
+        dd.setFormatting(true);
+        // Each sector holds its own number as fill: true when every one of 1..26 reads back so.
+        auto ownFill = [&img]() {
+            for (int r = 1; r <= 26; ++r) {
+                uint8_t buf[128];
+                size_t  len = sizeof buf;
+                if (!img.readSector(2, 0, r, buf, &len) || len != 128 || buf[0] != r || buf[127] != r)
+                    return false;
+            }
+            return true;
+        };
+
+        std::vector<F> fs;
+        for (int r = 2; r <= 26; ++r) fs.push_back({r, 0xFB, (uint8_t)r, 0});
+        fs.push_back({1, 0xFB, 1, 0});
+        CHECK(dd.writeTrackImage(stream(fs), false), "a track streamed R = 2..26, 1 is written");
+        CHECK(ownFill(), "...with each field in the sector its ID names, numbered from 1");
+        uint8_t buf[128];
+        size_t  len = sizeof buf;
+        CHECK(!img.readSector(2, 0, 27, buf, &len), "...and no sector 27");
+
+        fs.clear();
+        for (int s = 0; s < 26; ++s) {
+            const int r = (s * 7) % 26 + 1;  // skew 7: 1, 8, 15, 22, 3, 10, ...
+            fs.push_back({r, 0xFB, (uint8_t)r, 0});
+        }
+        CHECK(dd.writeTrackImage(stream(fs), false), "an interleaved track is written");
+        CHECK(ownFill(), "...with each field in the sector its ID names");
+
+        fs.clear();
+        for (int r = 1; r <= 26; ++r) fs.push_back({r, r == 5 ? (uint8_t)0xF8 : (uint8_t)0xFB, (uint8_t)r, 0});
+        CHECK(dd.writeTrackImage(stream(fs), false), "a track with a deleted data mark is written");
+        CHECK(ownFill(), "...and the deleted field is still sector 5, so none after it moves");
+
+        // No image form: refused before the image changes, so nothing is synced.
+        std::vector<F> bad = fs;
+        bad[3].r = 99;
+        int before = m->syncs();
+        CHECK(!dd.writeTrackImage(stream(bad), false), "a gap in the sector numbers is a WRITE FAULT");
+        bad[3].r = bad[4].r;
+        CHECK(!dd.writeTrackImage(stream(bad), false), "...and so is a number twice");
+        bad      = fs;
+        bad[7].lenN = 1;
+        CHECK(!dd.writeTrackImage(stream(bad), false), "...and so are mixed sector sizes");
+        CHECK(m->syncs() == before && ownFill(), "...none of which touches the image");
+    }
+
     SECTION("uPD765 -- snapshot and restore in the middle of a read");
     {
         Rig a;
