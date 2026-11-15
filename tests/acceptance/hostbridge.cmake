@@ -196,6 +196,21 @@ cmd("R ../SECRET.TXT")                  # THE SANDBOX, through the whole stack
 cmd("R SP*.TXT")                        # a wildcard: the ONLY way a space reaches R
 cmd("W SPACED1.TXT SPBACK.TXT T")       # ...and the CCP can name what R stored
 cmd("R MY-NOTES(2).TXT")                # `-` stays; `(2)` is legal too, but past the 8
+
+# A WORD TOO LONG FOR ITS BUFFER IS REFUSED (issue #929). R copied each word with no limit, so a
+# long CP/M name ran past its 20-byte buffer into the stack, and R saved a file under a name
+# nobody typed. W stopped at its limit but left the rest of the word, which became the next
+# word: here `XB` after 63 X's, read as the switch. Each word may now be 64 characters, and a
+# longer one is refused with nothing written. A CP/M name of 64 is still cut to 8.3.
+string(REPEAT "C" 64 fitcp)
+string(REPEAT "B" 65 longcp)
+string(REPEAT "H" 65 longhost)
+string(REPEAT "X" 64 longw)
+cmd("R HELLO.TXT ${fitcp}")             # the second word: 64 fits, and R stores CCCCCCCC
+cmd("R HELLO.TXT ${longcp}")            # the second word: 65 > 64
+cmd("R ${longhost}")                    # the first word: 65 > 64
+cmd("W HELLO.TXT ${longw}B")            # the host name: 65 > 64
+cmd("DIR BBBBBBBB.*")                    # the issue's check: R made no BBBBBBBB.xxx
 cmd("HDIR *.TXT")
 
 # THE GUEST SETS THE CRYSTAL (issue #918). Everything above ran flat out -- the default
@@ -439,6 +454,34 @@ endif()
 # tests prove HostDir refuses `..`; only this proves that a program running inside CP/M
 # cannot talk the machine into it.
 want_ran("outside the host directory" "R was not stopped from escaping hostdir with `..`")
+
+# A WORD TOO LONG FOR ITS BUFFER (issue #929): each of the three is refused, in order, and
+# nothing was written on either side. The search ignores case, because the floppy's CCP prints
+# `NO FILE` and the 8 MB disk's CCP prints `No file`.
+string(TOUPPER "${ran}" ranuc)
+set(at 0)
+foreach(line
+    ">R HELLO.TXT ${fitcp}"             "R: HELLO.TXT -> CCCCCCCC"
+    ">R HELLO.TXT ${longcp}"            "R: a name is too long."
+    ">R ${longhost}"                    "R: a name is too long."
+    ">W HELLO.TXT ${longw}B"            "W: a name is too long."
+    ">DIR BBBBBBBB.*"                   "NO FILE")
+  string(TOUPPER "${line}" line)
+  string(SUBSTRING "${ranuc}" ${at} -1 rest)
+  string(FIND "${rest}" "${line}" hit)
+  if(hit LESS 0)
+    message(FATAL_ERROR
+      "hostbridge(${MODE}): a word too long for its buffer: '${line}' is missing.\n"
+      "  full transcript: ${work}/dcdd.log\n--- from there on ---\n${rest}")
+  endif()
+  string(LENGTH "${line}" len)
+  math(EXPR at "${at} + ${hit} + ${len}")
+endforeach()
+file(GLOB cut "${work}/host/XXXX*")
+if(cut)
+  message(FATAL_ERROR
+    "hostbridge(${MODE}): W wrote a host file under a cut name: ${cut}")
+endif()
 
 # A machine with no bridge in it prints this, and so does one where a utility found 0FFH on
 # a floating bus and believed it. Either way, everything above would be a lie.

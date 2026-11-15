@@ -310,6 +310,14 @@ In the second name, `R` removes nothing. `MY-NOTES` is the first eight character
 A>R my-notes(2).txt NOTES.TXT
 ```
 
+**Each name that you type can have 64 characters or fewer.** This limit applies to `R` and `W`,
+and to a host name and a CP/M name. `R` cuts a CP/M name that you type to 8.3, in the same
+steps as above. A name of more than 64 characters stops the utility before it copies anything:
+
+```
+R: a name is too long.
+```
+
 `HDIR` prints the **true** host names, so you can always see the name that you ask for.
 
 ## Case, and why the board does not guess
