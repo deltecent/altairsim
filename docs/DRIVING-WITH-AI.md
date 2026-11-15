@@ -32,6 +32,7 @@ a complete, guided round trip through everything this document describes.
 - Debugging a behavior: make the machine show you, don't guess
 - Investigate a program you did not write
 - Attaching a serial port to a card
+- A host program on a serial socket
 - Toward a real machine
 - Gotchas
 - Without the MCP (CLI fallback)
@@ -417,8 +418,8 @@ stop   {}                          # stopped: "requested", steps, t_states
   `status` gives `running`, and once it has stopped, `stop_reason` says why.
 - **Every other tool works while it runs.** The server runs the guest in short slices, and
   answers each request between two slices, with the guest paused. `send`, `recv`, `regs`,
-  `mem_dump`, `breakpoints`, `monitor` — all answer in well under a millisecond. Only `run` and
-  `step` are refused until you `stop`, because they move the guest themselves.
+  `mem_dump`, `breakpoints`, `monitor` — all answer in well under a millisecond. Only `run`,
+  `step` and `start` are refused until you `stop`, because they move the guest themselves.
 - **Output collects until `recv`.** The server holds the newest 1 MiB. If a guest prints more
   than that before you read it, `recv` reports how many older bytes it let go, in `dropped`.
 - **`SET cpu0 clock_hz=N` paces the guest to that crystal**, as at the monitor, so a real serial
@@ -774,6 +775,42 @@ it never has since #487. Give a streaming read a `timeout_ms` as long as its wor
 `timeout_ms` mid-transfer returns `stopped: "timeout"` with what it read so far, which is a normal
 result to resume `run` (no new `from`) on, not a failure. Watch a destination pointer climb via
 `regs`/`mem_dump` if you want to confirm it is still making progress rather than stuck.
+
+## A host program on a serial socket
+
+A host program can talk to a guest through a serial unit that is connected to `socket:PORT`.
+The guest runs free under `start`, and the host program connects to the port as a TCP client.
+Examples are a loader that a host tool feeds, and a protocol between a host program and a guest
+program.
+
+This example is from a real run. The guest at `0100` prints `SEND` on `sio0:b`. It then reads
+250 bytes into memory at `1000`, and loops at `0135`.
+
+```
+monitor     {command: "CONNECT sio0:b socket:2399"}
+                                    # the host program connects to port 2399 here
+breakpoints {action: "add", kind: "pc", lo: 309}   # 0135, after the read
+start       {from: 256}             # the host program gets "SEND\r\n"
+                                    # the host program sends 250 bytes
+status      {}                      # running: true -- poll again
+status      {}                      # running: false, stop_reason: "breakpoint", pc: 309
+regs        {}                      # HL: 4346 (10FA), B: 0 -- all 250 bytes are in
+start       {}                      # continue from 0135
+```
+
+- **Connect the host program before `start` or `run`.** A listening line with no caller
+  discards what the guest sends, and the guest does not wait. A caller who connects first gets
+  everything from the first byte.
+- **Wait for an event in the guest, not for the host program.** The socket takes the whole
+  write of the host program at once. The guest reads the bytes at the rate of the unit. In the
+  run above, the write returned while `HL` was still `1000`. Set a PC breakpoint where the
+  guest is done, and poll `status` until `stop_reason` is `breakpoint`. Do not use a sleep.
+- **Put the breakpoint after the output.** A breakpoint on the first instruction of a routine
+  stops the guest before the routine prints. A host program that waits for the message of that
+  routine then times out. Break on the loop that the guest goes to after the message.
+- **`start` is refused while the guest runs.** To set a new PC, as with STOP and EXAMINE on the
+  front panel, send `stop` and then `start {from}`. `start {}` with no `from` continues at the
+  PC.
 
 ## Toward a real machine
 

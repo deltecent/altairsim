@@ -1545,6 +1545,7 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         if (args.has("from")) cpu->setPc((uint16_t)args.at("from").integer());
         if (args.has("input")) con->feed(args.at("input").str());
         m.bus.resetUnclaimedWarnings();  // as `run` and RUN do (#580)
+        m.pump();  // #933: answer a waiting caller before the first slice, as `run` does
 
         FreeRun& f = sess.free;
         const auto now = FreeRun::clk::now();
@@ -1721,6 +1722,10 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         // nothing for BREAK to list. Set for this call only -- every exit from the loop below is
         // a `break`, so the clear after it always runs.
         m.debug.setStepTarget((int)stopAt);
+        // #933: PUMP BEFORE THE FIRST SLICE. A listening line answers its caller only in
+        // pump(), and nothing pumps between requests. Without this, a caller who dialed
+        // before the run lost what the guest printed in its first slice.
+        m.pump();
         for (;;) {
             drain();
             if (!until.empty() && out.find(until) != std::string::npos) { stopped = "match"; break; }

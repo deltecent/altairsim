@@ -25,6 +25,7 @@
 #include "host/speaker.h"
 #include "host/stream.h"
 #include "host/terminal/stream.h"
+#include "platform/socket.h"
 #include "test.h"
 
 #include <algorithm>
@@ -128,6 +129,57 @@ void test_cli() {
         CHECK(stopped, "RUN stopped on the ^C that landed between its check and the slice");
         CHECK(o.str().find("^C -- stopped") != std::string::npos,
               "and it says it stopped on a ^C");
+    }
+
+    SECTION("RUN -- a caller waiting on a socket line gets the guest's first byte (#933)");
+    {
+        // A listening line answers its caller only in pump(), and RUN ran a slice of the
+        // guest before its first pump. So what the guest printed in that slice went to a line
+        // with no carrier, although the caller had dialed before RUN. The program resets the
+        // 6850 on sio0:b, prints SEND\r\n there at once, and stops on the breakpoint at 0121.
+        Machine m;
+        Monitor mon(m);
+        std::ostringstream sink;
+        mon.exec("BOARDS ADD 8080 cpu0", sink);
+        mon.exec("BOARDS ADD memory mem0", sink);
+        mon.exec("REGION ADD mem0 type=ram at=0 size=1K", sink);
+        mon.exec("BOARDS ADD 2sio sio0", sink);
+        mon.exec("DEPOSIT 100 31 00 02 3E 03 D3 12 3E 15 D3 12 21 30 01 7E B7 CA 21 01", sink);
+        mon.exec("DEPOSIT 113 DB 12 E6 02 CA 13 01 7E D3 13 23 C3 0E 01 C3 21 01", sink);
+        mon.exec("DEPOSIT 130 53 45 4E 44 0D 0A 00", sink);
+        mon.exec("BREAK 121", sink);
+
+        std::string err;
+        uint16_t    port = 0;
+        if (auto probe = platform::listenTcp(0, err)) port = probe->port();
+        CHECK(port != 0, "the OS hands us a free port");
+        mon.exec("CONNECT sio0:b socket:" + std::to_string(port), sink);
+
+        auto client = platform::connectTcp("127.0.0.1", port, err);
+        CHECK(client != nullptr, "the caller dials the listener");
+        if (client) {
+            bool up = false;
+            for (int i = 0; i < 400 && !up; ++i) {
+                client->poll();
+                up = client->established();
+                if (!up) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+            CHECK(up, "the caller is on the line before RUN");
+
+            std::ostringstream o;
+            mon.exec("RUN 100", o);
+            CHECK(m.cpu()->pc() == 0x121, "RUN stopped on the breakpoint after the print");
+
+            std::string got;
+            for (int i = 0; i < 400 && got.size() < 6; ++i) {
+                uint8_t buf[64];
+                client->poll();
+                for (size_t r; (r = client->read(buf, sizeof buf)) > 0;)
+                    got.append((char*)buf, r);
+                if (got.size() < 6) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+            CHECK(got == "SEND\r\n", ("the caller got \"" + got + "\", from the first byte").c_str());
+        }
     }
     SECTION("command abbreviation -- table order IS the ranking; first match wins");
 
