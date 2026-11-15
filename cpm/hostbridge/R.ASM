@@ -340,10 +340,12 @@ PARSE:	LXI	H,TAIL
 
 	CALL	SKIPSP
 	LXI	D,HNAME
+	MVI	C,HNMAX+1
 	CALL	TOKEN
 
 	CALL	SKIPSP
 	LXI	D,CNAME
+	MVI	C,HNMAX+1
 	CALL	TOKEN
 	RET
 
@@ -357,22 +359,35 @@ SKIPSP: MOV	A,B
 	DCR	B
 	JMP	SKIPSP
 
-; Copy one word from (HL) to (DE), and end it with a NUL. With no word,
-; the result is an empty string.
+; TOKEN: copy one word from (HL) to (DE), and end it with a NUL.
+;   B = characters left in the tail   C = room at DE, with the NUL
+; No word gives an empty string. A word that does not fit stops R with
+; an error. R does not cut the word: the rest would go past the buffer,
+; and a cut host name can name a different file.
 TOKEN:	MOV	A,B
 	ORA	A
 	JZ	TOKEND
 	MOV	A,M
 	CPI	' '
 	JZ	TOKEND
+	MOV	A,C
+	CPI	1
+	JZ	EWORD		; a character, and room for the NUL only
+	MOV	A,M
 	STAX	D
 	INX	H
 	INX	D
 	DCR	B
+	DCR	C
 	JMP	TOKEN
 TOKEND: XRA	A
 	STAX	D
 	RET
+
+EWORD:	LXI	D,MEWORD
+	MVI	C,PRSTR
+	CALL	BDOS
+	JMP	0
 
 ;-----------------------------------------------------------------------
 ; HASWLD: A=1 if HNAME has a * or a ?, else A=0.
@@ -835,6 +850,7 @@ MEWILD: DB	'R: a wildcard copies each file under its own name -- so a'
 	DB	CR,LF,'$'
 MENODIR:DB	'R: the CP/M directory is full.',CR,LF,'$'
 MEDISK: DB	'R: the CP/M disk is full, or is read-only.',CR,LF,'$'
+MEWORD: DB	'R: a name is too long.',CR,LF,'$'
 MECLOSE:DB	'R: could not close the CP/M file.',CR,LF,'$'
 
 ;---- variables --------------------------------------------------------
@@ -847,7 +863,8 @@ FCB:	DS	36		; R's own FCB, not the CCP's at 5CH
 HNAME:	DS	HNMAX+1		; the host name, the pattern, or a match.
 				; +1: RECVZ can write its NUL one byte
 				; past the count.
-CNAME:	DS	20		; the CP/M name, if the user gave one
+CNAME:	DS	HNMAX+1		; the CP/M name, if the user gave one.
+				; MKFCB cuts it to 8.3.
 IDBUF:	DS	IDMAX+1		; the board's signature (+1: as above)
 NUMBUF: DS	8		; 16777215, the largest 24-bit count, is
 NUMEND: DS	1		; 8 digits. PRDEC and PRBYT end here.

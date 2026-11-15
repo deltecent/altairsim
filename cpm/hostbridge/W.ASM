@@ -665,17 +665,17 @@ PARSE:	XRA	A
 
 	CALL	SKIPSP
 	LXI	D,CNAME
-	MVI	C,HNMAX
+	MVI	C,HNMAX+1
 	CALL	TOKEN
 
 	CALL	SKIPSP
 	LXI	D,TOK2
-	MVI	C,HNMAX
+	MVI	C,HNMAX+1
 	CALL	TOKEN
 
 	CALL	SKIPSP
 	LXI	D,TOK3
-	MVI	C,HNMAX
+	MVI	C,HNMAX+1
 	CALL	TOKEN
 
 	LDA	TOK3
@@ -737,16 +737,20 @@ SKIPSP: MOV	A,B
 
 ; TOKEN: copy one word from (HL) to (DE), and end it with a NUL.
 ;   B = characters left in the tail   C = room at DE, with the NUL
-; No word gives an empty string, which the callers test for.
-TOKEN:	MOV	A,C
-	CPI	1
-	JZ	TOKEND		; room for the NUL only
-	MOV	A,B
+; No word gives an empty string, which the callers test for. A word
+; that does not fit stops W with an error. W does not cut the word: a
+; cut host name can name a different file, and the rest of the word
+; would become the next word.
+TOKEN:	MOV	A,B
 	ORA	A
 	JZ	TOKEND
 	MOV	A,M
 	CPI	' '
 	JZ	TOKEND
+	MOV	A,C
+	CPI	1
+	JZ	EWORD		; a character, and room for the NUL only
+	MOV	A,M
 	STAX	D
 	INX	H
 	INX	D
@@ -974,6 +978,11 @@ EBADSW: LXI	D,MEBADSW
 	CALL	BDOS
 	JMP	0
 
+EWORD:	LXI	D,MEWORD
+	MVI	C,PRSTR
+	CALL	BDOS
+	JMP	0
+
 ENOMAT: LXI	D,MENOMAT
 	MVI	C,PRSTR
 	CALL	BDOS
@@ -1043,6 +1052,7 @@ MERR:	DB	'W: $'
 MCRLF:	DB	CR,LF,'$'
 
 MELONG: DB	'W: the folder name is too long.',CR,LF,'$'
+MEWORD: DB	'W: a name is too long.',CR,LF,'$'
 MEBADSW:DB	'W: the switch is B (every byte) or T (stop at the first ^Z).'
 	DB	CR,LF,'$'
 MENOMAT:DB	'W: no CP/M file matches.',CR,LF,'$'

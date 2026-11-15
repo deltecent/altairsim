@@ -12,6 +12,16 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**`R` and `W` refuse a name of more than 64 characters (issue #929).** Before, `R` copied each
+word of the command line with no limit. The buffer for the CP/M name held 20 bytes. A longer
+CP/M name wrote past the buffer into the stack of `R`. `R` then saved the file under a name
+that the user did not type. For example, `R A.TXT` followed by 119 `B` characters saved
+`BBBBBBBB.SRM`. `W` stopped at its limit, but the rest of the name became the next word. `W`
+then read that word as the `B` or `T` switch, or gave an error about the switch. Now `R` and
+`W` take a name of 64 characters or fewer, and stop with `a name is too long.` for a longer
+name. `R` still cuts a CP/M name of 64 characters or fewer to 8.3. The disk images that have
+the utilities have the new `R.COM` and `W.COM`.
+
 **`HELP REGION` lists every key, and each key table says where its keys work.** Before,
 `HELP REGION` did not list `relocate`. `SHOW <id>` labelled the keys of `[[board.region]]`
 `(in a machine file)`, but `REGION ADD` takes the same keys. Now `HELP REGION` lists every key
