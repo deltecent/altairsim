@@ -306,6 +306,11 @@ void test_88uio() {
         CHECK(!r.uio->connect("bogus", "x", err), "CONNECT to a unit that is not there is refused");
         CHECK(err.find("uio") != std::string::npos, ("...with the uio's own message: " + err).c_str());
 
+        // The guest's init: a master reset and a word format. The 6850 comes up held in
+        // its power-on reset, receiver off, until it gets them (issue #938).
+        out(*r.uio, 0x10, 0x03);
+        out(*r.uio, 0x10, 0x15);
+
         // Feed a byte to the serial line and let a character time pass.
         tty->feed("Q");
         for (int i = 0; i < 8 && (in(*r.uio, 0x10) & 0x01) == 0; ++i)

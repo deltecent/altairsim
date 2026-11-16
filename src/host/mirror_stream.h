@@ -165,6 +165,7 @@ public:
     bool writable() const override { return inner_->writable(); }
     bool pacesItself() const override { return inner_->pacesItself(); }
     bool pacedReceive() const override { return inner_->pacedReceive(); }
+    bool realWire() const override { return inner_->realWire(); }
 
     // flush() pushes the inner's buffer AND drains the client queue, so a watcher sees
     // guest output as promptly as the guest emits it.

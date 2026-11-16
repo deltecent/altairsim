@@ -1,3 +1,5 @@
+
+
                 ;----------------------------------------------------------------------
                 ;  HELLO.ASM -- a symbolic-debugger demo for altairsim.
                 ;
@@ -9,32 +11,38 @@
  0010 =         TTYS	EQU	10H	;2SIO status port (channel A)
  0011 =         TTYD	EQU	11H	;2SIO data port
  0002 =         TXRDY	EQU	02H	;status bit: transmitter empty
+ 0003 =         MRESET	EQU	03H	;control word: master reset
+ 0015 =         MODE	EQU	15H	;control word: 8 data bits, no parity, 1 stop, /16
  000D =         CR	EQU	0DH
  000A =         LF	EQU	0AH
                 
  0100           	ORG	0100H
                 
- 0100 313E01    START:	LXI	SP,STACK	;set up a stack
- 0103 211F01    	LXI	H,MSG		;HL -> the string
- 0106 7E        LOOP:	MOV	A,M		;fetch the next character
- 0107 B7        	ORA	A		;zero terminator?
- 0108 CA1201    	JZ	DONE		;yes -- we are finished
- 010B CD1301    	CALL	PUTC		;no  -- send it
- 010E 23        	INX	H		;step to the next character
- 010F C30601    	JMP	LOOP
- 0112 76        DONE:	HLT		;stop; the debugger takes over
+ 0100 314601    START:	LXI	SP,STACK	;set up a stack
+ 0103 3E03      	MVI	A,MRESET	;the 2SIO comes up held in reset, so a
+ 0105 D310      	OUT	TTYS		;program on a bare machine resets it...
+ 0107 3E15      	MVI	A,MODE		;...and then sets the word format
+ 0109 D310      	OUT	TTYS
+ 010B 212701    	LXI	H,MSG		;HL -> the string
+ 010E 7E        LOOP:	MOV	A,M		;fetch the next character
+ 010F B7        	ORA	A		;zero terminator?
+ 0110 CA1A01    	JZ	DONE		;yes -- we are finished
+ 0113 CD1B01    	CALL	PUTC		;no  -- send it
+ 0116 23        	INX	H		;step to the next character
+ 0117 C30E01    	JMP	LOOP
+ 011A 76        DONE:	HLT		;stop; the debugger takes over
                 
                 ;  PUTC -- send the character in A, waiting for the transmitter first.
- 0113 F5        PUTC:	PUSH	PSW
- 0114 DB10      PWAIT:	IN	TTYS		;read 2SIO status
- 0116 E602      	ANI	TXRDY		;transmitter ready?
- 0118 CA1401    	JZ	PWAIT		;no -- keep polling
- 011B F1        	POP	PSW
- 011C D311      	OUT	TTYD		;yes -- send the byte
- 011E C9        	RET
+ 011B F5        PUTC:	PUSH	PSW
+ 011C DB10      PWAIT:	IN	TTYS		;read 2SIO status
+ 011E E602      	ANI	TXRDY		;transmitter ready?
+ 0120 CA1C01    	JZ	PWAIT		;no -- keep polling
+ 0123 F1        	POP	PSW
+ 0124 D311      	OUT	TTYD		;yes -- send the byte
+ 0126 C9        	RET
                 
- 011F 48454C4C4FMSG:	DB	'HELLO, WORLD',CR,LF,0
- 012E           	DS	16		;room for the stack to grow down into
- 013E =         STACK	EQU	$		;top of stack (grows downward from here)
+ 0127 48454C4C4FMSG:	DB	'HELLO, WORLD',CR,LF,0
+ 0136           	DS	16		;room for the stack to grow down into
+ 0146 =         STACK	EQU	$		;top of stack (grows downward from here)
                 
- 0100           	END	START
+ 0146           	END	START

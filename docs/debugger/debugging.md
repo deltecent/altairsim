@@ -509,7 +509,7 @@ Only a 16-bit operand shows as an address. A byte value stays a number. `MVI A,0
 become a symbol, even if an `EQU` has the value three, because a two-digit value is a count and
 not an address.
 
-> **Try it.** `examples/debugger/` is a 46-byte program for these rules. It has a `.PRN` for
+> **Try it.** `examples/debugger/` is a 54-byte program for these rules. It has a `.PRN` for
 > `SYMBOLS LOAD`, a `.HEX` for `LOAD`, and a `README`. The `README` starts with a `DISASM` that
 > shows symbols. Next, it steps through the program, stops at a label, and runs the program until
 > it prints. You can see each rule above in the example, including the `EQU` operand and the
@@ -796,7 +796,7 @@ debug  (runtime diagnostics -- the sink and flags do not survive CONFIG SAVE)
   CHANNEL  FLAGS  (an enabled flag is UPPER-CASE)
   -------  --------------------------------------
   socket   connect
-  6850     serial
+  6850     serial reset
   dsk0     SECTOR seek
 
   SET <channel> DEBUG=<flag>[,<flag>]  enables;  NODEBUG=<flag> disables;
@@ -832,6 +832,24 @@ operates the board:
 
 At the monitor prompt, the machine is stopped and no instruction operates the board. The
 address column then shows `----`.
+
+The `reset` flag of the `6850` channel finds a program that uses a 6850 before the program
+resets it. A real 6850 does nothing after power-on until the program writes a master reset
+(`03`) to its control port. The flag reports the first status read, data read, control write
+and data write of each chip before the master reset. The line names the chip and the port:
+
+```
+altairsim> SET 6850 DEBUG=reset
+altairsim> IN 10
+----  6850: a port 10: status read before a master reset (held since power-on)
+port 10 -> 00
+altairsim> OUT 11 41
+----  6850: a port 11: data write 41 before a master reset (held since power-on)
+port 11 <- 41
+```
+
+A master reset is the correct first write, so the flag does not report it. After the master
+reset, the chip makes no more reports.
 
 **All the diagnostic channels send their reports to one place.** Set it with `SET CONSOLE
 DEBUG=`:

@@ -9,12 +9,18 @@
 TTYS	EQU	10H	;2SIO status port (channel A)
 TTYD	EQU	11H	;2SIO data port
 TXRDY	EQU	02H	;status bit: transmitter empty
+MRESET	EQU	03H	;control word: master reset
+MODE	EQU	15H	;control word: 8 data bits, no parity, 1 stop, /16
 CR	EQU	0DH
 LF	EQU	0AH
 
 	ORG	0100H
 
 START:	LXI	SP,STACK	;set up a stack
+	MVI	A,MRESET	;the 2SIO comes up held in reset, so a
+	OUT	TTYS		;program on a bare machine resets it...
+	MVI	A,MODE		;...and then sets the word format
+	OUT	TTYS
 	LXI	H,MSG		;HL -> the string
 LOOP:	MOV	A,M		;fetch the next character
 	ORA	A		;zero terminator?

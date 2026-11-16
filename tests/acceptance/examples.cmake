@@ -163,7 +163,7 @@ endif()
 
 # ---- 2. examples/debugger -- the walkthrough, symbols and hex loaded from beside the file. ----
 #
-# examples/debugger is a taught exercise: a 46-byte program, its .PRN listing and its .HEX,
+# examples/debugger is a taught exercise: a 54-byte program, its .PRN listing and its .HEX,
 # and a README that walks the monitor's debugger. This runs that walkthrough non-
 # interactively, from the example's own directory, so it proves the README is true: the
 # disassembly names labels and operands the way it says, and the .prn/.hex resolve beside
@@ -190,14 +190,14 @@ execute_process(
 # symbolic (a leading label, a label operand, and the EQU-address operand that is the whole
 # point of the feature); and the program actually ran and printed through the 2SIO.
 foreach(want
-        "12 symbol(s) from HELLO.PRN"   # the .PRN resolved beside debugger.toml
-        "loaded 46 bytes"               # so did the .HEX
+        "14 symbol(s) from HELLO.PRN"   # the .PRN resolved beside debugger.toml
+        "loaded 54 bytes"               # so did the .HEX
         "START:"                        # a program label heads its own line
         "CALL PUTC"                     # a 16-bit operand reads as a label
         "LXI SP,STACK"                  # ...and as an EQU-address -- the CALL BDOS case
         "IN 10"                         # a BYTE operand stays a number (a port is not an address)
         "HELLO, WORLD"                  # it ran, on the console the file wired up
-        "stopped at 0112")              # and stopped at the DONE breakpoint
+        "stopped at 011A")              # and stopped at the DONE breakpoint
   string(FIND "${out}" "${want}" hit)
   if(hit LESS 0)
     message(FATAL_ERROR "examples: the debugger walkthrough did not behave as the README says.\n"

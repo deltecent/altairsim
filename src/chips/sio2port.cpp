@@ -65,6 +65,7 @@ uint8_t Sio2Port::read(uint8_t port) {
     if (i < 0) return 0xFF;
     Clock&  clk = clock_ ? *clock_ : deadCard();
     Mc6850& ch  = chans_[(size_t)i];
+    ch.traceHeldAccess(port, isData, false, 0);
     uint8_t v   = isData ? ch.readData(clk) : ch.readStatus(clk);
     refresh();  // reading the data register CLEARS RDRF -- and with it, the interrupt
     return v;
@@ -76,6 +77,7 @@ void Sio2Port::write(uint8_t port, uint8_t data) {
     if (i < 0) return;
     Clock&  clk = clock_ ? *clock_ : deadCard();
     Mc6850& ch  = chans_[(size_t)i];
+    ch.traceHeldAccess(port, isData, true, data);
     if (isData) ch.writeData(data, clk);
     else ch.writeControl(data, clk);
     refresh();  // a character went out (TDRE falls), or the interrupt enables moved
@@ -125,7 +127,8 @@ void Sio2Port::refresh() {
 
 // A BUS RESET DOES NOTHING TO A 6850 -- IT HAS NO RESET PIN (mc6850.h). RESET* reaches
 // the card's address decoding and nothing else. POWER-ON-CLEAR is different: the machine
-// was switched on, and the chips get put in a known good state. refresh() runs either
+// was switched on, and each chip comes up held in its internal power-on reset until the
+// guest's master reset (Mc6850::powerOn, issue #938). refresh() runs either
 // way, because the backplane's interrupt wire must be re-driven regardless.
 void Sio2Port::reset(Reset r) {
     if (!clock_) return;

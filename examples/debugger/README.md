@@ -1,6 +1,6 @@
 # Learning the symbolic debugger
 
-A 46-byte program, its symbols, and a walk through the monitor's debugger — load it,
+A 54-byte program, its symbols, and a walk through the monitor's debugger — load it,
 disassemble it by name, single-step it, break on a label, and run it until it prints.
 
 ```
@@ -25,9 +25,9 @@ a single name.
 
 ```
 altairsim> SYMBOLS LOAD HELLO.PRN
-12 symbol(s) from HELLO.PRN
+14 symbol(s) from HELLO.PRN
 altairsim> LOAD HELLO.HEX
-loaded 46 bytes (1 page) from HELLO.HEX (0100-012D)
+loaded 54 bytes (1 page) from HELLO.HEX (0100-0135)
 ```
 
 ## 2 — Disassemble it, and read it by name
@@ -37,18 +37,27 @@ loaded 46 bytes (1 page) from HELLO.HEX (0100-012D)
 ```
 altairsim> DISASM START-DONE
 START:
-0100  31 3E 01  LXI SP,STACK
-0103  21 1F 01  LXI H,MSG
+0100  31 46 01  LXI SP,STACK
+0103  3E 03     MVI A,03
+0105  D3 10     OUT 10
+0107  3E 15     MVI A,15
+0109  D3 10     OUT 10
+010B  21 27 01  LXI H,MSG
 LOOP:
-0106  7E        MOV A,M
-0107  B7        ORA A
-0108  CA 12 01  JZ DONE
-010B  CD 13 01  CALL PUTC
-010E  23        INX H
-010F  C3 06 01  JMP LOOP
+010E  7E        MOV A,M
+010F  B7        ORA A
+0110  CA 1A 01  JZ DONE
+0113  CD 1B 01  CALL PUTC
+0116  23        INX H
+0117  C3 0E 01  JMP LOOP
 DONE:
-0112  76        HLT
+011A  76        HLT
 ```
+
+The four instructions after `LXI SP,STACK` set up the 2SIO. A 2SIO channel is held in reset
+when the machine is switched on. A program that runs with no ROM before it must write a master
+reset (`03`) and then the word format (`15`) to the control port. Until it does, the channel
+sends nothing.
 
 Three things are happening on top of the plain hex, and each has a rule worth knowing.
 
@@ -68,20 +77,20 @@ Now disassemble the subroutine, and watch what does **not** get named:
 ```
 altairsim> DISASM PUTC 7
 PUTC:
-0113  F5        PUSH PSW
+011B  F5        PUSH PSW
 PWAIT:
-0114  DB 10     IN 10
-0116  E6 02     ANI 02
-0118  CA 14 01  JZ PWAIT
-011B  F1        POP PSW
-011C  D3 11     OUT 11
-011E  C9        RET
+011C  DB 10     IN 10
+011E  E6 02     ANI 02
+0120  CA 1C 01  JZ PWAIT
+0123  F1        POP PSW
+0124  D3 11     OUT 11
+0126  C9        RET
 ```
 
 `IN 10` is **not** shown as `IN TTYS`, even though `TTYS EQU 10H` is loaded (`SHOW SYMBOLS
 TTYS` proves it). That is deliberate: a port is a **byte**, not an address, and only a 16-bit
 operand is treated as an address. The count you meant is not the location you didn't — so
-`ANI 02` stays `02`, not `TXRDY`, and `JZ PWAIT` right below it still reads as the label,
+`ANI 02` stays `02`, not `TXRDY`, and `MVI A,03` stays `03`, not `MRESET`, and `JZ PWAIT` right below it still reads as the label,
 because *that* operand is an address.
 
 ## 3 — Single-step, and watch the registers
@@ -93,14 +102,20 @@ the machine, with the next instruction disassembled symbolically:
 ```
 altairsim> EXAMINE START
 0100  31  1  00110001
-altairsim> STEP 3
-C0Z0M0E0I0 A=00 B=0000 D=0000 H=0000 S=013E IE=0 P=0103  LXI H,MSG
-C0Z0M0E0I0 A=00 B=0000 D=0000 H=011F S=013E IE=0 P=0106  MOV A,M
-C0Z0M0E0I0 A=48 B=0000 D=0000 H=011F S=013E IE=0 P=0107  ORA A
+C0Z0M0E0I0 A=00 BC=0000 DE=0000 HL=0000 SP=0000 IE=0 PC=0100  LXI SP,STACK
+altairsim> STEP 7
+C0Z0M0E0I0 A=00 BC=0000 DE=0000 HL=0000 SP=0146 IE=0 PC=0103  MVI A,03
+C0Z0M0E0I0 A=03 BC=0000 DE=0000 HL=0000 SP=0146 IE=0 PC=0105  OUT 10
+C0Z0M0E0I0 A=03 BC=0000 DE=0000 HL=0000 SP=0146 IE=0 PC=0107  MVI A,15
+C0Z0M0E0I0 A=15 BC=0000 DE=0000 HL=0000 SP=0146 IE=0 PC=0109  OUT 10
+C0Z0M0E0I0 A=15 BC=0000 DE=0000 HL=0000 SP=0146 IE=0 PC=010B  LXI H,MSG
+C0Z0M0E0I0 A=15 BC=0000 DE=0000 HL=0127 SP=0146 IE=0 PC=010E  MOV A,M
+C0Z0M0E0I0 A=48 BC=0000 DE=0000 HL=0127 SP=0146 IE=0 PC=010F  ORA A
 ```
 
-Read down the `P=` column: the stack pointer `S=` fills in after `LXI SP,STACK`, `H=` becomes
-`011F` (that is `MSG`) after `LXI H,MSG`, and `A=48` after `MOV A,M` — `48` is `'H'`, the
+Read down the `PC=` column: the stack pointer `SP=` fills in after `LXI SP,STACK`. `A=03` and
+`A=15` are the two control words that go to port `10`. `HL=` becomes `0127` (that is `MSG`)
+after `LXI H,MSG`, and `A=48` after `MOV A,M` — `48` is `'H'`, the
 first byte of the string. `STEP` with no count does one instruction; `NEXT` is the same but
 runs a `CALL` to its return instead of descending into it.
 
@@ -111,12 +126,15 @@ A breakpoint takes a symbol, too. Set one on the subroutine and run:
 ```
 altairsim> EXAMINE START
 0100  31  1  00110001
+C0Z0M0E0I0 A=48 BC=0000 DE=0000 HL=0127 SP=0146 IE=0 PC=0100  LXI SP,STACK
 altairsim> BREAK PUTC
-breakpoint 1: pc     0113
+breakpoint 1: pc     011B
 altairsim> RUN
-breakpoint 1 (pc     0113) -- stopped at 0113
-6 instructions, 58 T-states.
-C0Z0M0E1I0 A=48 B=0000 D=0000 H=011F S=013C IE=0 P=0113  PUSH PSW
+[console -- ^E returns to the monitor]
+
+breakpoint 1 (pc     011B) -- stopped at 011B
+10 instructions, 92 T-states.
+C0Z0M0E1I0 A=48 BC=0000 DE=0000 HL=0127 SP=0144 IE=0 PC=011B  PUSH PSW
 ```
 
 It stopped the first time the program reached `PUTC`, with `A=48` — the `'H'` it was about to
@@ -127,13 +145,16 @@ altairsim> NOBREAK 1
 breakpoint 1 cleared.
 altairsim> EXAMINE START
 0100  31  1  00110001
+C0Z0M0E1I0 A=48 BC=0000 DE=0000 HL=0127 SP=0144 IE=0 PC=0100  LXI SP,STACK
 altairsim> BREAK DONE
-breakpoint 2: pc     0112
+breakpoint 1: pc     011A
 altairsim> RUN
+[console -- ^E returns to the monitor]
 HELLO, WORLD
 
-breakpoint 2 (pc     0112) -- stopped at 0112
-C0Z1M0E1I0 A=00 B=0000 D=0000 H=012D S=013E IE=0 P=0112  HLT
+breakpoint 1 (pc     011A) -- stopped at 011A
+822 instructions, 7405 T-states.
+C0Z1M0E1I0 A=00 BC=0000 DE=0000 HL=0135 SP=0146 IE=0 PC=011A  HLT
 ```
 
 There it is: the program ran, printed `HELLO, WORLD` through the 2SIO, and stopped exactly at
@@ -146,7 +167,7 @@ you.
 | Command | Try |
 |---|---|
 | `DUMP MSG` | the string, dumped by name — `DUMP` resolves a symbol but does not annotate the bytes, because there is no instruction there to say which are addresses |
-| `SHOW SYMBOLS` | all twelve; `SHOW SYMBOLS T*` filters with a glob |
+| `SHOW SYMBOLS` | all fourteen; `SHOW SYMBOLS T*` filters with a glob |
 | `BREAK PUTC IF A==2C` | a conditional breakpoint — stop at `PUTC` only when it is about to send `2C`, the `,`; the machine prints `HELLO` and stops there |
 | `TRACE ON` / `HISTORY` | log every cycle as it runs, or show the run-up to a stop |
 

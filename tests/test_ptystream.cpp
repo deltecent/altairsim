@@ -343,6 +343,7 @@ void test_ptystream() {
             u.ctsStrap = PinStrap::Wired;
             u.connect(std::move(s));
             u.powerOn(clk);
+            u.writeControl(0x03, clk);  // master reset first, as a real program must (#938)
             u.writeControl(k8n1, clk);
 
             // The guest's transmit loop: wait for TDRE, send, 20000 times -- more than

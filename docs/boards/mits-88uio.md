@@ -98,10 +98,12 @@ Turnkey forwards it.
 
 ### Reset
 
-- `Reset::PowerOn` (POC*, cold): both UARTs are put in a known state (the cassette UART's MR
-  pin; the 6850 has none but its section powers on), the interrupt-enable flip-flops clear,
-  and the motor relay comes up **closed** (`motorOn_ = true`).
-- `Reset::Bus` (RESET*, warm): the same — memory and the mounted cassette survive, the tape
+- `Reset::PowerOn` (POC*, cold): the cassette UART is reset by its MR pin. The 6850 has no
+  reset pin. It comes up held in its internal power-on reset until the guest writes a master
+  reset, as on the 88-2SIO (issue #938, `docs/boards/mits-2sio.md` §Reset). The
+  interrupt-enable flip-flops clear, and the motor relay comes up **closed** (`motorOn_ = true`).
+- `Reset::Bus` (RESET*, warm): the same for the cassette UART. The 6850 is not touched, because
+  `RESET*` cannot reach a chip with no reset pin. Memory and the mounted cassette survive, the tape
   is not rewound (RESET* cannot reach into the recorder and press a button), and the byte in
   flight in the cassette UART is lost to its MR pin, exactly as on the 88-ACR.
 

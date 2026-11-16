@@ -23,7 +23,7 @@ altairsim examples/debugger/debugger.toml      # a bench for learning the symbol
 | [`cpm/`](cpm/) | Mike Douglas's track-buffered **CP/M 2.2b v2.3**, 56K, booted by the DBL PROM from an 8" floppy. `A>` in one command. `cpm22-terminal.toml` boots the same disk with its console in a **built-in VT100 window** the simulator draws itself — no telnet client, no external emulator. |
 | [`basic4k/`](basic4k/) | **Altair 4K BASIC 3.1** read off a period `.tap` by the bootstrap that MITS shipped, unmodified: `MEMORY SIZE?`. |
 | [`basic1/`](basic1/) | **Altair BASIC 1.0**, the first Altair BASIC, read off a period `.tap` by its own bootstrap. The bootstrap never jumps into BASIC, so you press `Ctrl-E` and type `RUN 0`, as an operator did in 1975: `MEMSIZ?`. |
-| [`debugger/`](debugger/) | A 46-byte program with its **symbols** and a guided walk through the monitor's debugger: `SYMBOLS LOAD`, symbolic `DISASM`, single-step, break on a label, run. |
+| [`debugger/`](debugger/) | A 54-byte program with its **symbols** and a guided walk through the monitor's debugger: `SYMBOLS LOAD`, symbolic `DISASM`, single-step, break on a label, run. |
 | [`ai-mcp/`](ai-mcp/) | A working directory for an **AI assistant driving altairsim over MCP**: a CP/M machine and a tiny `HELLO.ASM` with one deliberate bug the assistant assembles, runs, single-steps to find, and fixes — all through the simulator's MCP tools. See `DRIVING-WITH-AI.md`, or the `altairsim` Agent Skill, which an assistant that reads skills loads by itself: `skills/altairsim/` in the package, `.claude/skills/altairsim/` in this repository. |
 
 ## More machines

@@ -97,11 +97,15 @@ public:
     // is why every driver ever written does two OUTs.
     //
     // What powerOn() models is the machine being SWITCHED ON. The real chip has an
-    // internal power-on reset that holds it until the guest's first master reset
-    // releases it; we do not model the holding, because nothing can observe it that
-    // does not also program the chip. We just put it in a known good state at once --
-    // control register zeroed, receiver empty, transmitter ready, endpoint still
-    // connected -- so the card is usable the instant the machine comes up. DESIGN.md 6.1.
+    // internal power-on reset that "holds the chip in a reset state to prevent erroneous
+    // output transitions prior to initialization", and only the bus-programmed master
+    // reset releases it (reference/6850.md). That hold is modeled: until the guest writes
+    // 11 into the divide field, TDRE reads 0, nothing goes out, the receiver is off and
+    // RTS stays negated. A control word that is NOT a master reset does not release it.
+    //
+    // It is observable. IMDW used a 2SIO channel that nothing had set up since power-on:
+    // it printed here and was silent on the real board (issue #938). The endpoint stays
+    // connected. DESIGN.md 6.1.
     void powerOn(const Clock& clk);
 
     bool irq(const Clock& clk) const;   // the chip's IRQ pin, jumper or no jumper
@@ -120,7 +124,20 @@ public:
     // Clear-to-Send being high OR THE ACIA BEING MAINTAINED IN THE RESET CONDITION."
     // So a guest that master-resets and then polls for TDRE without programming the
     // format waits forever, on the real chip and now on this one.
+    //
+    // The power-on hold (powerOnHold_) is the same condition, entered differently. Both
+    // inhibit TDRE, drop a data write, and switch the receiver off. See powerOn().
     bool inReset() const;
+
+    // THE `reset` DEBUG FLAG (`SET 6850 DEBUG=reset`). The board calls this before each
+    // guest access, with the port, because the chip does not know its port and a line
+    // that says only "a" does not say which board. While the chip is still held by its
+    // power-on reset, it logs the first access of each kind (status read, data read,
+    // control write, data write): a program that uses a channel nothing has set up is
+    // silent on the real board (issue #938), and this line names the channel. Once per
+    // kind, so a status-poll loop does not fill the log. A master reset is the correct
+    // first write, so it is not logged.
+    void traceHeldAccess(uint8_t port, bool isData, bool isWrite, uint8_t v);
 
     IrqJumper jumper = IrqJumper::None;
 
@@ -250,6 +267,12 @@ private:
     // the sample. See ctsPin_.
     bool ctsNow() const;
 
+    // THE RECEIVER IS OFF WHILE THE CHIP IS HELD IN RESET. On a real wire (a host serial
+    // port) a byte that arrives then is lost, as it is on the real chip; on a host buffer
+    // (the console, a pipe, a file, a socket) it waits. Paced at the line rate: a byte is
+    // dropped only once the line could have delivered it. See the .cpp.
+    void discardWhileHeld(const Clock& clk);
+
     // Drive RTS (control bits 5-6) and BREAK at the endpoint. There is nowhere for
     // DTR to come from: the chip has no such pin.
     void driveControl();
@@ -296,6 +319,15 @@ private:
 
     uint8_t control_ = 0;
     uint8_t rxData_  = 0;
+
+    // THE INTERNAL POWER-ON RESET (see powerOn()). Set when the machine is switched on;
+    // cleared only by a master reset. Not the divide field: a control word with a real
+    // divide ratio would clear that, and must not clear this.
+    bool powerOnHold_ = true;  // a new chip has never been reset: it is held
+
+    // The kinds of access traceHeldAccess() has logged during this hold, one bit each.
+    // A diagnostic only, so it is not in the snapshot.
+    uint8_t heldTraced_ = 0;
 
     uint64_t rxCount_ = 0;  // rxBytes() -- see above. The run loop's live-traffic signal.
 

@@ -760,6 +760,21 @@ baud, and unit `b` a modem at 1200 baud. One can use interrupts while the other 
 The serial chapter tells you what you can connect a unit to: your terminal, a TCP socket, or a
 real serial port on your computer, with the modem control lines.
 
+#### A program must reset each unit first
+
+**A unit does nothing until the program writes a master reset (`03`) to its control port.** This
+is how the real 6850 works after power-on. Until the master reset, the status port reads `00`,
+and a character that the program writes is not sent. After the master reset, the program writes
+the word format, for example `15` for 8 data bits and 1 stop bit. Every program of the period
+that uses the board does these two writes first.
+
+During this time the unit receives nothing. A key that you type, or a byte from a pipe or a file,
+waits until the program resets the unit. A byte from a real serial port is lost, as on the real
+board.
+
+To find a program that uses a unit before it resets it, type `SET 6850 DEBUG=reset`. The monitor
+then reports the first time the program reads or writes each unit before its master reset.
+
 ### `sio`: MITS 88-SIO
 
 One **COM2502 UART**, unit `tty`, with two ports. This was **the first MITS serial board**. It

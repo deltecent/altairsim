@@ -2,6 +2,7 @@
 
 #include "boards/mits-2sio.h"
 #include "core/clock.h"
+#include "core/statefile.h"
 #include "host/endpoint.h"
 #include "host/stream.h"
 #include "host/tcp.h"
@@ -54,6 +55,10 @@ public:
 
     void feed(const std::string& s) { in_ += s; }
 
+    // A real serial port, or a host buffer (the default). See ByteStream::realWire().
+    bool realWire() const override { return wire_; }
+    bool wire_ = false;
+
     LineStatus  st_;
     LineControl ctl_;
     LineParams  params_;
@@ -71,12 +76,23 @@ struct Chip {
     Mc6850     u{"a"};
     PinStream* line = nullptr;
 
-    Chip() {
+    // `init = false` leaves the chip as it powers up: held in its internal power-on
+    // reset, with no OUT from the guest yet.
+    explicit Chip(bool init = true) {
         auto s = std::make_unique<PinStream>();
         line   = s.get();
         u.connect(std::move(s));
         u.powerOn(clk);  // power-on-clear, NOT the guest's master reset. See mc6850.h.
+
+        // ...and the guest's first OUT, which every driver does. The chip comes up held
+        // in its internal power-on reset, and only a master reset releases it (issue
+        // #938). Each test's own control() is then the second OUT of the pair.
+        if (init) u.writeControl(0x03, clk);
     }
+
+    // One character at the word format the chip powers up with (7E2: 11 bits) at the
+    // default 9600 baud.
+    uint64_t charT() const { return (uint64_t)(clk.hz() * 11 / 9600); }
 
     // The control register, written the way a guest writes it. 8N1, and the transmit
     // and receive interrupt bits per the caller.
@@ -310,8 +326,118 @@ void test_lines() {
         // phone. (It has to be the power-on-clear: a BUS reset cannot touch a 6850 at
         // all -- the chip has no reset pin. See Sio2Board::reset.)
         g.u.powerOn(g.clk);
+        g.control(0x03);  // the guest's master reset, which the power-on hold waits for
         CHECK((g.status() & kDcd) != 0, "still no carrier: a reset cannot fake a pin");
         CHECK(!g.u.irq(g.clk), "...but the pending INTERRUPT is gone, which reset does clear");
+    }
+
+    SECTION("Power-on: the chip is HELD until the guest's master reset (#938)");
+    {
+        // "Internal power-on reset logic detects the power-turn-on transition and holds
+        // the chip in a reset state to prevent erroneous output transitions prior to
+        // initialization; released by the bus-programmed Master Reset." (reference/6850.md)
+        Chip g(false);
+        CHECK((g.status() & kTdre) == 0, "power-on: TDRE is 0");
+        g.tick(5000);
+        CHECK((g.status() & kTdre) == 0, "...and stays 0 however long nobody programs it");
+        CHECK(!g.line->ctl_.rts, "RTS is held negated");
+        CHECK(!g.line->ctl_.brk, "...and there is no break");
+        CHECK(!g.u.irq(g.clk), "...and no interrupt");
+
+        g.u.writeData('X', g.clk);
+        CHECK(g.line->out_.empty(), "a data write sends NOTHING -- the IMDW case");
+
+        // A real divide ratio without a master reset first does not release it: "after
+        // power-on or a power-fail restart, Master Reset must occur first."
+        g.control(k8n1);
+        CHECK((g.status() & kTdre) == 0, "a control word alone does not release the hold");
+        CHECK(!g.line->ctl_.rts, "...RTS is still held");
+        g.u.writeData('X', g.clk);
+        CHECK(g.line->out_.empty(), "...and still nothing is sent");
+
+        g.control(0x03);
+        CHECK((g.status() & kTdre) == 0, "the master reset: held in the reset it started");
+        g.control(k8n1);
+        CHECK((g.status() & kTdre) != 0, "...and the second OUT releases it: TDRE is 1");
+        CHECK(g.line->ctl_.rts, "RTS follows the control register now");
+        g.u.writeData('Y', g.clk);
+        CHECK(g.line->out_ == "Y", "and a data write goes out");
+    }
+
+    SECTION("While held, the receiver is OFF: on a real wire a byte that arrives then is lost");
+    {
+        // The power-on hold, on a real serial port. Eight bytes are on the line from the
+        // start. Two and a half character times pass before the guest's master reset, so
+        // the line delivered two of them to a receiver that was off. Those two are lost and
+        // no more: the bytes are dropped at the line rate, not all at once.
+        Chip g(false);
+        g.line->wire_ = true;
+        g.line->feed("ABCDEFGH");
+        g.tick(g.charT() * 5 / 2);
+        g.control(0x03);
+        g.control(k8n1);
+        CHECK((g.status() & kRdrf) == 0, "nothing was received while held");
+        g.poll();
+        g.tick(5000);
+        CHECK((g.status() & kRdrf) != 0, "after release, the receiver receives");
+        CHECK(g.data() == 'C', "...and A and B were lost while it was off");
+        CHECK(g.u.rxBytes() == 1, "a dropped byte is not counted as received");
+
+        // The guest's own master-reset hold is the same condition.
+        Chip h;
+        h.line->wire_ = true;
+        h.control(k8n1);
+        h.control(0x03);
+        h.line->feed("Q");
+        h.tick(5000);
+        h.poll();
+        CHECK((h.status() & kRdrf) == 0, "held by the guest's master reset: nothing received");
+        h.control(k8n1);
+        h.poll();
+        h.tick(5000);
+        CHECK((h.status() & kRdrf) == 0, "...and the byte that arrived then is gone");
+        h.line->feed("R");
+        h.poll();
+        h.tick(5000);
+        CHECK((h.status() & kRdrf) != 0 && h.data() == 'R', "the next byte is received");
+
+        // A data write during the master-reset hold sends nothing either.
+        h.control(0x03);
+        h.u.writeData('Z', h.clk);
+        CHECK(h.line->out_.empty(), "held by a master reset: a data write sends nothing");
+    }
+
+    SECTION("While held, a host BUFFER keeps its bytes: piped keys wait for the guest");
+    {
+        // The console, a pipe, a file, a socket: not a wire. Keys piped in before the guest
+        // sets the chip up are still there when it does -- a pipe cannot wait for a prompt.
+        Chip g(false);
+        g.line->feed("ABCDEFGH");
+        g.tick(g.charT() * 20);
+        g.poll();
+        CHECK((g.status() & kRdrf) == 0, "held: nothing is received");
+        g.control(0x03);
+        g.control(k8n1);
+        g.poll();
+        g.tick(5000);
+        CHECK((g.status() & kRdrf) != 0 && g.data() == 'A', "after release, the first key is 'A'");
+    }
+
+    SECTION("A snapshot keeps the power-on hold");
+    {
+        Chip g(false);
+        StateWriter w;
+        g.u.serialize(w);
+
+        Chip h;  // master reset already written: not in the power-on hold
+        StateReader r(w.data());
+        h.u.deserialize(r);
+        CHECK(r.ok(), "the state reads back");
+        h.control(k8n1);
+        CHECK((h.status() & kTdre) == 0, "restored: still held, a control word alone does not release it");
+        h.control(0x03);
+        h.control(k8n1);
+        CHECK((h.status() & kTdre) != 0, "...and a master reset does");
     }
 
     SECTION("RTS goes somewhere now, and so does BREAK");
