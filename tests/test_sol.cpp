@@ -100,7 +100,7 @@ constexpr uint8_t STBE = 0x80;  // serial transmitter empty -- active high
 // Display. So everything below the graphics library is exercised with no window:
 // the code table, the sink, and what SOLOS does when the byte arrives.
 struct KeyDisplay : NullDisplay {
-    void press(SpecialKey k) { emitSpecialKey(k); }
+    void press(SpecialKey k) { emitSpecialKey(this, k); }
 };
 
 struct BootRig {
@@ -168,7 +168,7 @@ struct BootRig {
     // window joins what the terminal typed, on one queue, before any board sees it.
     ScriptedStream* connectKeyboardToWindow() {
         ScriptedStream* kbd = connectKeyboard();
-        disp.setKeySink([kbd](const uint8_t* p, size_t n) {
+        disp.setKeySink([kbd](Display::Owner, const uint8_t* p, size_t n) {
             kbd->feed(std::string((const char*)p, n));
         });
         return kbd;
@@ -662,7 +662,7 @@ void test_sol() {
         CHECK(d.specialKey(Display::SpecialKey::Load) == 0x8C, "LOAD sends 8C");
 
         std::string got;
-        d.setKeySink([&got](const uint8_t* p, size_t n) {
+        d.setKeySink([&got](Display::Owner, const uint8_t* p, size_t n) {
             got.append((const char*)p, n);
         });
         d.press(Display::SpecialKey::Left);

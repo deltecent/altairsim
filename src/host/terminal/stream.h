@@ -20,11 +20,11 @@
 // which answers isWindowed() false; resolveEndpoint refuses `terminal:` there rather than
 // opening a serial line nobody can see (see hasWindow()).
 //
-// KEYBOARD ROUTING IS NOT HERE YET. Today the one host window feeds the single Console
-// (src/main.cpp); wiring each terminal window's keys to ITS line is the multi-window work
-// (issue #244, Task 4). keyAscii()/keySpecial() are the seam that work will drive; until
-// then a `terminal:` line renders the guest and answers its reports, and read() carries
-// only those reports.
+// EACH WINDOW TYPES ON ITS OWN LINE. The window is keyed by the stream's `this` (the
+// Display Owner), so a key typed in it carries that owner, and routeKeys() sends it to this
+// line's emulator: an MP/M machine with three terminal windows has three keyboards, and the
+// one you click on is the one you type on. A key from any other window (a VDM-1, a Sol)
+// is not a terminal's, and the composition root gives it to the Console (src/main.cpp).
 
 #include "host/filter.h"  // BsMap -- the terminal reuses the console's rubout mapping
 #include "host/stream.h"
@@ -33,6 +33,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -59,7 +60,7 @@ public:
 
     void pump() override;  // paint the frame, once per slice, on the main thread
 
-    // Host keyboard -> this line (the seam the multi-window work drives, and what a test
+    // Host keyboard -> this line (what routeKeys/routeSpecial drive, and what a test
     // types with). Encoded by the emulator and enqueued toward the guest.
     void keyAscii(uint8_t b);
     void keySpecial(int key);  // a TerminalEmulator::Key value
@@ -110,17 +111,33 @@ public:
     static void setDisplay(Display* d) { s_display = d; }
     static Display* display() { return s_display; }
     static void setFont(const TerminalFont* f) { s_font = f; }
+    static const TerminalFont* font() { return s_font; }
 
     // Is a `terminal:` usable in this build/run? True only when a real window is behind the
     // injected display -- resolveEndpoint refuses the endpoint otherwise.
     static bool hasWindow();
 
-    // WHICH terminal line the host keyboard drives. Today there is one host window and one
-    // keyboard (src/main.cpp), so a `terminal:` line claims it on construction -- last one
-    // wins -- and releases it on destruction. The composition root's key sinks route
-    // through here: keystrokes reach this line's emulator instead of the monitor Console.
-    // Per-window routing for two live terminals is the deferred multi-window work (#244).
-    static TerminalStream* keyTarget() { return s_keyTarget; }
+    // THE TERMINAL BEHIND A WINDOW, or null when the window is not a live terminal's (a
+    // video board's, or one whose terminal has gone). The owner is only compared, never
+    // dereferenced, until it is found among the live terminals.
+    static TerminalStream* forOwner(const void* owner);
+
+    // Keys typed in the window of `owner`. True when that window is a terminal's: the keys
+    // went down its line. False: not a terminal window, and the caller gives the keys to
+    // the Console as before. `key` in routeSpecial is a TerminalEmulator::Key value.
+    static bool routeKeys(const void* owner, const uint8_t* p, size_t n);
+    static bool routeSpecial(const void* owner, int key);
+
+    // SELECT AND COPY (Display::Pointer, Display::emitCopy). The left button down starts a
+    // selection at a cell, a drag extends it, up ends it; the selected cells draw reversed.
+    // Copy puts the selected text on the host clipboard -- the whole screen when nothing is
+    // selected. A key typed in the window clears the selection. `kind` is
+    // Display::Pointer::Kind as an int (0 down, 1 drag, 2 up); x, y are picture pixels.
+    void        pointer(int kind, int x, int y);
+    bool        hasSelection() const { return selOn_; }
+    std::string copyText() const;
+    static bool routePointer(const void* owner, int kind, int x, int y);
+    static bool routeCopy(const void* owner);
 
     // ---- tests: read the grid back without a window ----
     const TerminalScreen& screen() const { return screen_; }
@@ -132,11 +149,16 @@ private:
     std::unique_ptr<TerminalEmulator> emu_;
     TerminalRenderer                  renderer_;
     int                               videoWidth_ = 0;  // window width px, 0 = auto
+    bool selOn_ = false;     // a selection is shown (more than a click)
+    bool dragging_ = false;  // the left button is down in this window
+    int  selAR_ = 0, selAC_ = 0, selHR_ = 0, selHC_ = 0;  // anchor and head cells
+    void clearSelection();
+    void cellAt(int x, int y, int& row, int& col) const;
 
-    static Display*            s_display;
-    static const TerminalFont* s_font;
-    static TerminalStream*     s_keyTarget;
-    static Settings            s_settings;
+    static Display*                  s_display;
+    static const TerminalFont*       s_font;
+    static std::set<TerminalStream*> s_live;  // every terminal now open: forOwner()
+    static Settings                  s_settings;
 };
 
 } // namespace altair

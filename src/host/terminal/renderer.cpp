@@ -59,6 +59,7 @@ void TerminalRenderer::render(Display::Owner owner, const std::string& label, Di
             bool reverse = ((a & TerminalScreen::kAttrReverse) != 0) ^ reverse_;
             bool isCursor = (dr == curRow && c == curCol && cursorShown);
             if (isCursor) reverse = !reverse;
+            if (selected(dr, c)) reverse = !reverse;  // a mouse selection (TerminalStream)
 
             bool hideGlyph = blink && !lit;                                 // dark half-cycle
             uint8_t fgColor = (a & TerminalScreen::kAttrHalf) ? 2 : 1;      // dim vs full

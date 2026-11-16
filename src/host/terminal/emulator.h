@@ -45,7 +45,7 @@ public:
     //
     // The no-ASCII keys a windowed host captures. Each emulator encodes its own -- the
     // arrows are the classic divergence -- so key ROUTING (which window's keys reach which
-    // line, the multi-window work) stays separate from key ENCODING, which is here.
+    // line, TerminalStream::routeSpecial) stays separate from key ENCODING, which is here.
     enum class Key { Up, Down, Left, Right, Home };
 
     // A printable/control key with an ASCII code passes straight through by default (most

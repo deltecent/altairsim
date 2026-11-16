@@ -40,6 +40,30 @@
 
 namespace altair {
 
+// CLIPBOARD TEXT AS KEYSTROKES (paste into a window). The host clipboard is UTF-8 with the
+// host's line ends; the guest is a 7-bit machine whose Return key sends CR. So: CR LF, LF and
+// CR each become one CR; TAB stays; printable ASCII stays; any other control byte is dropped;
+// each non-ASCII character (one UTF-8 sequence) becomes one '?', so a curly quote is seen and
+// not silently lost. A trailing line end is kept: a pasted command line runs, as typed.
+inline std::string pasteKeys(const std::string& utf8) {
+    std::string out;
+    out.reserve(utf8.size());
+    for (size_t i = 0; i < utf8.size(); ++i) {
+        const unsigned char c = (unsigned char)utf8[i];
+        if (c == '\r') {
+            out += '\r';
+            if (i + 1 < utf8.size() && utf8[i + 1] == '\n') ++i;
+        } else if (c == '\n') {
+            out += '\r';
+        } else if (c == '\t' || (c >= 0x20 && c < 0x7F)) {
+            out += (char)c;
+        } else if (c >= 0xC0) {
+            out += '?';  // the lead byte of a UTF-8 sequence; its continuation bytes follow
+        }               // 0x80-0xBF (continuation), DEL and other controls: dropped
+    }
+    return out;
+}
+
 // One palette entry. Alpha is carried for the host's benefit (a real color TV has
 // none); a board leaves it 255. The Dazzler builds 16 of these from its RGBI
 // nibble; the VDM-1 uses two (background, foreground).
@@ -160,10 +184,11 @@ public:
     virtual void setPalette(Owner owner, std::span<const Color> colors) = 0;
 
     // The keyboard sink (see the header note). A windowed host delivers focus
-    // keystrokes here as ASCII; the composition root wires it to Console::inject so
-    // they join the terminal's on the one recorded input queue. Left null on a
-    // headless host -- a NullDisplay never captures a key, so it never calls it.
-    using KeySink = std::function<void(const uint8_t*, size_t)>;
+    // keystrokes here as ASCII, with the OWNER of the window they were typed in (null when
+    // the host cannot tell). The composition root sends a terminal window's keys down that
+    // terminal's line and every other window's to Console::inject (src/main.cpp). Left null
+    // on a headless host -- a NullDisplay never captures a key, so it never calls it.
+    using KeySink = std::function<void(Owner, const uint8_t*, size_t)>;
     void setKeySink(KeySink s) { keySink_ = std::move(s); }
 
     // KEYS WITH NO ASCII CODE. A host keyboard has arrows and a Home key; ASCII has
@@ -193,10 +218,33 @@ public:
     // A built-in terminal encodes arrows in its OWN dialect (VT100 ESC[A, VT52 ESCA,
     // ADM-3A ^K), so it needs to learn which key was pressed, not the byte the table above
     // would pick. When this sink is set it takes precedence over that table (see
-    // emitSpecialKey); the composition root points it at the active terminal line and falls
-    // back to the byte-table Console injection when no terminal is present (src/main.cpp).
-    using SpecialKeySink = std::function<void(SpecialKey)>;
+    // emitSpecialKey); the composition root sends it to the terminal whose window it was
+    // pressed in, and falls back to the byte-table Console injection for any other window
+    // (src/main.cpp).
+    using SpecialKeySink = std::function<void(Owner, SpecialKey)>;
     void setSpecialKeySink(SpecialKeySink s) { specialKeySink_ = std::move(s); }
+
+    // THE MOUSE AND COPY, for selecting text in a terminal window. The back end knows windows
+    // and pixels; the terminal knows cells and text. So the back end says only where the left
+    // button went, in the PICTURE's own pixels (the Surface the owner drew: bezel removed,
+    // scaling and the crt stretch undone), and which window asked to copy. The composition
+    // root sends both to the terminal whose window it was (src/main.cpp), as it does keys.
+    struct Pointer {
+        enum class Kind { Down, Drag, Up } kind = Kind::Down;
+        int x = 0, y = 0;  // picture pixels; may lie outside the picture during a drag
+    };
+    using PointerSink = std::function<void(Owner, const Pointer&)>;
+    void setPointerSink(PointerSink s) { pointerSink_ = std::move(s); }
+    void emitPointer(Owner from, const Pointer& p) {
+        if (pointerSink_) pointerSink_(from, p);
+    }
+    using CopySink = std::function<void(Owner)>;
+    void setCopySink(CopySink s) { copySink_ = std::move(s); }
+    void emitCopy(Owner from) {
+        if (copySink_) copySink_(from);
+    }
+    // Put text on the host clipboard. Nothing to do without a window system.
+    virtual void setClipboardText(const std::string&) {}
 
     // IS THE HOST READY FOR ANOTHER FRAME? A board asks BEFORE it paints, because
     // painting is the expensive half: a VDM-1 frame is 106,496 pixels cleared and
@@ -485,25 +533,27 @@ public:
     static Property widthProperty(int& slot);
 
 protected:
-    // A subclass that captures keystrokes calls this to hand them off; a no-op when
-    // no sink is wired.
-    void emitKeys(const uint8_t* p, size_t n) {
-        if (keySink_ && n) keySink_(p, n);
+    // A subclass that captures keystrokes calls this to hand them off, naming the window
+    // they were typed in; a no-op when no sink is wired.
+    void emitKeys(Owner from, const uint8_t* p, size_t n) {
+        if (keySink_ && n) keySink_(from, p, n);
     }
 
     // One of the no-ASCII keys, resolved through the table above. A code of `0` is
     // "this key sends nothing", so it is dropped rather than injected as a NUL --
     // which on a Sol would be MODE SELECT, and a key that quietly did that would be
     // worse than a key that does nothing.
-    void emitSpecialKey(SpecialKey k) {
-        if (specialKeySink_) { specialKeySink_(k); return; }
+    void emitSpecialKey(Owner from, SpecialKey k) {
+        if (specialKeySink_) { specialKeySink_(from, k); return; }
         uint8_t c = specialKey(k);
-        if (c) emitKeys(&c, 1);
+        if (c) emitKeys(from, &c, 1);
     }
 
 private:
     KeySink        keySink_;
     SpecialKeySink specialKeySink_;
+    PointerSink    pointerSink_;
+    CopySink       copySink_;
 
     // The owners whose windows are always a keyboard; see claimKeyboard().
     std::set<Owner> keyOwners_;

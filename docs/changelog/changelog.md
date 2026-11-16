@@ -12,6 +12,20 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**New: copy from a terminal window and paste into it (issue #665).** Drag with the left mouse
+button to select text, then press `Cmd-C` on a Mac or `Ctrl-Shift-C` on Windows and Linux. With
+no selection, the copy is the full screen. `Cmd-V` or `Ctrl-Shift-V` pastes the clipboard into
+the window as keys. Each line end becomes a CR. `Ctrl-C` and `Ctrl-V` alone still go to the
+guest. trgeuy wrote this for pascal100, a simulator based on altairsim, and we took it from
+there.
+
+**A key typed in a terminal window goes to the line of that window.** Before, the newest
+terminal window got the keys of every window. In a machine with two terminal windows, a key
+typed in the first window went down the line of the second. A key typed in the window of a
+VDM-1 also went to the terminal window and not to the console of the guest. Now each terminal window
+types on its own line. The window of a video board types on the console, as it does in a
+machine with no terminal window.
+
 **Read Track returns the track on every WD17xx board (issue #937).** Before, the Read Track
 command (`E4`) on a raw `.DSK` returned no bytes, because the image has no gaps or address
 marks. A guest that decodes a track, such as the `RTRACK` routine of IMDW, had nothing to read.
