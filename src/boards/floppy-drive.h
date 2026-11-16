@@ -23,15 +23,20 @@
 //     control latch, so the board sets side_ (it is the DiskImage head index too).
 //
 // A raw .DSK holds SECTOR PAYLOADS ONLY -- no gaps, no address marks, no CRCs (host/disk.h).
-// So the ID fields are SYNTHESIZED from the mounted image's declared geometry (sectorIdAt),
-// the CRCs always check (images do not carry the rot that makes a bad CRC), and the whole-
-// track calls stay false -- a format has nowhere to put gaps that were never in the file,
-// and the chip already says so out loud (WRITE FAULT) rather than inventing them.
+// So the ID fields come from one of two places (sectorIdAt): the list a format wrote in this
+// session (ids_ below), or, with no list, IDs made up from the mounted image's declared
+// geometry. The CRCs always check (images do not carry the rot that makes a bad CRC). The
+// whole-track calls work from the same parts: Write Track parses the guest's stream into a
+// geometry, the ID list and the payloads, and Read Track builds a revolution back from the ID
+// list, the payloads and the IBM standard gaps. Only the gap lengths are made up.
 
 #include "chips/floppy.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
+#include <utility>
+#include <vector>
 
 namespace altair {
 
@@ -43,8 +48,8 @@ public:
     // The board owns the DiskImage and points the drive at it on mount (nullptr = an empty
     // drive, which reads NOT READY -- exactly what a bare drive with no diskette does). It
     // stays valid until the board unmounts or replaces it.
-    void mount(DiskImage* img, bool writeProtect) { img_ = img; wp_ = writeProtect; }
-    void eject() { img_ = nullptr; wp_ = false; }
+    void mount(DiskImage* img, bool writeProtect) { img_ = img; wp_ = writeProtect; ids_.clear(); }
+    void eject() { img_ = nullptr; wp_ = false; ids_.clear(); }
     bool loaded() const { return img_ != nullptr; }
 
     // The card's drive-select latch chose a side; the DiskImage head index follows it.
@@ -103,6 +108,11 @@ public:
     int  trackImageBytes(long long rate) const override;
     bool writeTrackImage(const std::vector<uint8_t>& in, bool doubleDensity) override;
 
+    // ---- READ TRACK: one revolution, built from the ID list, the data and IBM gaps ----
+    // False when there is no disk or the track has no format. Unlike Write Track it does
+    // not need setFormatting: reading a track is not formatting one. floppy-drive.cpp.
+    bool readTrackImage(std::vector<uint8_t>& out, long long rate) override;
+
     // ---- the µPD765A's two: the Two Side line, and Format a Track from an ID list ----
     // twoSided() is the image's head count. formatTrack() needs setFormatting(true), as
     // Write Track does; floppy-drive.cpp says what it can and cannot record.
@@ -114,6 +124,22 @@ private:
     // geometry off the DiskImage; `trackFmt` fetches it, false if this drive has no such
     // track formatted (an empty drive, or a track range the image never declared).
     bool trackFmt(struct TrackFormat& out) const;
+
+    // THE ID FIELDS A FORMAT WROTE, kept for the session. A raw image holds payloads only, so
+    // the ID fields a Write Track (or the 765's Format a Track) laid down -- their order round
+    // the track, the C, H, R and N bytes as written, and which data mark each sector has --
+    // have no place in the file. The drive keeps them here, per (track, side), so that the
+    // chip reads back what the guest formatted: an interleave, an ID whose C is not the
+    // physical track, a deleted sector. They are lost on unmount and are not saved with the
+    // machine state; a track with no list gets IDs made up from its geometry (sectorIdAt).
+    struct RecordedId {
+        int  c = 0, h = -1, r = 0, n = 0;  // the ID bytes as written (n raw; h -1 = not known)
+        bool deleted = false;             // the data field carries F8, not FB
+    };
+    // The list for the track under the head, or nullptr. Only a list whose length matches the
+    // track's TrackFormat counts, so a list can never disagree with the image's geometry.
+    const std::vector<RecordedId>* recordedIds() const;
+    std::map<std::pair<int, int>, std::vector<RecordedId>> ids_;
 
     DiskImage* img_  = nullptr;  // NON-OWNING: the board owns it
     int        head_ = 0;        // where the head physically is

@@ -120,6 +120,7 @@ const struct {
     {"telnet", test_telnet},
     {"wd17xx", test_wd17xx},
     {"upd765", test_upd765},
+    {"floppydrive", test_floppy_drive},
     {"bitserial", test_bitserial},
     {"i8257", test_i8257},
     {"bt453", test_bt453},

@@ -67,23 +67,43 @@ static int lengthCodeFor(int sectorSize) {
     }
 }
 
+const std::vector<DiskImageDrive::RecordedId>* DiskImageDrive::recordedIds() const {
+    TrackFormat tf;
+    if (!trackFmt(tf)) return nullptr;
+    const auto it = ids_.find({head_, side_});
+    if (it == ids_.end() || (int)it->second.size() != tf.sectors) return nullptr;
+    return &it->second;
+}
+
 bool DiskImageDrive::sectorIdAt(int index, SectorId& out) const {
     TrackFormat tf;
     if (!trackFmt(tf)) return false;
     if (index < 0 || index >= tf.sectors) return false;
 
-    // The ID field, SYNTHESIZED from the declared geometry -- a raw image carries none.
-    // The recorded track is the physical track (we do not model a mislabeled disk); the
-    // sector number counts from the format's startSector (1 on a soft-sector card).
-    out            = {};
+    out               = {};
+    out.size          = tf.sectorSize;
+    out.doubleDensity = tf.density == Density::DD;  // FM or MFM, as the track was recorded
+    out.idCrcOk       = true;    // ...and no rot: images do not carry bad CRCs
+    out.dataCrcOk     = true;
+
+    // The ID field a format wrote this session, in the order it goes round the track.
+    if (const auto* ids = recordedIds()) {
+        const RecordedId& r = (*ids)[(size_t)index];
+        out.track      = r.c;
+        out.head       = r.h;
+        out.sector     = r.r;
+        out.lengthCode = r.n;
+        out.deleted    = r.deleted;
+        return true;
+    }
+
+    // Otherwise the ID field is SYNTHESIZED from the declared geometry -- a raw image carries
+    // none. The recorded track is the physical track; the side byte is not known (head -1);
+    // the sector number counts from the format's startSector (1 on a soft-sector card).
     out.track      = head_;
     out.sector     = tf.startSector + index;
-    out.size       = tf.sectorSize;
     out.lengthCode = lengthCodeFor(tf.sectorSize);
     out.deleted    = false;   // a raw image has no data address marks to be deleted
-    out.doubleDensity = tf.density == Density::DD;  // FM or MFM, as the track was recorded
-    out.idCrcOk    = true;    // ...and no rot: images do not carry bad CRCs
-    out.dataCrcOk  = true;
     return true;
 }
 
@@ -103,6 +123,24 @@ bool DiskImageDrive::writeData(const SectorId& id, const uint8_t* buf, size_t n)
     size_t len = n;
     if (!img_->writeSector(head_, side_, id.sector, buf, &len)) return false;
     img_->sync();
+
+    // A WRITE ALSO WRITES THE DATA MARK: the chip says which (the 179x's a0 bit, the 765's
+    // Write Deleted Data), and the next read of the sector reports it. The file has no place
+    // for it, so it goes in the ID list. A deleted mark on a track with no list makes the
+    // list from the IDs sectorIdAt makes up, so the other sectors read as they did.
+    const auto* ids = recordedIds();
+    if (!ids && id.deleted) {
+        std::vector<RecordedId> made;
+        SectorId s;
+        for (int i = 0; sectorIdAt(i, s); ++i)
+            made.push_back({s.track, s.head, s.sector, s.lengthCode, s.deleted});
+        ids_[{head_, side_}] = std::move(made);
+        ids = recordedIds();
+    }
+    if (ids) {
+        for (RecordedId& r : ids_[{head_, side_}])
+            if (r.r == id.sector) r.deleted = id.deleted;
+    }
     return true;
 }
 
@@ -131,6 +169,98 @@ int DiskImageDrive::trackImageBytes(long long rate) const {
     return (img_ && canFormat_) ? revolutionBytes(rate, revsPerSec_) : 0;
 }
 
+// ---------------------------------------------------------------------------
+// READ TRACK -- the track as the head would read it, index pulse to index pulse.
+//
+// A raw image keeps payloads only, so the track is BUILT: the ID fields from sectorIdAt (the
+// ones a format wrote this session, or ones made from the geometry), the data from the image,
+// both CRCs computed (fieldCrc, chips/floppy.h), and the gaps at the IBM standard lengths:
+//
+//              FM (IBM 3740)              MFM (IBM System 34)
+//   gap 4a     40 x FF                    80 x 4E
+//   index      6 x 00, FC                 12 x 00, C2 C2 C2 FC
+//   gap 1      26 x FF                    50 x 4E
+//   per sector:
+//   ID         6 x 00, FE C H R N CRC     12 x 00, A1 A1 A1 FE C H R N CRC
+//   gap 2      11 x FF                    22 x 4E
+//   data       6 x 00, FB/F8 data CRC     12 x 00, A1 A1 A1 FB/F8 data CRC
+//   gap 3      27 x FF                    54 x 4E
+//   gap 4b     FF to the index            4E to the index
+//
+// The length is one revolution at the chip's data rate. Gap 3 is made shorter when the track
+// does not fit at the standard length, and gap 4b takes what is left. A track that does not
+// fit even with no gap 3 is cut at the index pulse, as the chip's command ends there.
+//
+// THE GAPS ARE THE ONE THING MADE UP. A guest that formatted with its own gap lengths reads
+// back the standard ones; every ID byte, data mark and data byte is what the guest wrote.
+// ---------------------------------------------------------------------------
+bool DiskImageDrive::readTrackImage(std::vector<uint8_t>& out, long long rate) {
+    TrackFormat tf;
+    if (!trackFmt(tf) || tf.sectors <= 0 || tf.sectorSize <= 0) return false;
+    const int rev = revolutionBytes(rate, revsPerSec_);
+    if (rev <= 0) return false;
+
+    const bool    mfm   = tf.density == Density::DD;
+    const uint8_t gap   = mfm ? 0x4E : 0xFF;
+    const int     gap4a = mfm ? 80 : 40, gap1 = mfm ? 50 : 26, gap2 = mfm ? 22 : 11;
+    const int     zeros = mfm ? 12 : 6;  // the sync run in front of every mark
+    const int     syncs = mfm ? 3 : 0;   // A1 A1 A1 (C2 C2 C2 for the index mark)
+
+    // The bytes of everything but gap 3: the index preamble, then each sector's two fields.
+    const long long pre  = gap4a + zeros + syncs + 1 + gap1;
+    const long long per  = (zeros + syncs + 1 + 4 + 2) + gap2 + (zeros + syncs + 1 + tf.sectorSize + 2);
+    const long long room = rev - pre - per * tf.sectors;
+    int gap3 = mfm ? 54 : 27;
+    if (room < (long long)gap3 * tf.sectors) gap3 = room > 0 ? (int)(room / tf.sectors) : 0;
+
+    // Sized up front to one revolution and filled by index; gap 4b is the fill already there.
+    out.assign((size_t)rev, gap);
+    size_t p   = 0;
+    auto   put = [&](uint8_t b, int count) {
+        for (int k = 0; k < count && p < out.size(); ++k) out[p++] = b;
+    };
+    auto putBytes = [&](const uint8_t* b, size_t count) {
+        for (size_t k = 0; k < count && p < out.size(); ++k) out[p++] = b[k];
+    };
+    auto putCrc = [&](uint16_t crc) {
+        put((uint8_t)(crc >> 8), 1);
+        put((uint8_t)(crc & 0xFF), 1);
+    };
+
+    put(gap, gap4a);
+    put(0x00, zeros);
+    put(0xC2, syncs);
+    put(0xFC, 1);
+    put(gap, gap1);
+
+    std::vector<uint8_t> data((size_t)tf.sectorSize, 0);
+    for (int i = 0; i < tf.sectors; ++i) {
+        SectorId id;
+        if (!sectorIdAt(i, id)) { out.clear(); return false; }
+        size_t n = data.size();
+        if (!readData(id, data.data(), &n) || n != data.size()) { out.clear(); return false; }
+
+        // The ID field. H is the side byte as written, or the selected side for a made-up ID.
+        const uint8_t f[5] = {0xFE, (uint8_t)id.track, (uint8_t)(id.head >= 0 ? id.head : side_),
+                              (uint8_t)id.sector, (uint8_t)id.lengthCode};
+        put(0x00, zeros);
+        put(0xA1, syncs);
+        putBytes(f, sizeof f);
+        putCrc(fieldCrc(mfm, f, sizeof f));
+        put(gap, gap2);
+
+        // The data field: the mark, the data, and a CRC over both.
+        const uint8_t mark = id.deleted ? 0xF8 : 0xFB;
+        put(0x00, zeros);
+        put(0xA1, syncs);
+        put(mark, 1);
+        putBytes(data.data(), data.size());
+        putCrc(crcCcitt(fieldCrc(mfm, &mark, 1), data.data(), data.size()));
+        put(gap, gap3);
+    }
+    return true;
+}
+
 // Parse the raw track the guest streamed into `in` and (re)establish the addressed track's
 // geometry as we fill it. The stream is IBM 3740: gap bytes, an index mark (0xFC), then per
 // sector an ID field (0xFE track side sector N, then 0xF7) and a data field (a data address
@@ -151,7 +281,7 @@ bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in, bool double
     // Each parsed data field: its sector number and length code from the ID field, and an
     // (offset, length) window into `in` -- we copy nothing, and write straight from the buffer
     // the chip already collected.
-    struct Field { int sec, lenN; size_t off, len; };
+    struct Field { int sec, lenN; size_t off, len; RecordedId id; };
     std::vector<Field> fields;
 
     const size_t n = in.size();
@@ -161,20 +291,23 @@ bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in, bool double
         ++i;                                    // consume the 0xFE ID address mark
         if (i + 4 > n) break;                   // a truncated header ends the track
 
-        // ID field: track, side, sector, length code N. We TRUST THE HEAD POSITION for the
-        // physical track (sectorIdAt synthesizes track = head_), so the recorded track/side
-        // are not used; the sector number and N are. sectorSize = 128 << N (IBM 3740).
-        const int sec  = in[i + 2];
-        const int lenN = in[i + 3] & 0x03;
+        // ID field: track, side, sector, length code N, all kept as written (the ID list,
+        // floppy-drive.h). The sector number places the data in the image; sectorSize =
+        // 128 << N (IBM 3740).
+        RecordedId rid;
+        rid.c = in[i], rid.h = in[i + 1], rid.r = in[i + 2], rid.n = in[i + 3];
+        const int sec  = rid.r;
+        const int lenN = rid.n & 0x03;
         i += 4;
 
-        // Skip the ID CRC (0xF7) and the gap up to the data address mark. 0xFB is a data mark
-        // and 0xF8-0xFA a deleted data mark; the image has no place to keep which one it was,
-        // so a deleted field is still a sector and its data lands. Bail to the outer scan if
-        // the next ID field arrives first -- an ID with no data field is not a sector.
+        // Skip the ID CRC (0xF7) and the gap up to the data address mark. 0xFB is a data mark,
+        // 0xF8 the deleted data mark, and 0xF9/0xFA the 1771's two user marks. The data lands in
+        // the image either way; the ID list keeps whether the mark was F8. Bail to the outer
+        // scan if the next ID field arrives first -- an ID with no data field is not a sector.
         auto isDataMark = [](uint8_t b) { return b >= 0xF8 && b <= 0xFB; };
         while (i < n && !isDataMark(in[i]) && in[i] != 0xFE) ++i;
         if (i >= n || !isDataMark(in[i])) continue;
+        rid.deleted = in[i] == 0xF8;
         ++i;  // consume the data address mark
 
         // The data field is EXACTLY the bytes the software streamed, up to the 0xF7 CRC-generate
@@ -184,7 +317,7 @@ bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in, bool double
         // writeSector rejects it below -> WRITE FAULT, which is honest.
         const size_t off = i;
         while (i < n && in[i] != 0xF7) ++i;
-        fields.push_back({sec, lenN, off, i - off});
+        fields.push_back({sec, lenN, off, i - off, rid});
         if (i < n) ++i;  // consume the 0xF7
     }
 
@@ -218,6 +351,11 @@ bool DiskImageDrive::writeTrackImage(const std::vector<uint8_t>& in, bool double
     tf.startSector = lo;
     img_->setTrackFormat(head_, side_, tf);
 
+    // The ID fields as written, in the order they go round the track.
+    std::vector<RecordedId>& ids = ids_[{head_, side_}];
+    ids.clear();
+    for (const Field& f : fields) ids.push_back(f.id);
+
     // Each field to the sector its own ID names, in ascending order, so a blank image grows in
     // order with no gap to fill.
     bool ok = true;
@@ -242,8 +380,8 @@ bool DiskImageDrive::twoSided() const { return img_ != nullptr && img_->heads() 
 // interleaved format is the common case), so the start is the lowest R. A track whose IDs
 // do not fit that shape -- mixed sizes, a gap in the numbers, a number twice -- has no
 // image form, and the chip is told so (false: it reports a fault) instead of having the
-// image quietly record something else. The C and H the processor wrote are not kept:
-// sectorIdAt synthesizes them from the head position and the side, as it always has.
+// image quietly record something else. The C, H, R and N the processor wrote are kept in
+// the ID list (floppy-drive.h), in the order given, every data field with a normal mark.
 bool DiskImageDrive::formatTrack(const std::vector<SectorId>& ids, uint8_t fill) {
     if (!img_ || !canFormat_ || ids.empty()) return false;
 
@@ -267,6 +405,11 @@ bool DiskImageDrive::formatTrack(const std::vector<SectorId>& ids, uint8_t fill)
     tf.sectorSize  = size;
     tf.startSector = lo;
     img_->setTrackFormat(head_, side_, tf);
+
+    std::vector<RecordedId>& rec = ids_[{head_, side_}];
+    rec.clear();
+    for (const SectorId& id : ids)
+        rec.push_back({id.track, id.head, id.sector, id.lengthCode, false});
 
     // In ascending order, so a blank image grows in order, with no gap to fill.
     const std::vector<uint8_t> data((size_t)size, fill);

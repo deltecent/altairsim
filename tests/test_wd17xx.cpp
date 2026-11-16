@@ -1122,6 +1122,25 @@ void test_wd17xx() {
         CHECK(got.size() == 6 && got[1] == 1, "179x Read Address byte 2 is the selected side");
     }
 
+    // The ID-field CRC Read Address hands over. FM: over FE C H R N. MFM: over the three A1
+    // sync marks too (IBM System 34), so the same ID gives a different CRC at each density.
+    for (bool dd : {false, true}) {
+        Clock clk;
+        FakeDrive d;
+        Wd1791    f("fdc");
+        f.attach(&d);
+        f.powerOn(clk);
+        d.format(5, 26, 256);
+        for (auto& sec : d.track[5]) sec.id.lengthCode = 1, sec.id.doubleDensity = dd;
+        d.head = 5;
+        std::vector<uint8_t> got;
+        f.writeCommand(0xC0, clk);  // Read Address
+        spin(f, clk, [&](Wd17xx& c) { if (c.drq()) got.push_back(c.readData(clk)); });
+        const uint16_t want = dd ? 0x4649 : 0x7EA7;  // C 5, H 0, R 1, N 1
+        CHECK(got.size() == 6 && got[4] == (want >> 8) && got[5] == (want & 0xFF),
+              dd ? "MFM Read Address CRC includes A1 A1 A1" : "FM Read Address CRC is over FE C H R N");
+    }
+
     // ---- THE DENSITY CHECK (setDensityChecked) -- issue #691 ----
     //
     // A track recorded in MFM has no address mark a chip clocked for FM can see, and the

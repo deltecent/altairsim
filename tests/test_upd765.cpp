@@ -103,6 +103,7 @@ struct FakeDrive : FloppyDrive {
         Sec* s = find(head, side, id.sector);
         if (!s || n != s->data.size()) return false;
         s->data.assign(buf, buf + n);
+        s->id.deleted = id.deleted;  // the mark the chip wrote
         return true;
     }
     bool formatTrack(const std::vector<SectorId>& ids, uint8_t fill) override {
@@ -496,6 +497,52 @@ void test_upd765() {
         auto& s8 = r.d[0].find(0, 0, 8)->data;
         CHECK(s8[9] == (0x80 | (137 & 0x3F)) && s8[10] == 0 && s8[127] == 0,
               "sector 8: ten bytes, then 00 to the end");
+    }
+
+    SECTION("uPD765 -- Write Data writes a data mark, Write Deleted Data a deleted one");
+    {
+        Rig r;
+        r.d[0].lay(0, 0, 4, 128, false);
+        r.d[0].find(0, 0, 2)->id.deleted = true;
+        r.ready();
+        auto write = [&](uint8_t op, uint8_t sec) {
+            r.cmd({op, 0x00, 0, 0, sec, 0, sec, 7, 128});
+            r.run(4000);
+            for (int k = 0; k < 128; ++k) r.f.dackWrite(0x55);
+            r.f.terminalCount();
+            return r.results();
+        };
+        auto s = write(0x09, 3);
+        // EOT is the sector itself, so each command ends at the end of the cylinder: EN, no error.
+        CHECK(s.size() == 7 && s[1] == Upd765::kSt1En && s[2] == 0, "Write Deleted Data to sector 3 lands");
+        CHECK(r.d[0].find(0, 0, 3)->id.deleted, "...with the deleted mark");
+        s = write(0x05, 2);
+        CHECK(s.size() == 7 && s[1] == Upd765::kSt1En && s[2] == 0, "Write Data over deleted sector 2 lands");
+        CHECK(!r.d[0].find(0, 0, 2)->id.deleted, "...and writes a normal mark");
+    }
+
+    SECTION("uPD765 -- an ID field's recorded H");
+    {
+        Rig r;
+        r.d[0].lay(0, 0, 3, 128, false);
+        for (auto& sec : r.d[0].trk[{0, 0}]) sec.id.head = 1;  // H 1, on side 0
+        r.ready();
+        r.cmd({0x0A, 0x00});  // Read ID
+        r.run(4000);
+        auto s = r.results();
+        CHECK(s.size() == 7 && s[4] == 1, "Read ID returns the H as recorded");
+        r.cmd({0x06, 0x00, 0, 1, 2, 0, 2, 7, 128});  // Read Data, H 1
+        r.run(4000);
+        auto data = r.dmaRead();
+        r.f.terminalCount();
+        s = r.results();
+        CHECK(data.size() >= 128 && data[0] == 0x02 && s.size() == 7 && s[1] == Upd765::kSt1En,
+              "Read Data with H 1 finds the sector");
+        r.cmd({0x06, 0x00, 0, 0, 2, 0, 2, 7, 128});  // Read Data, H 0
+        r.run(4000000);
+        s = r.results();
+        CHECK(s.size() == 7 && (s[0] & 0xC0) == 0x40 && (s[1] & Upd765::kSt1Nd),
+              "Read Data with H 0 does not: ND");
     }
 
     SECTION("uPD765 -- non-DMA mode: an interrupt per byte");

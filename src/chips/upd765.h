@@ -185,6 +185,9 @@ private:
 
     bool findSector(FloppyDrive::SectorId& out);  // C/H/R/N, or sets ST1/ST2 and returns false
     bool legible(const FloppyDrive::SectorId& id) const { return id.doubleDensity == mf(); }
+    // The ID field's H: the byte the format wrote, or -- when the drive made the ID up from a
+    // raw image's geometry and records none -- the side selected (HD).
+    int idHead(const FloppyDrive::SectorId& id) const { return id.head >= 0 ? id.head : hd_; }
     bool openSector();       // the sector at R into buf_; false = the command ended
     bool openTrackSector();  // Read a Track: the next sector round the track
     bool advance();          // R to the next sector (MT to head 1, or EOT); false = ended

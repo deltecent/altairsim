@@ -66,9 +66,11 @@ the chip/drive split is spelled out there and in `src/chips/floppy.h` at length.
 `DiskImage`. A raw `.DSK` holds **sector payloads only** — no gaps, no address marks, no CRCs
 (`src/host/disk.h`). So:
 
-- **ID fields are synthesized** from the mounted image's declared per-track `TrackFormat`
-  (`sectorIdAt`): the track is the physical head position, the sector counts from the format's
-  `startSector` (1 on a soft-sector card), and the CRCs always check (an image carries no rot).
+- **The ID fields come from the ID list, or are made up** (`sectorIdAt`). A format in this
+  session keeps its ID fields in the drive's ID list (see "The ID list" below). A track with no
+  list gets IDs made up from its `TrackFormat`. C is the physical head position, R counts up from
+  `startSector` (1 on a soft-sector board), and the mark is normal. The CRCs always check,
+  because an image carries no bad bits.
 - **`DiskImage` is CHS with per-track geometry.** Each `(track, head)` slot carries a
   `TrackFormat{density, sectors, sectorSize, startSector}`; offsets are a **running sum** over
   the slots (`rebuild()`), so a disk whose tracks differ in size — the mixed-density disk — is
@@ -111,9 +113,10 @@ Per sector: record the sector number R and the length code N from the ID field. 
 literal track data, so accumulate-until-`0xF7` is unambiguous (the `0xE5` fill and the `0xDD`
 density signature are ordinary data, not special).
 
-The data address mark is any of `0xF8`-`0xFB`. `0xFB` is a normal data mark, and `0xF8`-`0xFA`
-are deleted data marks. A raw image has no place to keep the mark, so a field with a deleted
-mark is recorded as a normal sector. An ID field that has no data field is not a sector.
+The data address mark is any of `0xF8`-`0xFB`. `0xFB` is the normal data mark and `0xF8` is
+the deleted data mark. `0xF9` and `0xFA` are the two user marks of the FD1771, and the drive
+records them as normal. A raw image has no place to keep the mark, so the drive keeps it in the
+ID list. An ID field that has no data field is not a sector.
 
 A raw image keeps one `TrackFormat` for each track: one sector size, and sector numbers from
 `startSector` to `startSector + sectors - 1`. The ID fields can come in any order, because an
@@ -136,6 +139,30 @@ interleaved format is the usual case. After the parse:
 
 Return `false` (→ WRITE FAULT) if nothing parsed, if the track has no image form, or if a write
 could not land.
+
+### The ID list
+
+A raw image keeps the payloads and the `TrackFormat`. It has no place for the ID fields
+themselves. The drive keeps them in memory, in `DiskImageDrive::ids_`, one list for each
+`(track, side)`. Each entry holds C, H, R and N as written, and whether the data mark is
+`0xF8`. The entries are in the order that the ID fields go round the track. Because of the
+list, the chip reads back what the guest formatted. That includes an interleave, a C that is not
+the physical track, an H that is not the selected side, and a deleted sector.
+
+- **Three things write the list.** `writeTrackImage` stores it after the check in step 1
+  passes. `formatTrack` (the µPD765A) stores the IDs it was given. `writeData` changes the mark
+  of one entry when the chip writes the sector. The 179x `a0` bit and the 765's Write Deleted
+  Data write a deleted mark. On a track with no list, a deleted mark first makes the list from the
+  made-up IDs.
+- **The list must match the geometry.** `sectorIdAt` uses a list only when its length is the
+  track's sector count. Otherwise it makes up the IDs.
+- **The list is kept for the session only.** `mount()` and `eject()` clear it. `SAVE` and
+  `RESTORE` do not keep it. A disk that is mounted again, or a track that was never formatted
+  in this session, reads with made-up IDs.
+
+Read Address returns the recorded H when the ID has one (`SectorId::head`), and the side the
+board selected when it does not. In MFM the ID CRC includes the three `A1` sync bytes, as on the
+real part. `fieldCrc` in `src/chips/floppy.h` computes the CRC of a field at either density.
 
 ### A track that changes size moves the tail
 
@@ -262,6 +289,41 @@ streams-until-INTRQ the same way for each DD track (~10114 structured bytes, com
 tracks from one mechanism, and the VersaFloppy's 5.25″ formats get 6250/12500 from the same one.
 Validate this number against the format program's gap tables, not by "it booted."
 
+## Read Track: one revolution from the ID list
+
+`Read Track` (`E4`) returns one revolution of the track under the head. The chip calls
+`drive->readTrackImage(buf, dataRateBits)` and streams the bytes to the guest. The drive builds
+the revolution from the ID fields that `sectorIdAt` gives, the payloads in the image, and the
+IBM standard gaps:
+
+| Field | FM (single density) | MFM (double density) |
+|---|---|---|
+| gap 4a | 40 × `FF` | 80 × `4E` |
+| index mark | 6 × `00`, `FC` | 12 × `00`, `C2 C2 C2 FC` |
+| gap 1 | 26 × `FF` | 50 × `4E` |
+| ID field, each sector | 6 × `00`, `FE C H R N`, CRC | 12 × `00`, `A1 A1 A1 FE C H R N`, CRC |
+| gap 2 | 11 × `FF` | 22 × `4E` |
+| data field | 6 × `00`, `FB` or `F8`, data, CRC | 12 × `00`, `A1 A1 A1`, `FB` or `F8`, data, CRC |
+| gap 3 | 27 × `FF` | 54 × `4E` |
+| gap 4b | `FF` to the index | `4E` to the index |
+
+- **The length is one revolution**, `revolutionBytes(rate, revsPerSec_)`: 5208 bytes for 8″
+  FM and 10416 for 8″ MFM. Gap 3 gets shorter when the sectors do not fit at the standard
+  length, and gap 4b takes the bytes that are left. A track that does not fit with no gap 3 is
+  cut at the index pulse, because the command ends there.
+- **H is the recorded H**, or the selected side for a made-up ID.
+- **The gap lengths are the only bytes that are made up.** A guest that formatted with its own
+  gap lengths gets the standard lengths back. The ID bytes, the marks and the data are what the
+  guest wrote. Both CRCs are computed with `fieldCrc`, so they always check.
+- **Read Track does not need `setFormatting`.** A board that cannot format still reads a track.
+- **No track, no bytes.** With no disk, or no format for the track, `readTrackImage` returns
+  `false`. With the density check on (`setDensityChecked`), a track recorded at the other
+  density also gives no bytes. The status of Read Track has no error bits, so the chip writes
+  the reason to its log and ends the command.
+
+`tests/trackdecode.h` decodes a track from the IBM layout and not from the drive's code. The
+`floppydrive` and `versafloppy` suites use it to check the bytes.
+
 ## The other chip: the µPD765A
 
 The CompuPro Disk 1 and Disk 1A do not use a WD part. The two boards share one class,
@@ -301,8 +363,12 @@ container that carries its own sector map would fix this — and is explicitly n
 
 ## Deferred
 
-- **Read-side density gate** (above): reads validate geometry, not density. Deferred until a
-  workload needs it.
+- **The ID list in the machine state.** `SAVE` and `RESTORE` do not keep the ID list, so a
+  restored machine reads made-up IDs until the guest formats the track again.
+- **The ID map of a mounted `.IMD`.** The conversion to a raw image keeps the payloads and loses
+  the sector order and the deleted marks. Such a disk reads with made-up IDs.
+- **The guest's own gap lengths.** `Write Track` does not keep them, so `Read Track` returns the
+  IBM standard lengths.
 - **A real-CP/M FORMAT/DFORMAT acceptance test.** *Both* densities are now covered end-to-end at
   the **board level** in `tests/test_tarbell.cpp` — the real `FC`/`FB` port discipline, all 77
   tracks, the file growing (256,256 SSSD on the #1011; **499,456 mixed** on the #2022, SD track 0
