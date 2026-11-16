@@ -111,25 +111,6 @@ inline bool flagV(uint8_t c) { return c & 0x04; }  // Type I: verify the destina
 inline bool flagM(uint8_t c) { return c & 0x10; }  // Type II: multiple records
 inline bool flagE(uint8_t c) { return c & 0x04; }  // Type II/III: HLD + the 10 ms delay
 
-// CRC-16/CCITT over the ID field, which is what the FD1771 puts on the disk and what
-// Read Address hands back to the guest: poly x^16 + x^12 + x^5 + 1, preset to ones,
-// computed across the address mark and the four ID bytes (IBM 3740).
-//
-// THIS IS COMPUTED, NOT INVENTED. Read Address transfers the two CRC bytes to the
-// computer, so they have to be SOMETHING -- and the only defensible something is the
-// CRC of the ID field we just handed over, which is exactly what a real chip would
-// have read off a correctly-written disk. Emitting zeroes would be a made-up number
-// that a formatter checking its own work would reject.
-uint16_t crc16(const uint8_t* p, size_t n) {
-    uint16_t crc = 0xFFFF;
-    for (size_t i = 0; i < n; ++i) {
-        crc ^= (uint16_t)p[i] << 8;
-        for (int b = 0; b < 8; ++b)
-            crc = (crc & 0x8000) ? (uint16_t)((crc << 1) ^ 0x1021) : (uint16_t)(crc << 1);
-    }
-    return crc;
-}
-
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -531,9 +512,12 @@ void Wd17xx::afterHeadSettle(const Clock& clk) {
             //
             //     1 TRACK   2 ZEROS   3 SECTOR   4 SECTOR LENGTH   5 CRC 1   6 CRC 2
             //
-            // Byte 2 is the SIDE number, which the PART decides: a hard zero on the 1771
-            // (no side-select pin), the board-selected head on the 179x. readAddressSide()
-            // is the hook -- see wd17xx.h. That is a fact about the silicon, not a placeholder.
+            // Byte 2 is the side byte, read off the disk like the other three. When the drive
+            // kept the ID field a format wrote (SectorId::head), that is the byte. When it made
+            // the ID up from a raw image's geometry, it does not know the byte, and the PART
+            // decides what a normal disk holds there: zero on the 1771 (no side-select pin),
+            // the board-selected head on the 179x. readAddressSide() is that hook -- see
+            // wd17xx.h.
             if (!drive_ || drive_->sectorCount() == 0) {
                 status_ |= kNotFound;  // S4 is ID NOT FOUND in this column
                 finish(clk);
@@ -557,9 +541,13 @@ void Wd17xx::afterHeadSettle(const Clock& clk) {
                 return;
             }
 
-            uint8_t f[5] = {0xFE, (uint8_t)id.track, readAddressSide(), (uint8_t)id.sector,
+            const uint8_t side = id.head >= 0 ? (uint8_t)id.head : readAddressSide();
+            uint8_t f[5] = {0xFE, (uint8_t)id.track, side, (uint8_t)id.sector,
                             (uint8_t)id.lengthCode};
-            const uint16_t crc = crc16(f, sizeof f);
+            // THE CRC IS COMPUTED, NOT INVENTED: the CRC of the ID field just handed over,
+            // which is what a real chip reads off a correctly written disk. In MFM it covers
+            // the three A1 sync marks too (fieldCrc, chips/floppy.h).
+            const uint16_t crc = fieldCrc(id.doubleDensity, f, sizeof f);
 
             buf_ = {f[1], f[2], f[3], f[4], (uint8_t)(crc >> 8), (uint8_t)(crc & 0xFF)};
 
@@ -581,14 +569,25 @@ void Wd17xx::afterHeadSettle(const Clock& clk) {
         }
 
         case Ctx::ReadTrack: {
-            if (!drive_ || !drive_->readTrackImage(buf_) || buf_.empty()) {
-                // Table 6's READ TRACK column has NO error bits at all -- S6..S3 are
-                // hardwired zero. There is literally nowhere in the status register to
-                // report this, so the chip says it in words and completes. Silence would
-                // hand the guest a track of nothing and let it decide the disk was blank.
-                log_.push_back(name_ + ": read track: this drive has no bit-level track "
-                                       "image (a raw sector image has no gaps or address "
-                                       "marks in it)");
+            // Table 6's READ TRACK column has NO error bits at all -- S6..S3 are hardwired
+            // zero. There is literally nowhere in the status register to report a track
+            // that cannot be read, so the chip says it in words and completes. Silence would
+            // hand the guest a track of nothing and let it decide the disk was blank.
+            //
+            // A TRACK RECORDED AT THE OTHER DENSITY gives no track here: a chip clocked for
+            // FM finds no clock pattern it can lock to in MFM, and the reverse, so it has no
+            // bytes to hand over that mean anything. The same test as every other command
+            // (legible), asked of the track's first ID field.
+            FloppyDrive::SectorId id0;
+            if (drive_ && drive_->sectorIdAt(0, id0) && !legible(id0)) {
+                log_.push_back(name_ + ": read track: the track is recorded at the other "
+                                       "density");
+                finish(clk);
+                return;
+            }
+            if (!drive_ || !drive_->readTrackImage(buf_, dataRateBits) || buf_.empty()) {
+                log_.push_back(name_ + ": read track: this drive has no track image to give "
+                                       "(no disk, or no format for this track)");
                 finish(clk);
                 return;
             }

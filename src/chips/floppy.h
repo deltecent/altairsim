@@ -15,6 +15,31 @@
 namespace altair {
 
 // ---------------------------------------------------------------------------
+// THE CRC OF AN ADDRESS-MARK FIELD, as a soft-sector controller records it: CRC-16/CCITT,
+// poly x^16 + x^12 + x^5 + 1, preset to ones, over the address mark and the bytes after it.
+// In MFM the three A1 sync marks in front of the address mark are in the CRC too (IBM
+// System 34); in FM there are none. `p` starts at the address mark (FE, FB, F8...).
+//
+// One function for the chip and the drive, so a Read Address and a Read Track of the same
+// ID field always agree.
+// ---------------------------------------------------------------------------
+inline uint16_t crcCcitt(uint16_t crc, const uint8_t* p, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+        crc ^= (uint16_t)(p[i] << 8);
+        for (int b = 0; b < 8; ++b)
+            crc = (crc & 0x8000) ? (uint16_t)((crc << 1) ^ 0x1021) : (uint16_t)(crc << 1);
+    }
+    return crc;
+}
+
+inline uint16_t fieldCrc(bool mfm, const uint8_t* p, size_t n) {
+    static const uint8_t kSync[3] = {0xA1, 0xA1, 0xA1};
+    uint16_t crc = 0xFFFF;
+    if (mfm) crc = crcCcitt(crc, kSync, sizeof kSync);
+    return crcCcitt(crc, p, n);
+}
+
+// ---------------------------------------------------------------------------
 // WHAT IS ON THE OTHER END OF THE DISK PINS.
 //
 // The same seam ByteStream is for the 6850: the chip owns no image, no file and no
@@ -108,6 +133,12 @@ public:
     // left to be discovered. If a disk ever turns up that needs it, start here.
     struct SectorId {
         int  track      = 0;  // as RECORDED in the ID field -- which is the point of a verify
+
+        // The side byte (H) as RECORDED, or -1 when the drive does not know it. A raw image
+        // records no ID fields, so a drive that made this one up from the geometry says -1,
+        // and the chip uses the side it has selected. A drive that kept the ID fields a
+        // format wrote (boards/floppy-drive.h) hands back what was written.
+        int  head       = -1;
         int  sector     = 0;
         int  size       = 0;  // decoded length of the data field, in bytes
 
@@ -143,12 +174,11 @@ public:
     // gaps are made of. That is a real difference in kind, and it is why they are
     // separate calls rather than a `size` that happens to be big.
     //
-    // NOT PURE, AND FALSE BY DEFAULT, because a drive backed by a raw .DSK genuinely
-    // CANNOT produce one: the gaps and the address marks were never in the file. That
-    // is not a limitation to paper over -- it is a fact about the medium, and the right
-    // answer is to say so (Write Track sets WRITE FAULT, which is the bit the hardware
-    // would set) rather than to hand a formatter 5,208 invented bytes that round-trip
-    // into a disk nothing can read.
+    // NOT PURE, AND FALSE BY DEFAULT: a drive that has no track to give says so. A raw .DSK
+    // holds payloads only -- the gaps and the address marks were never in the file -- so a
+    // drive over one has to MAKE the track it hands back, and one that does not (a test's
+    // fake drive) returns false. Write Track then sets WRITE FAULT, the bit the hardware
+    // would set; Read Track has no error bit at all, and the chip says so in its log.
     //
     // WRITE TRACK IS THE ONE PLACE GEOMETRY IS ESTABLISHED, so the chip hands the format
     // virtuals what it is configured at: the DATA RATE (dataRateBits) to trackImageBytes, for
@@ -157,10 +187,19 @@ public:
     // 8" SD track is ~5208 bytes / single density; a DD track ~10416 / double), and the chip
     // is the single source of truth for which. They are two values and not one because the
     // rate does not give the density: a 5.25" double-density track runs at the 8"
-    // single-density rate. The drive stores neither. (readTrackImage does NOT format, so it
-    // takes neither.)
+    // single-density rate. The drive stores neither.
+    //
+    // READ TRACK takes the rate too, because one revolution is what the command reads: it
+    // starts at the index pulse and ends at the next. It does not take the density -- the
+    // track was recorded at one, and that is the one it reads back in. A DiskImageDrive
+    // builds the track from the ID fields it has (the ones a format wrote, or ones made from
+    // the geometry), the sector data, and the IBM standard gaps (boards/floppy-drive.cpp).
+    // The guest's own gap lengths were not kept, so they are the one thing that can differ
+    // from what it wrote.
     virtual int  trackImageBytes(long long dataRateBits) const { (void)dataRateBits; return 0; }
-    virtual bool readTrackImage(std::vector<uint8_t>& out) { (void)out; return false; }
+    virtual bool readTrackImage(std::vector<uint8_t>& out, long long dataRateBits) {
+        (void)out; (void)dataRateBits; return false;
+    }
     virtual bool writeTrackImage(const std::vector<uint8_t>& in, bool doubleDensity) {
         (void)in; (void)doubleDensity; return false;
     }

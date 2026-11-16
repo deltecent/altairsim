@@ -442,7 +442,7 @@ void Upd765::readId() {
         const int at = (idCursor_ + k) % n;
         if (!d->sectorIdAt(at, id) || !legible(id) || !id.idCrcOk) continue;
         idCursor_ = (at + 1) % n;  // the disk has turned past it
-        c_ = (uint8_t)id.track, h_ = (uint8_t)hd_, r_ = (uint8_t)id.sector;
+        c_ = (uint8_t)id.track, h_ = (uint8_t)idHead(id), r_ = (uint8_t)id.sector;
         n_ = (uint8_t)id.lengthCode;
         endData(kSt0Nt);
         return;
@@ -461,9 +461,9 @@ bool Upd765::findSector(FloppyDrive::SectorId& out) {
         FloppyDrive::SectorId id;
         if (!d->sectorIdAt(i, id) || !legible(id)) continue;
         seen = true;
-        // The ID field's H is the side it is on; an image records none, so it is the side
-        // selected. A command whose H is not HD finds nothing ("H = HD", §3).
-        if (id.sector != r_ || h_ != hd_) continue;
+        // The ID field's H: what the format wrote, or the side selected when the drive made
+        // the ID up. A command whose H is not the ID's finds nothing.
+        if (id.sector != r_ || h_ != idHead(id)) continue;
         if (id.track != c_) {
             wrongC = true;
             if (id.track == 0xFF) badC = true;
@@ -553,7 +553,7 @@ bool Upd765::openTrackSector() {
         const int at = (idCursor_ + k) % n;
         if (!d->sectorIdAt(at, id) || !legible(id)) continue;
         idCursor_ = (at + 1) % n;
-        if (id.track != c_ || h_ != hd_ || id.sector != r_ || id.lengthCode != n_)
+        if (id.track != c_ || h_ != idHead(id) || id.sector != r_ || id.lengthCode != n_)
             st1_ |= kSt1Nd;
         if (!id.idCrcOk || !id.dataCrcOk) {
             st1_ |= kSt1De;
@@ -662,6 +662,7 @@ void Upd765::sectorDone() {
             for (size_t i = 0; i + 3 < buf_.size(); i += 4) {
                 FloppyDrive::SectorId id;
                 id.track         = buf_[i];
+                id.head          = buf_[i + 1];
                 id.sector        = buf_[i + 2];
                 id.lengthCode    = buf_[i + 3];
                 id.size          = 128 << std::min<int>(buf_[i + 3], 7);
@@ -682,6 +683,9 @@ void Upd765::sectorDone() {
             return;
         }
         case Xfer::Write:
+            // Write Data writes a data mark and Write Deleted Data a deleted one, whatever
+            // mark the sector had before (§7). The drive keeps the mark it is handed.
+            cur_.deleted = (op() == 0x09);
             if (!drv()->writeData(cur_, buf_.data(), buf_.size())) {
                 endData(kSt0At | kSt0Ec);
                 return;

@@ -12,6 +12,30 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**Read Track returns the track on every WD17xx board (issue #937).** Before, the Read Track
+command (`E4`) on a raw `.DSK` returned no bytes, because the image has no gaps or address
+marks. A guest that decodes a track, such as the `RTRACK` routine of IMDW, had nothing to read.
+Now the command returns one revolution: the ID fields, the data marks, the sector data, good
+CRCs and the IBM standard gap lengths. The gap lengths are the only bytes that are made up. A
+guest that formatted with other gap lengths gets the standard lengths back.
+
+**A format keeps its interleave, its ID bytes and its deleted marks for the session.** Before,
+Write Track and the µPD765A Format a Track command kept only the geometry. Read Address,
+Verify and the sector commands then saw made-up IDs. The sectors were in order from 1, C was
+the physical track, H was the selected side, and no mark was deleted. Now the drive keeps the ID fields as written until the disk is unmounted. It
+does not keep them across `SAVE` and `RESTORE`. A track not formatted in this session reads as
+before.
+
+**A double-density Read Address returns the CRC that the disk holds.** Before, the WD17xx Read
+Address command computed the ID CRC over `FE C H R N` at both densities. In MFM the CRC also
+covers the three `A1` sync bytes, so a guest that checked the CRC of a double-density ID found
+it bad. Now the CRC includes the `A1` bytes in MFM. Single density is unchanged.
+
+**The µPD765A Write Deleted Data command writes a deleted mark.** Before, Write Deleted Data
+(`09`) passed on the mark that the sector already had. A sector written with it read back as
+normal. Now the command writes the deleted mark, and Write Data
+(`05`) writes the normal mark.
+
 **A caller on a `socket:` or `telnet:` line gets the first bytes of a run.** Before, a line
 that listens answered its caller only after the first slice of `RUN`, or of the MCP `run` and
 `start`. A caller who connected before the run lost what the guest sent in that slice. For

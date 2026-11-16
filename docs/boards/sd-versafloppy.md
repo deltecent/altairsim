@@ -134,12 +134,16 @@ with 8″ drives at 360 RPM (6 rev/s) and 5.25″ minis at 300 RPM (5 rev/s) —
 
 - **Write Track parses the streamed track, it does not model a bit-level image.** The controller
   reconstructs each track's geometry from the address marks and length code the guest streams
-  (density from the chip's data rate), then stores sector payloads in the raw `.DSK` — the gaps,
+  (density from the chip's DDEN pin), then stores sector payloads in the raw `.DSK` — the gaps,
   sync fields, and CRCs are consumed and discarded, exactly as they never appear in the image on
   read. This is enough to format every SD Systems geometry and read it back; it is not a
-  flux-level model, and `Read Track` returns nothing.
-- **`Read Address`/`Read Track` are not the format path.** Formatting is `Write Track`;
-  `Read Track` has no bit image to return.
+  flux-level model.
+- **`Read Track` builds the track with standard gaps.** It returns one revolution. The
+  revolution holds the ID fields and data marks of the last format in this session, the sector
+  data, good CRCs and the IBM standard gaps. A guest that formatted with other gap lengths gets
+  the standard lengths back. After a remount, and on a track not formatted in this session, the
+  IDs come from the disk's geometry. The sectors are in order from 1, and C is the physical
+  track number.
 - **Under the default `timing = full`, the stall takes no emulated time** — a seek does not spend
   its 20 ms/track, and a sector moves as fast as the CPU can run `INIR`. Set `timing = real` for
   the real time.

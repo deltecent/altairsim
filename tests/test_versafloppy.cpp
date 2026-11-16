@@ -11,6 +11,7 @@
 #include "core/machine.h"
 #include "host/media.h"
 #include "test.h"
+#include "trackdecode.h"
 
 #include <cstdint>
 #include <string>
@@ -124,6 +125,39 @@ void pollWriteVf(VersaFloppyBoard& b, const std::vector<uint8_t>& stream) {
         if ((in(b, CMD) & 0x01) == 0) break;  // BUSY (S0) clear: the track is done
         out(b, DAT, k < stream.size() ? stream[k++] : 0xFF);
     }
+}
+
+// An FM track with the IDs a formatter chose: sector `order[k]` is the k-th round the track,
+// every ID has cylinder byte `c`, and sector `del` has the deleted data mark F8. Each sector's
+// data is its own sector number. Sized up front and filled by index (GCC 15 -Warray-bounds).
+std::vector<uint8_t> mkSkewedTrack(int c, const std::vector<int>& order, int del) {
+    const size_t         per = 6 + 6 + 11 + 6 + 1 + 128 + 1 + 27;  // 00s, ID+F7, gap, 00s, mark, data, F7, gap
+    std::vector<uint8_t> s(47 + order.size() * per, 0xFF);
+    for (size_t k = 40; k < 46; ++k) s[k] = 0x00;
+    s[46] = 0xFC;  // index mark
+    for (size_t k = 0; k < order.size(); ++k) {
+        const size_t  b = 47 + k * per;
+        const uint8_t r = (uint8_t)order[k];
+        for (size_t z = 0; z < 6; ++z) s[b + z] = 0x00;
+        const uint8_t id[6] = {0xFE, (uint8_t)c, 0x00, r, 0x00, 0xF7};
+        for (size_t z = 0; z < 6; ++z) s[b + 6 + z] = id[z];
+        for (size_t z = 0; z < 6; ++z) s[b + 23 + z] = 0x00;
+        s[b + 29] = r == del ? 0xF8 : 0xFB;
+        for (size_t z = 0; z < 128; ++z) s[b + 30 + z] = r;
+        s[b + 158] = 0xF7;
+    }
+    return s;
+}
+
+// Read Track (E4) through the ports: issue it, then take bytes off the wait-synced data port
+// until the chip drops BUSY at the index pulse.
+std::vector<uint8_t> readTrackVf(VersaFloppyBoard& b) {
+    std::vector<uint8_t> t(20000, 0);
+    size_t               n = 0;
+    out(b, CMD, 0xE4);
+    while (n < t.size() && (in(b, CMD) & 0x01)) t[n++] = in(b, DAT);
+    t.resize(n);
+    return t;
 }
 
 // Format every track of a blank through the real ports, exactly as the guest's `Z` command does:
@@ -677,5 +711,57 @@ void test_versafloppy() {
         CHECK((in(b, CMD) & 0x05) == 0x04, "drive 1 is home and the command is over");
         out(b, SEL, selA);
         CHECK((in(b, CMD) & 0x04) == 0, "drive 0 did not move");
+    }
+
+    // ---- READ TRACK, END TO END (#937) ----
+    // What IMDW's RTRACK does: format a track with an interleave, a deleted sector and a cylinder
+    // byte that is not the head's track, then read the whole track back through the data port
+    // and decode it. The IDs, their order, the marks and the data come back as written, with good
+    // CRCs, in one revolution of bytes.
+    {
+        withRampDisk(77ull * 26 * 128);  // 8" SS-SD
+        Clock c;
+        VersaFloppyBoard b;
+        b.attachClock(&c);
+        b.power();
+        std::string err;
+        CHECK(b.mount("drive0", "ramp.dsk", false, err), "the SD image mounts");
+
+        std::vector<int> order;
+        for (int k = 0; k < 26; ++k) order.push_back((k % 2) ? 14 + k / 2 : 1 + k / 2);
+        control(b, /*dd=*/false, /*side=*/0);
+        seekTo(b, 5);
+        out(b, CMD, 0xF4);  // Write Track
+        pollWriteVf(b, mkSkewedTrack(45, order, 9));
+        CHECK((in(b, CMD) & 0x20) == 0, "the interleaved format took: no WRITE FAULT");
+
+        const std::vector<uint8_t> t = readTrackVf(b);
+        CHECK(t.size() == 5208, "Read Track hands over one revolution: 5208 bytes");
+        CHECK((in(b, CMD) & 0x7C) == 0, "...and ends with no error bits");
+
+        const auto f  = decodeTrack(t, false, 128);
+        bool       ok = f.size() == 53 && f[0].mark == 0xFC;
+        for (size_t k = 0; ok && k < 26; ++k) {
+            const TrackField& id = f[1 + 2 * k];
+            const TrackField& dt = f[2 + 2 * k];
+            const uint8_t     r  = (uint8_t)order[k];
+            ok = id.mark == 0xFE && id.crcOk && id.body[0] == 45 && id.body[1] == 0 &&
+                 id.body[2] == r && id.body[3] == 0 && dt.mark == (r == 9 ? 0xF8 : 0xFB) &&
+                 dt.crcOk && dt.body == std::vector<uint8_t>(128, r);
+        }
+        CHECK(ok, "the IDs come back in the order written (1, 14, 2, 15, ...) with C 45, sector 9 "
+                  "with F8, each data field its own, and every CRC good");
+
+        // A track this session never formatted: the IDs are made from the geometry (C 6, sectors
+        // 1-26 in order) and the data is what the image holds.
+        seekTo(b, 6);
+        const std::vector<uint8_t> sec1 = readSectorVf(b, 6, 1, 128);
+        const auto                 g    = decodeTrack(readTrackVf(b), false, 128);
+        bool                       made = g.size() == 53;
+        for (size_t k = 0; made && k < 26; ++k)
+            made = g[1 + 2 * k].crcOk && g[1 + 2 * k].body[0] == 6 && g[1 + 2 * k].body[2] == k + 1 &&
+                   g[2 + 2 * k].mark == 0xFB && g[2 + 2 * k].crcOk;
+        CHECK(made && g[2].body == sec1,
+              "a track not formatted this session reads back with IDs made from the geometry");
     }
 }
