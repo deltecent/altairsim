@@ -12,6 +12,29 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**A 6850 now does nothing until the program resets it (issue #938).** Before, a 6850 on the
+88-2SIO, the 88-UIO or the Turnkey Module was ready at power-on. Its status read `02` (TDRE set),
+a character written to the data port was sent, and RTS was on. A real 6850 is held in reset
+until the program writes a master reset (`03`) to the control port. IMDW wrote to a 2SIO
+channel that nothing had reset. It printed in altairsim and printed nothing on a real 88-2SIO.
+Now the status reads `00`, a character written to the data port is not sent, and RTS is off
+until the master reset. A control word that is not a master reset does not release the chip.
+A 2SIO that you add with `BOARDS ADD` to a running machine starts held too. After a master
+reset, the chip also sends nothing until the next control word, as the real chip does.
+
+During the hold the receiver is off. A byte from a real serial port (`serial:`) is lost, as on
+the real board. A key that you type, or a byte from a pipe, a file or a socket, waits until the
+program resets the chip.
+
+**New: `SET 6850 DEBUG=reset`.** It reports the first time a program reads or writes each 6850
+before its master reset, with the chip and the port:
+`6850: a port 10: status read before a master reset (held since power-on)`.
+
+**The `HELLO` debugger example now resets the 2SIO.** `examples/debugger/HELLO.ASM` printed
+without a master reset, so it would print nothing on a real 88-2SIO. It now writes `03` and
+`15` to port `10` first. The program is now 54 bytes, and its walkthrough shows the new
+addresses.
+
 **New: copy from a terminal window and paste into it (issue #665).** Drag with the left mouse
 button to select text, then press `Cmd-C` on a Mac or `Ctrl-Shift-C` on Windows and Linux. With
 no selection, the copy is the full screen. `Cmd-V` or `Ctrl-Shift-V` pastes the clipboard into

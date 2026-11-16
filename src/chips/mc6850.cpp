@@ -15,8 +15,8 @@ namespace {
 // the operator to name a board id to trace a chip that has none. So `SET 6850
 // DEBUG=serial` lights every 6850 at once, and each line names WHICH chip it came
 // from (name_, e.g. `sio2a`). The bit index here is the DebugFlag enum below.
-dbg::Channel g_ch6850("6850", {"serial"});
-enum { SERIAL = 0 };
+dbg::Channel g_ch6850("6850", {"serial", "reset"});
+enum { SERIAL = 0, RESET = 1 };
 
 std::string hex2(uint8_t b) {
     char h[4];
@@ -40,6 +40,7 @@ void Mc6850::serialize(StateWriter& w) const {
     w.boolean(txRoom_);
     tx_.serialize(w);
     w.u64(rxNextAt_);
+    w.boolean(powerOnHold_);
 }
 
 void Mc6850::deserialize(StateReader& r) {
@@ -57,6 +58,7 @@ void Mc6850::deserialize(StateReader& r) {
     txRoom_        = r.boolean();
     tx_.deserialize(r);
     rxNextAt_      = r.u64();
+    powerOnHold_   = r.boolean();
 
     // rxIdle_ is a transient shift-register edge, not part of the on-disk format.
     // Assume idle after a restore: the first byte to arrive is then timed from its
@@ -288,8 +290,11 @@ void Mc6850::sampleDcd() {
 }
 
 // The divide field IS the reset, and it LATCHES. See the header: this is a state the
-// chip sits in until a second control write lets it out.
-bool Mc6850::inReset() const { return (control_ & kDivideMask) == kMasterReset; }
+// chip sits in until a second control write lets it out. The internal power-on reset is
+// the same state, and only a master reset ends it. See powerOn().
+bool Mc6850::inReset() const {
+    return powerOnHold_ || (control_ & kDivideMask) == kMasterReset;
+}
 
 // TDRE -- and the three things that inhibit it. See the header.
 bool Mc6850::tdre(const Clock& clk) const {
@@ -316,11 +321,16 @@ bool Mc6850::tdre(const Clock& clk) const {
 // "can also be used for Data Terminal Ready", i.e. a card MAY wire it that way; the
 // 88-2SIO's hardwire table is not in front of us, and DESIGN.md 0.1 says ask rather
 // than reason. So: not modeled, and the PMMI is the card that needs it.)
+//
+// During the internal power-on reset, RTS is held negated and there is no BREAK: the data
+// sheet holds RTS high in reset, and the power-on reset exists "to prevent erroneous output
+// transitions prior to initialization". The guest's own master reset is different -- the
+// sheet lets that write program RTS through CR5/CR6 -- so the field still decides there.
 void Mc6850::driveControl() {
     uint8_t txctl = (control_ & kTxCtlMask) >> 5;
     LineControl c;
-    c.rts = (txctl != 0b10);
-    c.brk = (txctl == 0b11);
+    c.rts = !powerOnHold_ && (txctl != 0b10);
+    c.brk = !powerOnHold_ && (txctl == 0b11);
     c.dtr = false;
     stream_->setControl(c);
 }
@@ -358,6 +368,15 @@ void Mc6850::driveControl() {
 // someone to discover. If a HOST SERIAL PORT endpoint ever lands, an overrun
 // there is a genuine hardware event and the stream can report it -- from the
 // place that actually knows, which is not here.
+//
+// THE ONE PLACE A BYTE IS DROPPED, AND WHY IT IS NOT THE SAME MISTAKE. While the chip is
+// held in reset its receiver is OFF -- "initializes both the receiver and transmitter" --
+// so a byte that reaches the pin then is not received by anything. On a REAL WIRE (a host
+// serial port, ByteStream::realWire()) the guest has not switched the receiver on yet, and
+// those bytes are gone: discardWhileHeld() drops them, at the rate the line could have
+// sent them and no faster. Every other endpoint is a host buffer, and its bytes WAIT, for
+// the reason above: a pipe of typed keys reaches the console before any guest has set the
+// chip up, and dropping it would be the buffer-as-wire mistake again.
 // ---------------------------------------------------------------------------
 void Mc6850::poll(const Clock& clk) {
     // SAMPLE THE INPUT PINS. They may have moved while nobody was looking -- a real
@@ -378,9 +397,10 @@ void Mc6850::poll(const Clock& clk) {
     // ...and it is dead while the chip is held in reset, for the same reason and by
     // the same words: the master reset "initializes both the receiver and
     // transmitter". A chip sitting in the reset condition is not listening to the
-    // line, so the bytes wait on it. (The PINS above are sampled anyway: /CTS and
-    // /DCD are external conditions, and a reset does not reach across a cable.)
-    if (inReset()) return;
+    // line, and a byte that arrives now is lost. (The PINS above are sampled anyway:
+    // /CTS and /DCD are external conditions, and a reset does not reach across a cable.)
+    // Only a real wire loses the bytes; on a host buffer they wait (see above).
+    if (inReset()) { discardWhileHeld(clk); return; }
 
     if (rdrf_) return;                  // the register is still full: the line waits
 
@@ -411,6 +431,26 @@ void Mc6850::poll(const Clock& clk) {
 
     if (g_ch6850.on(SERIAL))
         dbg::line(g_ch6850) << name_ << " rx " << hex2(b) << "\n";
+}
+
+// THE RECEIVER IS OFF, AND THE LINE KEEPS GOING. A byte is dropped only after the line
+// has had one character-time to deliver it, counted from rxNextAt_ -- which is the start
+// of the hold (resetAction sets it) or the last byte dropped. So a file endpoint drains at
+// the line rate, as a tape reader running before its loader would, and a guest that does
+// its master reset and its control word back to back loses nothing it was not going to.
+// When the line is empty, the count restarts from now.
+void Mc6850::discardWhileHeld(const Clock& clk) {
+    if (!stream_->realWire()) return;  // a host buffer: the bytes wait for the receiver
+    uint64_t charT = charTStates(clk);
+    while (stream_->readable() && clk.now() >= rxNextAt_ + charT) {
+        uint8_t b = 0;
+        if (stream_->read(&b, 1) != 1) break;
+        rxNextAt_ += charT;
+        if (g_ch6850.on(SERIAL))
+            dbg::line(g_ch6850) << name_ << " rx " << hex2(b) << " dropped (reset)\n";
+    }
+    if (!stream_->readable()) rxNextAt_ = clk.now();
+    rxIdle_ = true;  // the shift register is empty: the first byte after release is timed afresh
 }
 
 uint8_t Mc6850::readStatus(const Clock& clk) {
@@ -476,8 +516,17 @@ uint8_t Mc6850::readData(const Clock& clk) {
 // And the reset LASTS. The divide field stays 11 until a second control write clears
 // it, and until then the chip is held in reset -- see inReset(), and note that this is
 // why nothing works until ALTMON's second OUT.
+//
+// Only a master reset ends the INTERNAL power-on reset. A first control word with a real
+// divide ratio leaves the chip held, exactly as the data sheet says: "after power-on or a
+// power-fail restart, Master Reset must occur first."
 void Mc6850::writeControl(uint8_t v, const Clock& clk) {
+    // Bytes that reached the pin during the hold are settled first: the guest may touch
+    // the chip for the first time with this very write, and poll() has not run.
+    if (inReset() && carrier()) discardWhileHeld(clk);
+
     control_ = v;
+    if ((v & kDivideMask) == kMasterReset) powerOnHold_ = false;
     if (inReset()) resetAction(clk);
 
     // THE CONTROL REGISTER IS THE WIRE. Bits 5-6 are RTS and BREAK -- real pins, and
@@ -488,7 +537,29 @@ void Mc6850::writeControl(uint8_t v, const Clock& clk) {
     programLine();
 }
 
+void Mc6850::traceHeldAccess(uint8_t port, bool isData, bool isWrite, uint8_t v) {
+    if (!powerOnHold_ || !g_ch6850.on(RESET)) return;
+    if (isWrite && !isData && (v & kDivideMask) == kMasterReset) return;  // the right first write
+    uint8_t kind = (uint8_t)(1u << ((isWrite ? 2 : 0) + (isData ? 1 : 0)));
+    if (heldTraced_ & kind) return;
+    heldTraced_ |= kind;
+    std::ostream& out = dbg::line(g_ch6850);
+    out << name_ << " port " << hex2(port) << ": ";
+    if (!isWrite) out << (isData ? "data read" : "status read");
+    else out << (isData ? "data write " : "control write ") << hex2(v);
+    out << " before a master reset (held since power-on)\n";
+}
+
 void Mc6850::writeData(uint8_t v, const Clock& clk) {
+    // HELD IN RESET, THE TRANSMITTER SENDS NOTHING. The master reset "initializes both the
+    // receiver and transmitter", and TDRE is already reading 0 to say so; a guest that
+    // writes anyway puts nothing on the wire. This is the case issue #938 is about.
+    if (inReset()) {
+        if (g_ch6850.on(SERIAL))
+            dbg::line(g_ch6850) << name_ << " tx " << hex2(v) << " dropped (reset)\n";
+        return;
+    }
+
     stream_->write(&v, 1);
     stream_->flush();
 
@@ -547,22 +618,29 @@ void Mc6850::resetAction(const Clock& clk) {
 //     The 6850 has no reset pin. Nothing here happens on one, and the card must not
 //     invent it -- see Sio2Board::reset().
 //
-//   - THIS is the machine being switched on. It zeroes the control register, which no
-//     external pin on the real chip can do, because the real chip HAS NO SUCH PIN: at
-//     power-up an internal reset holds the ACIA until the guest's first master reset
-//     releases it. We do not model the holding (nothing can observe it that does not
-//     also program the chip) -- we simply come up in a known good state, at once, so
-//     that a machine is usable the moment it is switched on. DESIGN.md 6.1.
+//   - THIS is the machine being switched on. At power-up an internal reset holds the
+//     ACIA "to prevent erroneous output transitions prior to initialization", and only
+//     the guest's master reset releases it (reference/6850.md). That hold is modeled:
+//     powerOnHold_ makes inReset() true, so TDRE reads 0, a data write sends nothing and
+//     the receiver is off, until the guest writes 11 into the divide field. A control
+//     word with a real divide ratio does NOT release it.
+//
+//     This used to come up ready to use, on the grounds that nothing could observe the
+//     hold without also programming the chip. A program can: one that uses a channel
+//     nothing has set up since power-on. IMDW did, and was silent on the real board while
+//     it printed here (issue #938). DESIGN.md 6.1.
 void Mc6850::powerOn(const Clock& clk) {
     control_ = 0;
     resetAction(clk);
+    powerOnHold_ = true;
+    heldTraced_  = 0;
 
     // The endpoint STAYS CONNECTED. Switching the machine on does not unplug the
     // terminal -- and a guest that found the console gone would be a baffling thing
     // to debug.
     //
-    // But it DOES REACH THE WIRE: control_ is now 0, so RTS is asserted and BREAK is
-    // off, and those are pins the far end can see.
+    // But it DOES REACH THE WIRE: RTS is held negated and BREAK is off while the chip is
+    // held, and those are pins the far end can see.
     driveControl();
     programLine();
 }

@@ -55,6 +55,7 @@ public:
     bool writable() const override { return inner_->writable(); }
     bool pacesItself() const override { return inner_->pacesItself(); }
     bool pacedReceive() const override { return inner_->pacedReceive(); }
+    bool realWire() const override { return inner_->realWire(); }
 
     void flush() override { inner_->flush(); }
     void pump() override;

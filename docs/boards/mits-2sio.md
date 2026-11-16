@@ -171,13 +171,17 @@ If the host cannot do the strapped rate (an FTDI cable and 76800 baud), the card
 |---|---|---|
 | **Master reset** | the **guest**, writing `11` into the divide field | The only thing that resets a 6850. It does **not** clear the control register — *"Master reset does not affect other Control Register bits"* — it latches the whole byte it rode in on (write `0x83` and RIE survives), and it **holds the chip down** until a second control write. Modeled to the letter; see the two notes under the control register. |
 | **Bus reset** (`Reset::Bus`, the RESET switch) | the **backplane**, `RESET*` | **Nothing.** The 6850 has no RESET pin. The control register, the word format, RTS, the interrupt enables and any character in the receive register all survive it. |
-| **Power-on-clear** (`Reset::PowerOn`, POC\*) | the **power supply** | `Mc6850::powerOn`: zeroes the control register, clears RDRF, empties the receiver, leaves the transmitter ready, asserts RTS. |
+| **Power-on-clear** (`Reset::PowerOn`, POC\*) | the **power supply** | `Mc6850::powerOn`: zeroes the control register, clears RDRF and empties the receiver. The chip is then **held in its internal power-on reset** until the guest writes a master reset (issue #938). While it is held, TDRE reads 0, RTS is negated, a data write sends nothing and the receiver is off. A control word that is not a master reset does not release it. |
 
 - **Neither bus signal unplugs the `ByteStream`.** A guest that reset its UART and found the console gone would be a baffling thing to debug.
 
 > **`Reset::Bus` being a no-op is not laziness — it is the hardware** (see the cross-check under Sources, and DESIGN.md §6.1). This card used to reset both ACIAs on `RESET*`, which lost the guest's configuration *and destroyed a received byte*. `tests/test_sio2.cpp` now pins it: hit RESET with a character in the receiver and RIE armed, and both are still there afterwards.
 >
-> The one thing we do **not** model literally is power-on-clear's internals. A real 6850 comes up held in an internal reset that only the guest's first master reset releases; we skip the holding — nothing can observe it that does not also program the chip — and simply come up in a known good state at once, so the machine is usable the moment it is switched on.
+> **The power-on hold is modeled** (issue #938). A real 6850 comes up held in an internal reset, and only the guest's first master reset releases it. A guest that writes a character before the master reset prints nothing on a real 88-2SIO. IMDW was such a guest. It printed in altairsim and was silent on the real board. The chip now does the same as the real one. `SET 6850 DEBUG=reset` reports the first access of each kind to a chip that is still held, with the port. A guest that skips the master reset is then easy to find.
+>
+> A board added with `BOARDS ADD` to a running machine gets no power-on-clear, but its chips are new, so they also start held.
+>
+> **The receiver is off during either hold.** On a real serial port (`serial:`), the chip drops each byte that arrives during the hold, at the line rate. Every other endpoint keeps the byte in its host buffer: the console, a pipe, a file, a socket and a pty. The guest receives the byte after the release. A host buffer is not a wire, and keys piped to a guest before its first prompt must not be lost. `ByteStream::realWire()` makes the choice.
 
 ## Quirks reproduced (and what breaks if you don't)
 

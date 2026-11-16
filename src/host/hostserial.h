@@ -41,6 +41,9 @@ public:
     // and an overrun here is a genuine hardware event. (Base ByteStream defaults to true.)
     bool pacedReceive() const override { return false; }
 
+    // A real port: a byte that reaches a receiver held in reset is lost (stream.h).
+    bool realWire() const override { return true; }
+
     void flush() override;
     void pump() override;
 

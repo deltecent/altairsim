@@ -121,6 +121,14 @@ public:
     // different axis from pacesItself(): a tape paces itself and also opts out of the gate.
     virtual bool pacedReceive() const { return true; }
 
+    // IS THIS A REAL WIRE? True only for a real serial port (HostSerialStream). A byte on a
+    // real wire that reaches a receiver which is switched off is gone, and a UART held in
+    // reset loses it (Mc6850, issue #938). Every other endpoint -- the console, a pipe, a
+    // file, a socket, a pty -- is a host BUFFER: its bytes wait until the guest's receiver
+    // is on, the same way they wait when the guest does not read. Piped input to a guest
+    // depends on that, because a pipe cannot wait for a prompt.
+    virtual bool realWire() const { return false; }
+
     virtual void flush() {}
 
     // The far end's pins. A LEVEL, with no memory: the stream says "carrier is
@@ -314,6 +322,7 @@ public:
     bool writable() const override { return line_->writable(); }
     bool pacesItself() const override { return line_->pacesItself(); }
     bool pacedReceive() const override { return line_->pacedReceive(); }
+    bool realWire() const override { return line_->realWire(); }
     void flush() override { line_->flush(); }
     LineStatus status() const override { return line_->status(); }
     void setControl(const LineControl& c) override { line_->setControl(c); }

@@ -101,6 +101,7 @@ public:
     bool writable() const override { return inner_->writable(); }
     bool pacesItself() const override { return inner_->pacesItself(); }
     bool pacedReceive() const override { return inner_->pacedReceive(); }
+    bool realWire() const override { return inner_->realWire(); }
 
     // flush() pushes the LOG's buffer (so `tail -f` on the capture is live) as well as
     // the inner's -- it is NOT a row boundary (some boards flush every slice).

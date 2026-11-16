@@ -109,6 +109,7 @@ public:
 
     bool readable() const override { return inner_->readable(); }
     bool pacedReceive() const override { return inner_->pacedReceive(); }
+    bool realWire() const override { return inner_->realWire(); }
     bool writable() const override { return inner_->writable(); }
     void flush() override { inner_->flush(); }
     void pump() override { inner_->pump(); }

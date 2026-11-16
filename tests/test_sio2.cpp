@@ -3,6 +3,7 @@
 #include "boards/mits-88cpu.h"
 #include "boards/s100-memory.h"
 #include "boards/mits-2sio.h"
+#include "core/debuglog.h"
 #include "core/machine.h"
 #include "core/roms.h"
 #include "host/console.h"
@@ -11,11 +12,48 @@
 #include "host/stream.h"
 
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <functional>
 #include <sstream>
 
 using namespace altair;
 
 namespace {
+
+// THE GUEST'S INIT, which every 6850 needs before it does anything. A real chip comes up
+// held in its internal power-on reset, and only a master reset releases it (issue #938):
+// until then TDRE reads 0, nothing is sent and the receiver is off. Period software does
+// the two OUTs; so does every test here that wants a working channel. The second byte is
+// 0x00 -- the control register the chip powered up with -- so a test written against
+// that word format (7E2, RTS on, no interrupts) still measures what it always measured.
+void initAcia(Bus& bus, uint8_t port) {
+    bus.ioWrite(port, 0x03);  // master reset: ends the power-on hold
+    bus.ioWrite(port, 0x00);  // a real divide ratio: ends the reset
+}
+
+// Route the debug sink to a scratch file while `f` runs, and return what landed there.
+std::string debugCapture(const std::function<void()>& f) {
+    namespace fs = std::filesystem;
+    std::string     err;
+    const fs::path  p = fs::temp_directory_path() / "altair_sio2_debug.log";
+    std::error_code ec;
+    fs::remove(p, ec);
+    dbg::setSink(dbg::Sink::File, p.string(), err);
+    f();
+    dbg::setSink(dbg::Sink::Stderr, "", err);  // closes + flushes the file
+    std::ifstream     in(p, std::ios::binary);
+    const std::string s((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
+    fs::remove(p, ec);
+    return s;
+}
+
+int countOf(const std::string& s, const std::string& what) {
+    int n = 0;
+    for (size_t at = s.find(what); at != std::string::npos; at = s.find(what, at + 1)) ++n;
+    return n;
+}
 
 // A machine with a 2SIO in it, and a scripted terminal on channel A. Built by
 // hand rather than from a .toml, so that a config bug cannot make these go red.
@@ -63,6 +101,8 @@ struct Rig {
 
         m.add("8080", "cpu0", err);
         m.power();
+        initAcia(m.bus, base);
+        initAcia(m.bus, (uint8_t)(base + 2));
     }
 
     void run(int steps) {
@@ -408,6 +448,7 @@ void test_sio2() {
         // POWER, though, is a different signal. The machine was switched OFF and ON.
         g.m.power();
         CHECK((g.m.bus.ioRead(0x10) & 0x01) == 0, "power-on-clear: the receiver IS empty");
+        CHECK((g.m.bus.ioRead(0x10) & 0x02) == 0, "...and the chip is held: TDRE is 0 until a master reset");
         CHECK(g.sio->channel("a")->endpoint() == "scripted", "...and the terminal is still plugged in");
     }
 
@@ -424,6 +465,61 @@ void test_sio2() {
 
         // A's line never saw it. Two chips, not one chip with an index.
         CHECK(g.tty->out().empty(), "a: heard nothing -- the channels are independent");
+    }
+
+    SECTION("88-2SIO -- a board added to a RUNNING machine comes up held too (#938)");
+    {
+        // No power cycle after the add: the chips were never reset, so they are in their
+        // power-on reset exactly as a fresh chip is. This is the issue's own repro.
+        Machine     m;
+        std::string err;
+        CHECK(m.add("2sio", "sio0", err) != nullptr, "the board goes in");
+        CHECK((m.bus.ioRead(0x10) & 0x02) == 0, "held: TDRE is 0");
+        m.bus.ioWrite(0x10, 0x15);
+        CHECK((m.bus.ioRead(0x10) & 0x02) == 0, "a control word alone does not release it");
+        m.bus.ioWrite(0x10, 0x03);
+        m.bus.ioWrite(0x10, 0x15);
+        CHECK((m.bus.ioRead(0x10) & 0x02) != 0, "a master reset, then a control word: TDRE is 1");
+    }
+
+    SECTION("88-2SIO -- `SET 6850 DEBUG=reset` names a channel used before its master reset");
+    {
+        dbg::Channel* ch = dbg::find("6850");
+        CHECK(ch != nullptr, "the 6850 debug channel exists");
+        std::string err;
+        CHECK(ch && ch->enable("reset", err), "and it has a `reset` flag");
+        Machine m;
+        m.add("2sio", "sio0", err);
+        m.power();
+        std::string log = debugCapture([&] {
+            for (int i = 0; i < 100; ++i) (void)m.bus.ioRead(0x10);  // a status-poll loop
+            m.bus.ioWrite(0x11, 0x41);
+            m.bus.ioWrite(0x11, 0x42);
+            m.bus.ioWrite(0x10, 0x15);
+            (void)m.bus.ioRead(0x13);
+            m.bus.ioWrite(0x12, 0x03);  // channel B: the right init, which is not logged
+            m.bus.ioWrite(0x12, 0x15);
+            (void)m.bus.ioRead(0x12);
+            m.bus.ioWrite(0x10, 0x03);  // channel A released: nothing more from A
+            m.bus.ioWrite(0x10, 0x15);
+            (void)m.bus.ioRead(0x10);
+            m.bus.ioWrite(0x11, 0x43);
+        });
+        if (ch) ch->disable("reset", err);
+        CHECK(countOf(log, "a port 10: status read before a master reset") == 1,
+              "a status-poll loop is logged ONCE, with the channel and its port");
+        CHECK(countOf(log, "a port 11: data write 41 before a master reset") == 1,
+              "the first data write is logged, with the byte");
+        CHECK(countOf(log, "data write 42") == 0, "the second data write is not");
+        CHECK(countOf(log, "a port 10: control write 15 before a master reset") == 1,
+              "a control word that is not a master reset is logged");
+        CHECK(countOf(log, "b port 13: data read before a master reset") == 1,
+              "a data read is logged, on the other channel");
+        CHECK(countOf(log, "port 12") == 0, "channel B's master reset and what follows: nothing");
+        CHECK(countOf(log, "before a master reset") == 4, "and nothing else");
+        CHECK(debugCapture([&] { m.power(); (void)m.bus.ioRead(0x10); })
+                      .find("a port 10: status read") == std::string::npos,
+              "with the flag off, nothing is logged");
     }
 
     SECTION("88-2SIO -- the base port is a jumper");
@@ -571,6 +667,7 @@ void test_sio2() {
         m.add("2sio", "sio0", err);
         m.add("memory", "mem0", err);
         m.power();
+        initAcia(m.bus, 0x10);
 
         Monitor mon(m);
         std::ostringstream out;
@@ -635,6 +732,7 @@ void test_sio2() {
         m.add("2sio", "sio0", err);
         m.add("memory", "mem0", err);
         m.power();
+        initAcia(m.bus, 0x10);
 
         Monitor mon(m);
         std::ostringstream out;
