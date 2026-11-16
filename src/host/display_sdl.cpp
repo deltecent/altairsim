@@ -550,6 +550,32 @@ void SdlDisplay::pollEvents() {
         return Display::keyboardToConsole();
     };
 
+    // The owner of the window an event names: which line its keys belong to (a terminal's
+    // window types on that terminal, src/main.cpp). Null when no window of ours matches.
+    auto ownerOf = [&](SDL_WindowID id) -> Owner {
+        for (auto& [owner, win] : windows_)
+            if (win.window && SDL_GetWindowID(win.window) == id) return owner;
+        return nullptr;
+    };
+
+    // A mouse position in the window, as a pixel of the PICTURE the owner drew: SDL undoes the
+    // letterbox scaling (window -> logical frame), then we take off the bezel and undo the
+    // crt=on height stretch (fitWindow builds the logical frame from crtDisplayHeight). The
+    // owner, or null when no window of ours matches or nothing has been drawn yet.
+    auto toPicture = [&](SDL_WindowID id, float wx, float wy, Pointer& p) -> Owner {
+        for (auto& [owner, win] : windows_) {
+            if (!win.window || SDL_GetWindowID(win.window) != id) continue;
+            if (!win.renderer || win.picW <= 0 || win.picH <= 0) return nullptr;
+            float rx = 0, ry = 0;
+            SDL_RenderCoordinatesFromWindow(win.renderer, wx, wy, &rx, &ry);
+            const int hDisp = crtDisplayHeight(win.picW, win.picH);
+            p.x = (int)std::floor(rx - (float)win.border);
+            p.y = (int)std::floor((ry - (float)win.border) * (float)win.picH / (float)hDisp);
+            return owner;
+        }
+        return nullptr;
+    };
+
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
         switch (e.type) {
@@ -579,15 +605,36 @@ void SdlDisplay::pollEvents() {
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
             markRepaint(windowById(e.window.windowID));
             break;
+        // THE LEFT BUTTON, for selecting text in a terminal window (Display::Pointer). Down
+        // starts a selection, motion with the button held extends it, up ends it. Other
+        // buttons and plain motion mean nothing here.
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_UP:
+            if (e.button.button == SDL_BUTTON_LEFT) {
+                Pointer p;
+                p.kind = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN ? Pointer::Kind::Down
+                                                               : Pointer::Kind::Up;
+                if (Owner o = toPicture(e.button.windowID, e.button.x, e.button.y, p))
+                    emitPointer(o, p);
+            }
+            break;
+        case SDL_EVENT_MOUSE_MOTION:
+            if (e.motion.state & SDL_BUTTON_LMASK) {
+                Pointer p;
+                p.kind = Pointer::Kind::Drag;
+                if (Owner o = toPicture(e.motion.windowID, e.motion.x, e.motion.y, p))
+                    emitPointer(o, p);
+            }
+            break;
         case SDL_EVENT_TEXT_INPUT:
             // Printable characters, already shift/layout-resolved. The guest is a
-            // 7-bit machine, so pass ASCII only; Ctrl-combos come via KEY_DOWN. Which window
-            // has focus does not route (one operator, one Console); it only decides whether
-            // the window is a keyboard at all (keysFrom).
+            // 7-bit machine, so pass ASCII only; Ctrl-combos come via KEY_DOWN. The window
+            // with focus decides where the keys go: its owner travels with them (ownerOf),
+            // so a terminal window types on its own line.
             if (!keysFrom(e.text.windowID)) break;  // display-only: keys are the joystick's
             for (const char* p = e.text.text; p && *p; ++p) {
                 uint8_t c = (uint8_t)*p;
-                if (c < 0x80) emitKeys(&c, 1);
+                if (c < 0x80) emitKeys(ownerOf(e.text.windowID), &c, 1);
             }
             break;
         case SDL_EVENT_KEY_DOWN: {
@@ -600,6 +647,29 @@ void SdlDisplay::pollEvents() {
             if (!keysFrom(e.key.windowID)) {
                 if ((e.key.mod & SDL_KMOD_CTRL) && k == 'e')
                     requestClose(windowById(e.key.windowID));
+                break;
+            }
+            const Owner from = ownerOf(e.key.windowID);
+            // COPY: Cmd-C on a Mac, Ctrl-Shift-C elsewhere (a bare Ctrl-C is ^C, the guest's).
+            // The window's owner -- a terminal -- puts its selection on the clipboard.
+            if (k == 'c' && ((e.key.mod & SDL_KMOD_GUI) ||
+                             ((e.key.mod & SDL_KMOD_CTRL) && (e.key.mod & SDL_KMOD_SHIFT)))) {
+                emitCopy(from);
+                break;
+            }
+            // PASTE: Cmd-V on a Mac, Ctrl-Shift-V elsewhere (as terminal programs do -- a bare
+            // Ctrl-V is ^V, a key the guest may want). The clipboard goes down this window's
+            // line as keystrokes, into the same queue typed keys use: the guest reads them at
+            // its own pace and none is lost (host/display.h pasteKeys for the conversion).
+            if (k == 'v' && ((e.key.mod & SDL_KMOD_GUI) ||
+                             ((e.key.mod & SDL_KMOD_CTRL) && (e.key.mod & SDL_KMOD_SHIFT)))) {
+                if (SDL_HasClipboardText()) {
+                    char* clip = SDL_GetClipboardText();
+                    const std::string keys = pasteKeys(clip ? clip : "");
+                    SDL_free(clip);
+                    if (!keys.empty())
+                        emitKeys(from, reinterpret_cast<const uint8_t*>(keys.data()), keys.size());
+                }
                 break;
             }
             uint8_t c = 0;
@@ -623,23 +693,23 @@ void SdlDisplay::pollEvents() {
                 // The keys ASCII has no code for. What byte each is worth is the
                 // guest's business, so the table is on Display, not here -- this
                 // back end only says which key the operator pressed.
-                case SDLK_UP:    emitSpecialKey(SpecialKey::Up);    break;
-                case SDLK_DOWN:  emitSpecialKey(SpecialKey::Down);  break;
-                case SDLK_LEFT:  emitSpecialKey(SpecialKey::Left);  break;
-                case SDLK_RIGHT: emitSpecialKey(SpecialKey::Right); break;
-                case SDLK_HOME:  emitSpecialKey(SpecialKey::Home);  break;
+                case SDLK_UP:    emitSpecialKey(from, SpecialKey::Up);    break;
+                case SDLK_DOWN:  emitSpecialKey(from, SpecialKey::Down);  break;
+                case SDLK_LEFT:  emitSpecialKey(from, SpecialKey::Left);  break;
+                case SDLK_RIGHT: emitSpecialKey(from, SpecialKey::Right); break;
+                case SDLK_HOME:  emitSpecialKey(from, SpecialKey::Home);  break;
 
                 // The three no-ASCII Sol-20 keys a modern keyboard cannot supply and the
                 // arrows do not cover -- function keys stand in for them (issue #59). Same
                 // seam as the arrows: this only names the key, the byte is on Display.
-                case SDLK_F1:    emitSpecialKey(SpecialKey::Mode);  break;  // MODE SELECT
-                case SDLK_F2:    emitSpecialKey(SpecialKey::Clear); break;  // CLEAR
-                case SDLK_F3:    emitSpecialKey(SpecialKey::Load);  break;  // LOAD (inert in SOLOS)
+                case SDLK_F1:    emitSpecialKey(from, SpecialKey::Mode);  break;  // MODE SELECT
+                case SDLK_F2:    emitSpecialKey(from, SpecialKey::Clear); break;  // CLEAR
+                case SDLK_F3:    emitSpecialKey(from, SpecialKey::Load);  break;  // LOAD (inert in SOLOS)
 
                 default:             break;
                 }
             }
-            if (c) emitKeys(&c, 1);
+            if (c) emitKeys(from, &c, 1);
             break;
         }
         default:
@@ -753,6 +823,11 @@ void SdlDisplay::present(Owner owner, Surface* s) {
 
     SDL_UpdateTexture(win.texture, nullptr, win.rgba.data(), s->width() * 4);
     drawLastFrame(win);
+}
+
+void SdlDisplay::setClipboardText(const std::string& text) {
+    if (!inited_) return;  // no window has opened: there is no clipboard of ours to set
+    SDL_SetClipboardText(text.c_str());
 }
 
 } // namespace altair

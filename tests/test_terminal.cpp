@@ -6,10 +6,12 @@
 #include "host/terminal/adm3a.h"
 #include "host/terminal/h19.h"
 #include "host/terminal/screen.h"
+#include "host/terminal/font.h"
 #include "host/terminal/stream.h"
 #include "host/terminal/vt100.h"
 #include "host/terminal/vt52.h"
 
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
@@ -372,14 +374,10 @@ void test_terminal() {
         CHECK(d->keysToGuest(&videoBoard), "keyboard=console: every window sends its keys");
     }
 
-    // ---- The host keyboard -> the line (issue #244, Task 4, single-window scope) ----
+    // ---- The host keyboard -> the line, encoded by the dialect ----
     SECTION("terminal stream -- the host keyboard reaches the line, encoded by the dialect");
     {
-        CHECK(TerminalStream::keyTarget() == nullptr,
-              "with no terminal alive, nothing owns the one host keyboard");
-
         TerminalStream ts("terminal", 24, 80, std::make_unique<Vt100Emulator>());
-        CHECK(TerminalStream::keyTarget() == &ts, "a live terminal claims the keyboard");
 
         uint8_t buf[16];
         ts.keyAscii('k');
@@ -403,25 +401,56 @@ void test_terminal() {
         }
     }
 
-    SECTION("terminal stream -- the newest terminal owns the keyboard (CONFIG LOAD order)");
+    // ---- Each window types on its own line ----
+    SECTION("terminal stream -- a key goes to the terminal whose window it was typed in");
     {
-        // CONFIG LOAD builds the replacement line BEFORE tearing the old one down. The old
-        // line's destructor must not strand the new terminal's claim on the keyboard.
-        auto oldLine = std::make_unique<TerminalStream>(
-            "terminal", 24, 80, std::make_unique<Vt100Emulator>());
-        CHECK(TerminalStream::keyTarget() == oldLine.get(), "the first terminal owns it");
+        int  videoBoard = 0;  // any other window's owner
+        auto readAll    = [](TerminalStream& t) {
+            uint8_t     buf[64];
+            std::string s;
+            for (size_t n; (n = t.read(buf, sizeof buf)) > 0;) s.append((char*)buf, n);
+            return s;
+        };
+        auto tty1 = std::make_unique<TerminalStream>("terminal", 24, 80,
+                                                     std::make_unique<Vt100Emulator>());
+        auto tty2 = std::make_unique<TerminalStream>("terminal?emulation=vt52", 24, 80,
+                                                     std::make_unique<Vt52Emulator>());
+        CHECK(TerminalStream::forOwner(tty1.get()) == tty1.get(), "tty1's window is tty1's");
+        CHECK(TerminalStream::forOwner(tty2.get()) == tty2.get(), "tty2's window is tty2's");
+        CHECK(TerminalStream::forOwner(&videoBoard) == nullptr, "a video window is no terminal's");
+        CHECK(TerminalStream::forOwner(nullptr) == nullptr, "no window is no terminal's");
 
-        auto newLine = std::make_unique<TerminalStream>(
-            "terminal", 24, 80, std::make_unique<Vt100Emulator>());
-        CHECK(TerminalStream::keyTarget() == newLine.get(), "the replacement claims it");
+        const uint8_t one[] = {'d', 'i', 'r', '\r'};
+        const uint8_t two[] = {'w', 'h', 'o'};
+        CHECK(TerminalStream::routeKeys(tty1.get(), one, sizeof one), "tty1 takes its keys");
+        CHECK(TerminalStream::routeKeys(tty2.get(), two, sizeof two), "tty2 takes its keys");
+        CHECK(!TerminalStream::routeKeys(&videoBoard, two, sizeof two),
+              "keys from a video window are refused: the caller gives them to the Console");
+        CHECK(readAll(*tty1) == "dir\r", "tty1's line carries only tty1's keys");
+        CHECK(readAll(*tty2) == "who", "tty2's line carries only tty2's keys");
 
-        oldLine.reset();  // superseded line torn down after the replacement exists
-        CHECK(TerminalStream::keyTarget() == newLine.get(),
-              "destroying the superseded line leaves the replacement in charge");
+        // An arrow is encoded by the dialect of the window it was pressed in.
+        CHECK(TerminalStream::routeSpecial(tty1.get(), (int)TerminalEmulator::Key::Up), "Up, tty1");
+        CHECK(TerminalStream::routeSpecial(tty2.get(), (int)TerminalEmulator::Key::Up), "Up, tty2");
+        CHECK(readAll(*tty1) == "\x1b[A", "the VT100 window sends ESC[A");
+        CHECK(readAll(*tty2) == "\x1b" "A", "the VT52 window sends ESC A");
+        CHECK(!TerminalStream::routeSpecial(&videoBoard, (int)TerminalEmulator::Key::Up),
+              "an arrow from a video window is not a terminal's");
 
-        newLine.reset();
-        CHECK(TerminalStream::keyTarget() == nullptr,
-              "with every terminal gone the keyboard is free again");
+        // The newest terminal no longer takes every key: with tty2 open, tty1 still types.
+        auto tty3 = std::make_unique<TerminalStream>("terminal", 24, 80,
+                                                     std::make_unique<Vt100Emulator>());
+        CHECK(TerminalStream::routeKeys(tty1.get(), one, 1) && readAll(*tty1) == "d",
+              "opening another terminal does not take tty1's keyboard");
+
+        // CONFIG LOAD builds the replacement line before the old one goes: both are live for
+        // that moment, and destroying the old one leaves the others routed.
+        const void* gone = tty2.get();
+        tty2.reset();
+        CHECK(TerminalStream::forOwner(gone) == nullptr, "a closed terminal's window types nowhere");
+        CHECK(TerminalStream::forOwner(tty1.get()) == tty1.get() &&
+                  TerminalStream::forOwner(tty3.get()) == tty3.get(),
+              "closing one terminal leaves the others their keyboards");
     }
 
     // ---- The `terminal:` endpoint grammar, through the real resolver ----
@@ -672,5 +701,90 @@ void test_terminal() {
         CHECK(!resolveEndpoint("terminal?emulation=h19", err),
               "h19 parses, then refuses for want of a window");
         CHECK(err.find("window") != std::string::npos, "the failure is the window, not the name");
+    }
+    SECTION("paste -- clipboard text becomes the keys a terminal sends (pasteKeys)");
+    {
+        CHECK(pasteKeys("DIR\n") == "DIR\r", "LF is the Return key: CR");
+        CHECK(pasteKeys("A\r\nB\r\n") == "A\rB\r", "CR LF is one CR, not two");
+        CHECK(pasteKeys("A\rB") == "A\rB", "a lone CR stays");
+        CHECK(pasteKeys("10 PRINT\t\"HI\"") == "10 PRINT\t\"HI\"", "printable ASCII and TAB stay");
+        CHECK(pasteKeys("x\x01\x7Fy") == "xy", "other control bytes and DEL are dropped");
+        CHECK(pasteKeys("\xE2\x80\x9Cq\xE2\x80\x9D") == "?q?", "each non-ASCII character is one ?");
+        CHECK(pasteKeys("").empty(), "an empty clipboard sends nothing");
+    }
+    SECTION("copy -- a mouse selection in reading order; the whole screen with none");
+    {
+        TerminalStream ts("terminal", 24, 80, std::make_unique<Vt100Emulator>());
+        const char* msg = "HELLO\r\nWORLD  \r\nTHIRD";
+        ts.write((const uint8_t*)msg, std::strlen(msg));
+        const TerminalFont* f = TerminalStream::font();
+        const int cw = f ? f->cellCols() : 8, ch = f ? f->cellRows() : 16;
+        auto at = [&](int kind, int row, int col) { ts.pointer(kind, col * cw + 1, row * ch + 1); };
+
+        CHECK(ts.copyText() == "HELLO\nWORLD\nTHIRD",
+              "no selection: the whole screen, trailing blanks and blank rows cut");
+        at(0, 0, 1);
+        CHECK(!ts.hasSelection(), "a click alone selects nothing");
+        at(1, 1, 2);
+        at(2, 1, 2);
+        CHECK(ts.hasSelection(), "a drag selects");
+        CHECK(ts.copyText() == "ELLO\nWOR", "from the anchor cell to the head cell, both included");
+        at(0, 2, 2);
+        at(2, 0, 3);
+        CHECK(ts.copyText() == "LO\nWORLD\nTHI", "a drag upward selects the same as downward");
+        at(0, 0, 0);
+        at(2, 0, 200);
+        CHECK(ts.copyText() == "HELLO", "a drag past the right edge stops at the edge");
+        ts.keyAscii('x');
+        CHECK(!ts.hasSelection(), "a typed key clears the selection");
+    }
+    SECTION("copy -- the window's copy reaches the host clipboard; the selection draws reversed");
+    {
+        // A display that keeps what was put on its clipboard. The terminal's display is a
+        // static, so it is swapped in for this section and the test display put back after.
+        struct ClipDisplay : NullDisplay {
+            std::string clip;
+            int         sets = 0;
+            void        setClipboardText(const std::string& t) override { clip = t; ++sets; }
+        } cd;
+        Display* const was = TerminalStream::display();
+        TerminalStream::setDisplay(&cd);
+        {
+            int  videoBoard = 0;
+            TerminalStream ts("terminal", 24, 80, std::make_unique<Vt100Emulator>());
+            ts.write((const uint8_t*)"A", 1);
+            CHECK(!TerminalStream::routeCopy(&videoBoard) && cd.sets == 0,
+                  "a copy from a video window is not a terminal's: the clipboard is untouched");
+            CHECK(TerminalStream::routeCopy(&ts) && cd.sets == 1 && cd.clip == "A",
+                  "a copy from the terminal's window puts its text on the clipboard");
+
+            const TerminalFont* f = TerminalStream::font();
+            const int cw = f ? f->cellCols() : 8, ch = f ? f->cellRows() : 16;
+            CHECK(TerminalStream::routePointer(&ts, 0, 0 * cw + 1, 1) &&
+                      TerminalStream::routePointer(&ts, 1, 3 * cw + 1, 1) &&
+                      TerminalStream::routePointer(&ts, 2, 3 * cw + 1, 1),
+                  "the mouse in the terminal's window reaches the terminal");
+            CHECK(!TerminalStream::routePointer(&videoBoard, 0, 0, 0),
+                  "the mouse in a video window is not a terminal's");
+            ts.pump();
+            const Surface* sf = cd.surface(&ts);
+            CHECK(sf != nullptr, "the terminal painted a frame");
+            if (sf) {
+                // Cell 3 is a blank in the selection; cell 5 is a blank outside it. The cursor
+                // is on cell 1, so neither is the cursor's cell.
+                auto litIn = [&](int col) {
+                    int lit = 0;
+                    for (int y = 0; y < ch; ++y)
+                        for (int x = col * cw; x < (col + 1) * cw; ++x)
+                            lit += sf->pixels()[(size_t)y * sf->width() + x] != 0;
+                    return lit;
+                };
+                CHECK(litIn(3) == cw * ch, "a selected blank cell is drawn reversed: all lit");
+                CHECK(litIn(5) == 0, "a blank cell outside the selection stays dark");
+            }
+            CHECK(TerminalStream::routeCopy(&ts) && cd.clip == "A",
+                  "the copy is the selection (the blanks at its end are cut)");
+        }
+        TerminalStream::setDisplay(was);
     }
 }

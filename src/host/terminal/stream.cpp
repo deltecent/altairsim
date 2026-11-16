@@ -12,25 +12,131 @@ namespace altair {
 
 Display*                  TerminalStream::s_display   = nullptr;
 const TerminalFont*       TerminalStream::s_font      = nullptr;
-TerminalStream*           TerminalStream::s_keyTarget = nullptr;
+std::set<TerminalStream*>  TerminalStream::s_live;
 TerminalStream::Settings  TerminalStream::s_settings;
 
 TerminalStream::TerminalStream(std::string spec, int rows, int cols,
                                std::unique_ptr<TerminalEmulator> emu)
     : spec_(std::move(spec)), screen_(rows, cols), emu_(std::move(emu)) {
     renderer_.setFont(s_font);  // borrowed, session-lifetime; null just paints nothing
-    s_keyTarget = this;         // the newest terminal claims the one host keyboard
+    s_live.insert(this);
 }
 
 TerminalStream::~TerminalStream() {
-    // Only relinquish the keyboard if it is still ours: on a CONFIG LOAD the replacement
-    // line is constructed (claiming the target) before the old one is destroyed, so a
-    // blind clear here would strand the new terminal (see [[altairsim-config-load-replaces]]).
-    if (s_keyTarget == this) s_keyTarget = nullptr;
+    // Only this terminal leaves: on a CONFIG LOAD the replacement line is constructed
+    // before the old one is destroyed, and both are in s_live for that moment.
+    s_live.erase(this);
     if (s_display) s_display->releaseKeyboard(this);
 }
 
 bool TerminalStream::hasWindow() { return s_display && s_display->isWindowed(); }
+
+TerminalStream* TerminalStream::forOwner(const void* owner) {
+    // Compared as an address only: a const_cast of a pointer we never follow unless it is
+    // one of ours.
+    auto it = s_live.find(static_cast<TerminalStream*>(const_cast<void*>(owner)));
+    return it == s_live.end() ? nullptr : *it;
+}
+
+bool TerminalStream::routeKeys(const void* owner, const uint8_t* p, size_t n) {
+    TerminalStream* t = forOwner(owner);
+    if (!t) return false;
+    for (size_t i = 0; i < n; ++i) t->keyAscii(p[i]);
+    return true;
+}
+
+bool TerminalStream::routePointer(const void* owner, int kind, int x, int y) {
+    TerminalStream* t = forOwner(owner);
+    if (!t) return false;
+    t->pointer(kind, x, y);
+    return true;
+}
+
+bool TerminalStream::routeCopy(const void* owner) {
+    TerminalStream* t = forOwner(owner);
+    if (!t || !s_display) return false;
+    s_display->setClipboardText(t->copyText());
+    return true;
+}
+
+// A picture pixel -> the screen cell under it, clamped to the page, so a drag past the edge
+// selects to the edge.
+void TerminalStream::cellAt(int x, int y, int& row, int& col) const {
+    const int cw = s_font ? s_font->cellCols() : 8, ch = s_font ? s_font->cellRows() : 16;
+    row = y < 0 ? 0 : y / ch;
+    col = x < 0 ? 0 : x / cw;
+    if (row >= screen_.rows()) row = screen_.rows() - 1;
+    if (col >= screen_.cols()) col = screen_.cols() - 1;
+    if (row < 0) row = 0;
+    if (col < 0) col = 0;
+}
+
+void TerminalStream::clearSelection() {
+    if (!selOn_) return;
+    selOn_ = false;
+    renderer_.setSelection(false, 0, 0, 0, 0);
+    screen_.markDirty();
+}
+
+void TerminalStream::pointer(int kind, int x, int y) {
+    int r = 0, c = 0;
+    if (kind == 0) {  // down: a new anchor; a click alone selects nothing
+        clearSelection();
+        cellAt(x, y, r, c);
+        selAR_ = selHR_ = r;
+        selAC_ = selHC_ = c;
+        dragging_ = true;
+        return;
+    }
+    if (!dragging_) return;  // a drag or up that began in another window
+    cellAt(x, y, r, c);
+    if (r != selHR_ || c != selHC_ || kind == 1) {
+        selHR_ = r;
+        selHC_ = c;
+        selOn_ = selHR_ != selAR_ || selHC_ != selAC_;
+        // Reading order: the selection runs from the earlier cell to the later one.
+        const bool fwd = selAR_ < selHR_ || (selAR_ == selHR_ && selAC_ <= selHC_);
+        if (fwd) renderer_.setSelection(selOn_, selAR_, selAC_, selHR_, selHC_);
+        else     renderer_.setSelection(selOn_, selHR_, selHC_, selAR_, selAC_);
+        screen_.markDirty();
+    }
+    if (kind == 2) dragging_ = false;
+}
+
+// The selected text in reading order, one line per screen row, trailing blanks cut (a
+// terminal row is padded to its width; the clipboard should not be). With no selection, the
+// whole screen, with the blank rows at the bottom cut too. A cell that is not printable
+// ASCII (a line-drawing glyph) copies as a space.
+std::string TerminalStream::copyText() const {
+    int r0 = 0, c0 = 0, r1 = screen_.rows() - 1, c1 = screen_.cols() - 1;
+    if (selOn_) {
+        const bool fwd = selAR_ < selHR_ || (selAR_ == selHR_ && selAC_ <= selHC_);
+        r0 = fwd ? selAR_ : selHR_;  c0 = fwd ? selAC_ : selHC_;
+        r1 = fwd ? selHR_ : selAR_;  c1 = fwd ? selHC_ : selAC_;
+    }
+    std::string out;
+    for (int r = r0; r <= r1; ++r) {
+        const int from = r == r0 ? c0 : 0, to = r == r1 ? c1 : screen_.cols() - 1;
+        std::string line;
+        for (int c = from; c <= to; ++c) {
+            const uint8_t g = screen_.charAt(r, c);
+            line += (g >= 0x20 && g < 0x7F) ? (char)g : ' ';
+        }
+        while (!line.empty() && line.back() == ' ') line.pop_back();
+        out += line;
+        if (r != r1) out += '\n';
+    }
+    if (!selOn_)
+        while (!out.empty() && out.back() == '\n') out.pop_back();
+    return out;
+}
+
+bool TerminalStream::routeSpecial(const void* owner, int key) {
+    TerminalStream* t = forOwner(owner);
+    if (!t) return false;
+    t->keySpecial(key);
+    return true;
+}
 
 size_t TerminalStream::read(uint8_t* buf, size_t n) { return emu_->takeReply(buf, n); }
 
@@ -56,6 +162,7 @@ void TerminalStream::keyAscii(uint8_t b) {
     // FIFO, which also carries the emulator's cursor reports, and masking those would
     // corrupt them. bsdel folds after the case fold, matching FilterStream so neither
     // hides the other. echo shows the transformed key locally, for half-duplex guests.
+    clearSelection();  // typing (or a paste) ends a selection, as in a terminal program
     const Settings& s = s_settings;
     if (s.strip7in) b &= 0x7F;
     if (s.upper) b = (uint8_t)std::toupper(b);
@@ -129,6 +236,7 @@ bool TerminalStream::set(const std::string& key, const std::string& value, std::
 }
 
 void TerminalStream::keySpecial(int key) {
+    clearSelection();
     emu_->keySpecial((TerminalEmulator::Key)key);
 }
 

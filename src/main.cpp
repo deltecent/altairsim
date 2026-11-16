@@ -429,47 +429,45 @@ int main(int argc, char** argv) {
     // deterministic and a test wants a frame every time it asks.
     g_display.setFrameLimitHz(60.0);
 
-    // Window keystrokes go to whatever owns the one host keyboard. With a built-in terminal
-    // in the machine (issue #244) that is the terminal LINE: keys reach its emulator and flow
-    // to the guest on the same serial line it renders, while the monitor keeps stdio to
-    // itself. With no terminal they feed the single Console, and a Sol-20's keyboard board
-    // reads that Console -- so you type in the VDM window and SOLOS sees one stream (DESIGN.md
-    // 7.4). One window, one keyboard: the newest terminal wins (TerminalStream::keyTarget);
-    // routing two live terminals is the deferred multi-window work. A NullDisplay never fires.
-    g_display.setKeySink([](const uint8_t* p, size_t n) {
-        if (TerminalStream* t = TerminalStream::keyTarget()) {
-            for (size_t i = 0; i < n; ++i) t->keyAscii(p[i]);
-        } else {
-            Console::instance().inject(p, n);
-        }
+    // Window keystrokes go to the line behind the window they were typed in. A built-in
+    // terminal's window (issue #244) types on THAT terminal's line: keys reach its emulator
+    // and flow to the guest on the serial line it renders, so a machine with two terminal
+    // windows has two keyboards, and the window with focus is the one that types. Any other
+    // window -- a VDM-1, a Sol -- feeds the single Console, and a Sol-20's keyboard board
+    // reads that Console, so you type in the VDM window and SOLOS sees one stream (DESIGN.md
+    // 7.4). The monitor keeps stdio to itself. A NullDisplay never fires.
+    g_display.setKeySink([](Display::Owner from, const uint8_t* p, size_t n) {
+        if (!TerminalStream::routeKeys(from, p, n)) Console::instance().inject(p, n);
     });
+
+    // The mouse and copy: a terminal window selects and copies its own text. Nothing else
+    // uses them yet, so another window's events go nowhere.
+    g_display.setPointerSink([](Display::Owner from, const Display::Pointer& p) {
+        TerminalStream::routePointer(from, (int)p.kind, p.x, p.y);
+    });
+    g_display.setCopySink([](Display::Owner from) { TerminalStream::routeCopy(from); });
 
     // Arrows and Home carry no ASCII, so the window hands them over symbolically
     // (host/display.h): a terminal encodes each in its own dialect (VT100 ESC[A, VT52 ESCA,
-    // ADM-3A ^K), which the byte table could not do. With no terminal, inject the table's
+    // ADM-3A ^K), which the byte table could not do. Any other window injects the table's
     // guest byte into the Console, exactly as the display would have without this sink.
-    g_display.setSpecialKeySink([](Display::SpecialKey k) {
-        if (TerminalStream* t = TerminalStream::keyTarget()) {
-            switch (k) {
-                case Display::SpecialKey::Up:    t->keySpecial((int)TerminalEmulator::Key::Up);    break;
-                case Display::SpecialKey::Down:  t->keySpecial((int)TerminalEmulator::Key::Down);  break;
-                case Display::SpecialKey::Left:  t->keySpecial((int)TerminalEmulator::Key::Left);  break;
-                case Display::SpecialKey::Right: t->keySpecial((int)TerminalEmulator::Key::Right); break;
-                case Display::SpecialKey::Home:  t->keySpecial((int)TerminalEmulator::Key::Home);  break;
-                // MODE SELECT / CLEAR / LOAD have no terminal-dialect key -- they are literal
-                // 8-bit guest bytes, so inject them raw on the shared console queue rather than
-                // through keyAscii() (whose strip7in would strip bit 7 and mangle 80 -> 00).
-                case Display::SpecialKey::Mode:
-                case Display::SpecialKey::Clear:
-                case Display::SpecialKey::Load: {
-                    uint8_t c = g_display.specialKey(k);
-                    if (c) Console::instance().inject(&c, 1);
-                    break;
-                }
-                case Display::SpecialKey::Count_: break;
-            }
-            return;
+    g_display.setSpecialKeySink([](Display::Owner from, Display::SpecialKey k) {
+        int key = -1;
+        switch (k) {
+            case Display::SpecialKey::Up:    key = (int)TerminalEmulator::Key::Up;    break;
+            case Display::SpecialKey::Down:  key = (int)TerminalEmulator::Key::Down;  break;
+            case Display::SpecialKey::Left:  key = (int)TerminalEmulator::Key::Left;  break;
+            case Display::SpecialKey::Right: key = (int)TerminalEmulator::Key::Right; break;
+            case Display::SpecialKey::Home:  key = (int)TerminalEmulator::Key::Home;  break;
+            // MODE SELECT / CLEAR / LOAD have no terminal-dialect key -- they are literal
+            // 8-bit Sol bytes, so they go raw on the shared console queue, never through
+            // keyAscii() (whose strip7in would strip bit 7 and mangle 80 -> 00).
+            case Display::SpecialKey::Mode:
+            case Display::SpecialKey::Clear:
+            case Display::SpecialKey::Load:
+            case Display::SpecialKey::Count_: break;
         }
+        if (key >= 0 && TerminalStream::routeSpecial(from, key)) return;
         uint8_t c = g_display.specialKey(k);
         if (c) Console::instance().inject(&c, 1);
     });

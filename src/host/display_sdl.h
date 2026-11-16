@@ -54,6 +54,7 @@ public:
     void     setTitle(const std::string& name) override;
     void     setRunning(bool running) override;
     void     yieldFocus() override;
+    void     setClipboardText(const std::string& text) override;
 
     // The close box, remembered by pollEvents() and handed to the run loop
     // (host/display.h). Consuming: while the guest RUNS a window stays open and responsive --

@@ -232,6 +232,47 @@ the configuring chapter describes. With `crt = true`, a `width` opens the window
 The window has its own settings for changing bytes, under `[terminal]`. See "The built-in
 terminal has these too", below.
 
+### Type in a terminal window
+
+**A key that you type in a terminal window goes down the line of that window.** A machine with
+two terminal windows has two keyboards. The window that has the focus gets the keys. A key that
+you type in the window of a video board, such as a VDM-1, goes to the console of the guest, as
+before.
+
+### Copy from a terminal window
+
+**Drag with the left mouse button to select text, then press `Cmd-C` on a Mac, or
+`Ctrl-Shift-C` on Windows and Linux.** The selected cells show in reverse video. The selection
+goes in reading order, from the cell where you started to the cell where you stopped. `Ctrl-C`
+alone does not copy. The guest gets `Ctrl-C`.
+
+- **With no selection, `Cmd-C` copies the full screen.** Use this to give the screen to another
+  program or to an AI assistant.
+- **Each screen row is one line.** The blanks at the end of a row are not copied. When you copy
+  the full screen, the blank rows at the bottom are not copied.
+- **A key that you type removes the selection.** A click without a drag also removes it.
+- **The selection stays on the same cells.** If the guest scrolls the screen, the selected cells
+  can show different text. Copy before the screen moves.
+- **The window has no scrollback.** You can copy only the text that is on the screen. To keep
+  all the output of the guest, write a log with `?fmt=text` (see "A log of plain text",
+  below).
+
+### Paste into a terminal window
+
+**Press `Cmd-V` on a Mac, or `Ctrl-Shift-V` on Windows and Linux, to paste the clipboard into
+the window.** The text goes down the line of that window as keys, the same as if you typed it.
+You can paste a command, a BASIC program, or text into an editor. `Ctrl-V` alone does not
+paste. The guest gets `Ctrl-V`, as from a real terminal.
+
+- **Each line end becomes a CR**, the byte that the Return key sends. A line end at the end of
+  the text stays, so a pasted command line runs.
+- **TAB and printable ASCII stay.** Other control characters are removed. A character that is
+  not ASCII, such as a curly quote, arrives as `?`, so that you can see it and correct it.
+- **The simulator keeps each key.** The keys wait on the line until the guest reads them. A
+  guest program can still ignore keys that come while it is busy, as with a fast typist. For a
+  long BASIC program, paste a small number of lines at a time, or move the file with the host
+  bridge (`R`).
+
 ## Call another computer
 
 ```

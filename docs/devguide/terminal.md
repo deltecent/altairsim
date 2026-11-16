@@ -92,34 +92,57 @@ a terminal needs a window, so `TerminalStream::hasWindow()` gates it — `SdlDis
 `CONNECT` rather than opening a serial line nobody can see. SDL is optional throughout: absent
 it, the endpoint is simply unavailable, never a compile break.
 
-## The one keyboard, and where it goes
+## The keyboard, and where it goes
 
-Here is the constraint that makes this bigger than the printing endpoint. Today there is exactly
-**one** `SdlDisplay g_display`, shared by every video board, with **one** global key sink. The
-model is "one window, one keyboard." A `terminal:` line renders in that window and must receive
-its keystrokes — but so does the monitor, and so does a VDM-1 if the machine has one.
+There is one `SdlDisplay g_display`, shared by every video board and every terminal, with one
+key sink. Each board or terminal draws into its own window, keyed by a `Display::Owner` (the
+drawer's `this`). A key carries the owner of the window it was typed in, so the window with
+focus decides which line gets it.
 
-The routing (issue #244, Task 4):
+- `Display::KeySink` and `Display::SpecialKeySink` take the owner first. `SdlDisplay` finds it
+  from the event's window id (`ownerOf` in `pollEvents`) and passes it to `emitKeys` and
+  `emitSpecialKey`. Null means no window of ours matched.
+- `TerminalStream` keeps a set of the live terminals (`s_live`). `forOwner(owner)` returns the
+  terminal behind a window, or null. The owner is only compared, never dereferenced, until it
+  is found in the set. A terminal joins the set in its constructor and leaves it in its
+  destructor. A `CONFIG LOAD` builds the replacement line before it destroys the old one, so
+  both are routed for that moment and the replacement stays routed after.
+- The composition root (`src/main.cpp`) calls `TerminalStream::routeKeys(owner, ...)`. If the
+  window is not a terminal's (a VDM-1, a Sol), it falls back to `Console::instance().inject()`,
+  so the monitor and the VDM/Sol keyboard behave as before.
+- Arrows and Home have no ASCII code. The `Display` normally turns them into one Sol-20 *byte*
+  (`emitSpecialKey` in `src/host/display.h`), which a terminal could not encode again in its own
+  dialect. `SpecialKeySink` therefore delivers the key **symbolically**. The composition root
+  routes it with `TerminalStream::routeSpecial(owner, key)` and otherwise injects the table byte
+  into the `Console`. MODE SELECT, CLEAR and LOAD are Sol bytes with no terminal key, so they
+  always go to the `Console`.
 
-- `TerminalStream::keyTarget()` names which terminal line owns the keyboard. A `terminal:`
-  claims it on construction — **last one wins** — and its destructor releases it *only if it is
-  still the owner*. That ordering matters: a `CONFIG LOAD` constructs the replacement line
-  (which claims the target) **before** destroying the old one, so a blind clear in the
-  destructor would strand the new terminal (see the config-load-replaces rule in `DESIGN.md`).
-- The composition root's key sink (`src/main.cpp`) routes regular keys to
-  `keyTarget()->keyAscii()`, falling back to `Console::instance().inject()` when no terminal is
-  present — so the monitor and the VDM/Sol keyboard behave exactly as before.
-- Arrows/Home carry no ASCII, and the `Display` normally collapses them to a single Sol-20
-  *byte* before any sink sees them (`emitSpecialKey` in `src/host/display.h`) — which a terminal
-  could never re-encode in its own dialect. So there is a second seam, `Display::SpecialKeySink`,
-  delivering the key **symbolically**; when set it takes precedence over the byte table, and the
-  composition root routes it to `keyTarget()->keySpecial()`, falling back to injecting the table
-  byte into the `Console`.
+## Select, copy and paste
 
-**Deferred:** independent windows with per-window keyboard routing. That is the real fix for two
-concurrent terminals — and for the keyboard contention that already exists between a VDM-1 and a
-terminal in one machine — and it is the last unbuilt piece of the plan. Until a two-terminal
-machine needs it, one host window drives whichever line claimed it last.
+The back end knows windows and pixels. The terminal knows cells and text. The seams in
+`Display` keep the two apart:
+
+- **The mouse.** `SdlDisplay::pollEvents` turns a left-button down, a drag with the button
+  held, and a button up into a `Display::Pointer` in the picture's own pixels (`toPicture`:
+  `SDL_RenderCoordinatesFromWindow` removes the letterbox scale, then the bezel `border` and
+  the `crt` height stretch are taken off). `emitPointer(owner, p)` hands it to the composition
+  root, which calls `TerminalStream::routePointer`.
+- **The selection** is in `TerminalStream`: an anchor cell and a head cell (`cellAt` clamps a
+  drag past the edge to the edge). A click without a drag selects nothing. The renderer draws
+  the selected cells reversed (`TerminalRenderer::setSelection`, `selected`). A key typed in the
+  window, or a paste, clears the selection (`keyAscii`, `keySpecial`). The guest never sees the
+  selection.
+- **Copy.** `Cmd-C`, or `Ctrl-Shift-C`, calls `emitCopy(owner)`. `TerminalStream::routeCopy`
+  puts `copyText()` on the clipboard through the virtual `Display::setClipboardText`. With no
+  selection, `copyText()` is the full screen. Each row is one line without its trailing blanks,
+  and a cell that is not printable ASCII copies as a space.
+- **Paste.** `Cmd-V`, or `Ctrl-Shift-V`, reads `SDL_GetClipboardText`, converts it with
+  `pasteKeys` (`src/host/display.h`: each line end to one CR, non-ASCII to `?`, other controls
+  removed) and sends it through `emitKeys` with the window's owner. The keys go into the same
+  queue that typed keys use, so the guest reads them at its own rate.
+
+A bare `Ctrl-C` or `Ctrl-V` is still a control key for the guest. The window has no scrollback,
+so a copy is limited to the screen.
 
 ## The `[terminal]` transform chain
 

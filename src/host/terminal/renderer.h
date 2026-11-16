@@ -34,6 +34,16 @@ public:
     // (0 = off, 1 = blink, 2 = steady) -- the board's switches, passed through.
     void setReverse(bool on) { reverse_ = on; }
     void setCursorMode(uint8_t m) { cursorMode_ = m; }
+    // The selected cells, in reading order (r0,c0 .. r1,c1 inclusive), drawn reversed.
+    void setSelection(bool on, int r0, int c0, int r1, int c1) {
+        selOn_ = on; selR0_ = r0; selC0_ = c0; selR1_ = r1; selC1_ = c1;
+    }
+    bool selected(int r, int c) const {
+        if (!selOn_ || r < selR0_ || r > selR1_) return false;
+        if (r == selR0_ && c < selC0_) return false;
+        if (r == selR1_ && c > selC1_) return false;
+        return true;
+    }
 
     // Would a repaint now differ from the last one? True if the screen is dirty, or a
     // blinking cursor / blinking cell has flipped on its own ~1 Hz oscillator (wall
@@ -60,6 +70,8 @@ private:
     Color dim_ = {0x14, 0x64, 0x2A, 0xFF};  // half green
 
     bool    reverse_    = false;
+    bool    selOn_      = false;
+    int     selR0_ = 0, selC0_ = 0, selR1_ = 0, selC1_ = 0;
     uint8_t cursorMode_ = 1;  // blink, the usual terminal default
 
     // Render change-detection state (same shape as the VDM-1's).
