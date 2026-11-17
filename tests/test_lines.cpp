@@ -608,13 +608,20 @@ void test_lines() {
             uint16_t port = listener->port();
             TcpListenStream sock(std::move(listener), "socket:test");
             auto client = platform::connectTcp("127.0.0.1", port, err);
+            // BOTH ENDS (#945). Carrier is the listener's side. The client is a non-blocking
+            // connect that poll() marks established only when it sees the socket writable,
+            // and until then its write() takes nothing. The handshake can finish between the
+            // client's poll() and the listener's pump(), so carrier alone can end the wait
+            // with the client still connecting.
             waitFor([&] { if (client) client->poll(); sock.pump(); },
-                    [&] { return sock.status().carrier; });
-            CHECK(sock.status().carrier, "connected");
+                    [&] { return sock.status().carrier && client && client->established(); });
+            CHECK(sock.status().carrier && client && client->established(),
+                  "connected, on both ends");
 
             // RECEIVE: the host program's write is over long before the guest reads it.
             const std::string msg(1000, 'r');
-            client->write((const uint8_t*)msg.data(), msg.size());
+            CHECK(client && client->write((const uint8_t*)msg.data(), msg.size()) == msg.size(),
+                  "the client sent all 1000 bytes");
             waitFor([&] { client->poll(); sock.pump(); },
                     [&] { return sock.rxPending() == msg.size(); });
             CHECK(sock.rxPending() == 1000, "1000 bytes sent, 1000 waiting for the guest");
