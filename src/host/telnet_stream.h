@@ -56,6 +56,9 @@ public:
     bool pacesItself() const override { return inner_->pacesItself(); }
     bool pacedReceive() const override { return inner_->pacedReceive(); }
     bool realWire() const override { return inner_->realWire(); }
+    // Decoded bytes the guest has not read, plus raw ones the codec has not reached yet.
+    size_t rxPending() const override { return rxClean_.size() + inner_->rxPending(); }
+    size_t txPending() const override { return inner_->txPending(); }
 
     void flush() override { inner_->flush(); }
     void pump() override;

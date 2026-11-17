@@ -64,6 +64,8 @@ public:
 
     bool readable() const override;
     bool writable() const override { return true; }  // a punch, or a dropped write
+    // The unread rest of the reader's input. A punch writes straight through: no tx queue.
+    size_t rxPending() const override { return hasIn_ && pos_ < in_.size() ? in_.size() - pos_ : 0; }
     bool pacesItself() const override { return nsPerByte_ != 0; }
 
     void flush() override {

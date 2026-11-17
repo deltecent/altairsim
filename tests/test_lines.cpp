@@ -4,11 +4,14 @@
 #include "core/clock.h"
 #include "core/statefile.h"
 #include "host/endpoint.h"
+#include "host/file.h"
+#include "host/filter.h"
 #include "host/stream.h"
 #include "host/tcp.h"
 #include "platform/socket.h"
 
 #include <chrono>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <thread>
@@ -159,6 +162,42 @@ void test_lines() {
         lb.setControl(c);
         CHECK(lb.status().carrier, "raise DTR and DCD comes back");
         CHECK(lb.status().dsr, "...and DSR, which is soldered to the same pin");
+    }
+
+    SECTION("Backlog (#934): what a line holds that the guest has not read");
+    {
+        LoopbackStream lb;
+        CHECK(lb.rxPending() == 0 && lb.txPending() == 0, "a quiet plug holds nothing");
+        const uint8_t abc[] = {'a', 'b', 'c'};
+        lb.write(abc, 3);
+        CHECK(lb.rxPending() == 3, "three bytes looped back, three waiting for the guest");
+        (void)lb.readByte();
+        CHECK(lb.rxPending() == 2, "the guest read one: two left");
+
+        ScriptedStream sc;
+        sc.feed("HELLO");
+        CHECK(sc.rxPending() == 5, "typed five, five waiting");
+        uint8_t b2[2];
+        sc.read(b2, 2);
+        CHECK(sc.rxPending() == 3, "the guest read two: three left");
+        sc.write(abc, 3);
+        CHECK(sc.txPending() == 0, "the guest's output is the test's at once: no tx queue");
+
+        FileStream fs("in:x", std::vector<uint8_t>{'1', '2', '3', '4'}, std::fstream{});
+        CHECK(fs.rxPending() == 4, "a file's unread input counts");
+        (void)fs.readByte();
+        CHECK(fs.rxPending() == 3, "...and goes down as the guest reads it");
+        FileStream punch("out:x", std::nullopt, std::fstream{});
+        CHECK(punch.rxPending() == 0, "a punch with no reader has nothing to receive");
+
+        // A decorator reports the line it wraps -- the filter a unit always has, and the
+        // handle the --mcp console holds.
+        auto        line = std::make_shared<ScriptedStream>();
+        FilterStream f(std::make_unique<SharedStream>(line));
+        line->feed("xyz");
+        CHECK(f.rxPending() == 3, "the filter and the shared handle pass the count through");
+        f.read(b2, 1);
+        CHECK(f.rxPending() == 2, "...and see the read");
     }
 
     SECTION("The strap lives on the CARD (default: grounded)");
@@ -557,6 +596,43 @@ void test_lines() {
             client->close();
             waitFor([&] { sock.pump(); }, [&] { return !sock.status().carrier; });
             CHECK(!sock.status().carrier, "the client hung up -> CARRIER DROPPED");
+        }
+    }
+
+    SECTION("socket: -- the backlog both ways (#934)");
+    {
+        std::string err;
+        auto listener = listenAnywhere(err);
+        CHECK(listener != nullptr, ("a listening socket: " + err).c_str());
+        if (listener) {
+            uint16_t port = listener->port();
+            TcpListenStream sock(std::move(listener), "socket:test");
+            auto client = platform::connectTcp("127.0.0.1", port, err);
+            waitFor([&] { if (client) client->poll(); sock.pump(); },
+                    [&] { return sock.status().carrier; });
+            CHECK(sock.status().carrier, "connected");
+
+            // RECEIVE: the host program's write is over long before the guest reads it.
+            const std::string msg(1000, 'r');
+            client->write((const uint8_t*)msg.data(), msg.size());
+            waitFor([&] { client->poll(); sock.pump(); },
+                    [&] { return sock.rxPending() == msg.size(); });
+            CHECK(sock.rxPending() == 1000, "1000 bytes sent, 1000 waiting for the guest");
+            uint8_t buf[400];
+            sock.read(buf, sizeof buf);
+            CHECK(sock.rxPending() == 600, "the guest read 400: 600 left");
+
+            // TRANSMIT: a client that does not read lets the kernel fill, then tx_.
+            const std::vector<uint8_t> chunk(64 * 1024, 't');
+            for (int i = 0; i < 256 && sock.txPending() == 0; ++i)
+                sock.write(chunk.data(), chunk.size());
+            CHECK(sock.txPending() > 0, "the kernel is full: the guest's bytes wait in altairsim");
+            std::vector<uint8_t> sink(64 * 1024);
+            waitFor([&] { client->poll(); while (client->read(sink.data(), sink.size()) > 0) {}
+                          sock.pump(); },
+                    [&] { return sock.txPending() == 0; });
+            CHECK(sock.txPending() == 0, "the client read it all: nothing left in altairsim");
+            client->close();
         }
     }
 

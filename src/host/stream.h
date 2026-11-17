@@ -129,6 +129,16 @@ public:
     // depends on that, because a pipe cannot wait for a prompt.
     virtual bool realWire() const { return false; }
 
+    // BYTES ALTAIRSIM IS HOLDING ON THIS LINE (#934). rxPending: received from the far end,
+    // not yet read by the guest. txPending: written by the guest, not yet handed to the host.
+    // Only altairsim's own queues count -- a byte still in the host kernel's socket or tty
+    // buffer is not seen until pump() takes it, so rxPending can read 0 for one slice while
+    // data is on its way, and txPending 0 means the bytes have left altairsim, not that the
+    // far end has them. A line with no queue reports 0; a decorator reports the line it wraps.
+    // SHOW <board>:<unit> prints both.
+    virtual size_t rxPending() const { return 0; }
+    virtual size_t txPending() const { return 0; }
+
     virtual void flush() {}
 
     // The far end's pins. A LEVEL, with no memory: the stream says "carrier is
@@ -235,6 +245,7 @@ public:
     size_t write(const uint8_t* buf, size_t n) override;
     bool readable() const override { return !q_.empty(); }
     bool writable() const override { return true; }
+    size_t rxPending() const override { return q_.size(); }
 
     LineStatus status() const override {
         LineStatus s;
@@ -275,6 +286,7 @@ public:
         return false;
     }
     bool writable() const override { return true; }
+    size_t rxPending() const override { return pos_ < in_.size() ? in_.size() - pos_ : 0; }
 
     void feed(const std::string& s) { in_ += s; }  // as if typed
     const std::string& out() const { return out_; }
@@ -323,6 +335,8 @@ public:
     bool pacesItself() const override { return line_->pacesItself(); }
     bool pacedReceive() const override { return line_->pacedReceive(); }
     bool realWire() const override { return line_->realWire(); }
+    size_t rxPending() const override { return line_->rxPending(); }
+    size_t txPending() const override { return line_->txPending(); }
     void flush() override { line_->flush(); }
     LineStatus status() const override { return line_->status(); }
     void setControl(const LineControl& c) override { line_->setControl(c); }

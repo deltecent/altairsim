@@ -717,6 +717,60 @@ void test_cli() {
         CHECK(loop, "CONNECT sio0:a LoopBack connects the loopback");
     }
 
+    SECTION("SHOW <id>:<unit> -- one unit, and a serial line's backlog (#934)");
+    {
+        Machine mu;
+        Monitor monu(mu);
+        std::ostringstream su;
+        monu.exec("BOARDS ADD 2sio sio0", su);
+        monu.exec("BOARDS ADD dcdd dsk0", su);
+        monu.exec("CONNECT sio0:a loopback", su);
+        auto show = [&](const std::string& cmd) {
+            std::ostringstream o;
+            monu.exec(cmd, o);
+            return o.str();
+        };
+
+        // Bytes the line holds for the guest: the loopback keeps what was written to it
+        // until the guest reads it, so 5 written is 5 waiting.
+        Board* sio = mu.find("sio0");
+        ByteStream* line = sio ? sio->unitStream("a") : nullptr;
+        CHECK(line != nullptr, "sio0:a has a stream once it is connected");
+        if (line) {
+            const uint8_t five[] = {'H', 'E', 'L', 'L', 'O'};
+            line->write(five, sizeof five);
+        }
+        std::string t = show("SHOW sio0:a");
+        CHECK(t.rfind("sio0:a  (serial)\n  holds       loopback\n", 0) == 0,
+              "SHOW sio0:a heads with the unit, its kind and what it holds");
+        CHECK(t.find("  rx waiting  5\n") != std::string::npos,
+              "rx waiting counts the bytes the guest has not read");
+        CHECK(t.find("  tx waiting  0\n") != std::string::npos,
+              "tx waiting is 0: a loopback holds nothing for the host");
+        CHECK(t.find("  baud ") != std::string::npos, "and the unit's properties follow");
+        CHECK(t.find("sio0:b") == std::string::npos, "and only that unit: not its sibling");
+
+        // A serial unit with nothing connected still answers, with 0 both ways.
+        t = show("SHOW sio0:b");
+        CHECK(t.find("  rx waiting  0\n  tx waiting  0\n") != std::string::npos,
+              "an unconnected serial unit shows 0 waiting both ways");
+
+        // A disk drive has no backlog, so it has no count lines.
+        t = show("SHOW dsk0:drive0");
+        CHECK(t.rfind("dsk0:drive0  (disk)\n  holds       (empty)\n", 0) == 0,
+              "SHOW of a disk unit shows what it holds");
+        CHECK(t.find("waiting") == std::string::npos, "and no rx/tx lines: a disk is not a line");
+
+        // The errors are subunit()'s, the same as SET <id>:<unit> gives.
+        t = show("SHOW sio0:zz");
+        CHECK(t.find("sio0 has no unit 'zz'.") != std::string::npos, "an unknown unit is named");
+        t = show("SHOW nosuch:a");
+        CHECK(t.find("no board 'nosuch'") != std::string::npos, "an unknown board is named");
+        t = show("SHOW sio0:a junk");
+        CHECK(t.find("unexpected 'junk'") != std::string::npos, "a word after the unit is refused");
+        CHECK(t.find("rx waiting") == std::string::npos, "and nothing is shown");
+    }
+
     SECTION("a hex operand that starts with 0B is hex; % is the binary marker (#730)");
     {
         Machine mh;

@@ -95,6 +95,8 @@ public:
 
     bool readable() const override { return false; }
     bool writable() const override { return true; }
+    // The job not yet spooled: those bytes have not left altairsim.
+    size_t txPending() const override { return buf_.size(); }
 
     // NOT the job boundary -- the C700 calls it every slice. See the header note.
     void flush() override {}

@@ -949,8 +949,12 @@ Completions Monitor::complete(const std::string& line) {
         } else if (name == "SHOW") {
             // SHOW <id> inspects a board, but its argument is just as often a keyword
             // (SHOW BUS, SHOW MOUNTS, ...). Offer both: the board ids and the canonical
-            // sub-command words the SHOW handler dispatches on. No id:unit -- SHOW <id>
-            // already prints a board's unit tables, so there is no colon step.
+            // sub-command words the SHOW handler dispatches on. Past a colon it is
+            // SHOW <id>:<unit>, so offer that board's unit names.
+            if (frag.find(':') != std::string::npos) {
+                completeTarget(frag, UnitUse::Any, /*wantPseudo=*/false, /*bareIdComplete=*/true);
+                return comp;
+            }
             for (const auto& b : m_.boards()) keep(b->id);
             for (const char* kw : {"BOARD", "BOARDS", "BUS", "CONSOLE", "DEBUG", "DISPLAY",
                                    "JOYSTICKS", "MACHINE", "MACHINES", "MOUNTS", "PATHS",
@@ -1186,6 +1190,23 @@ void Monitor::showBoard(Board* b, std::ostream& out) {
         if (b->subUnitProperties(t).empty()) continue;
         out << "\n  [[board." << t << "]] keys: SHOW BOARD " << b->type() << " UNITS\n";
     }
+}
+
+// ONE UNIT: what it holds, its properties and -- for a serial line -- the bytes
+// altairsim holds on it in each direction (#934). `rx waiting` is what came from the host
+// and the guest has not read yet; `tx waiting` is what the guest wrote and the host has
+// not taken yet. A host program that writes to a socket: unit polls this until rx waiting
+// is 0 to know the guest has read it all. Bytes still in the host kernel's buffers are
+// not counted: altairsim cannot see them (host/stream.h).
+void Monitor::showUnit(Board* b, const UnitDef& u, std::ostream& out) {
+    out << b->id << ":" << u.name << "  (" << unitKindName(u.kind) << ")\n";
+    out << "  holds       " << u.state << roNote(u) << "\n";
+    if (u.kind == UnitKind::Serial) {
+        const ByteStream* s = b->unitStream(u.name);
+        out << "  rx waiting  " << (s ? s->rxPending() : 0) << "\n";
+        out << "  tx waiting  " << (s ? s->txPending() : 0) << "\n";
+    }
+    showProps(b->unitProperties(u.name), out);
 }
 
 void Monitor::showProps(const std::vector<Property>& ps, std::ostream& out) {
@@ -3707,7 +3728,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
 
     // ---------------- SHOW / SET ----------------
     if (cmd == "SHOW") {
-        if (!need(2, "SHOW <id> | SHOW BOARDS | SHOW BOARD <type> | SHOW MACHINES"
+        if (!need(2, "SHOW <id>[:<unit>] | SHOW BOARDS | SHOW BOARD <type> | SHOW MACHINES"
                      " | SHOW MACHINE [<name>] | SHOW BUS [MAP|IO|IRQ|CONTENTION] | SHOW ROMS"
                      " | SHOW MOUNTS | SHOW PATHS | SHOW DEBUG | SHOW JOYSTICKS | SHOW SERIAL"
                      " | SHOW CLOCK | SHOW VERSION"))
@@ -4070,6 +4091,12 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
         if (tooMany(2)) return true;
+        if (a[1].find(':') != std::string::npos) {
+            Board* b;
+            UnitDef u;
+            if (subunit(a[1], b, u, UnitUse::Any, out)) showUnit(b, u, out);
+            return true;
+        }
         Board* b = board(a[1], out);
         if (b) showBoard(b, out);
         return true;

@@ -46,6 +46,8 @@ public:
     // -- it does not make us drop a byte (DESIGN.md 7.1: never manufacture data loss
     // the transport does not have).
     bool writable() const override { return tx_.size() < kTxCap; }
+    size_t rxPending() const override { return rx_.size(); }
+    size_t txPending() const override { return tx_.size(); }
 
     void flush() override;
     void pump() override;

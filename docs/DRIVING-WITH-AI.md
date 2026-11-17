@@ -805,6 +805,12 @@ start       {}                      # continue from 0135
   write of the host program at once. The guest reads the bytes at the rate of the unit. In the
   run above, the write returned while `HL` was still `1000`. Set a PC breakpoint where the
   guest is done, and poll `status` until `stop_reason` is `breakpoint`. Do not use a sleep.
+- **To see how far the guest has read, poll `SHOW <id>:<unit>`.** Send
+  `monitor {command: "SHOW sio0:b"}`. It works while the guest runs. The `rx waiting` line is
+  the number of bytes that the guest has not read. It is 0 when the guest has read all the
+  bytes. In a real run at 300 baud with a 2 MHz crystal, a write of 300 bytes showed 292, 231,
+  171, 111, 51 and 0 at polls 2 seconds apart. The `tx waiting` line is the number of bytes
+  that the guest sent and the host program has not read.
 - **Put the breakpoint after the output.** A breakpoint on the first instruction of a routine
   stops the guest before the routine prints. A host program that waits for the message of that
   routine then times out. Break on the loop that the guest goes to after the message.

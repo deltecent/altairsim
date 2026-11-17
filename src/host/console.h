@@ -130,6 +130,7 @@ public:
     size_t write(const uint8_t* buf, size_t n) override;
     bool   readable() const override;
     bool   writable() const override { return true; }
+    size_t rxPending() const override { return pending(); }  // type-ahead and paste
     void   flush() override;
     void   pump() override { poll(); }
 
@@ -293,6 +294,7 @@ private:
         size_t      write(const uint8_t* b, size_t n) override { return c_->writeRaw(b, n); }
         bool        readable() const override { return !c_->in_.empty() || c_->pasteReady(); }
         bool        writable() const override { return true; }
+        size_t      rxPending() const override { return c_->pending(); }
         void        flush() override { c_->flushRaw(); }
 
     private:
@@ -379,6 +381,7 @@ public:
     size_t write(const uint8_t* b, size_t n) override { return Console::instance().write(b, n); }
     bool   readable() const override { return Console::instance().readable(); }
     bool   writable() const override { return true; }
+    size_t rxPending() const override { return Console::instance().pending(); }
     void   flush() override { Console::instance().flush(); }
 };
 
