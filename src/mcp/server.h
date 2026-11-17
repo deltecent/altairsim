@@ -30,7 +30,12 @@ namespace altair {
 // file as plain text (`|FILE?fmt=text&append`), a transcript a person follows with
 // `tail -f`. Watch-only, and independent of `mirror` -- a session may have both. The file
 // is opened to append; whoever wants it to start empty truncates it first (main.cpp does).
+//
+// `toolLog` (empty = off) is a `--tool-log` sink (issue #672): each tool call and its result,
+// as text, for a person who watches. A FILE (opened to append; main.cpp empties it first), or
+// a watch-only mirror sink: `pty`, `pty:LINK`, `socket:PORT`, `serial:DEVICE`. A sink that
+// cannot open makes runMcp return 2 before it reads a request.
 int runMcp(Machine& m, std::istream& in, std::ostream& out, const std::string& mirror = "",
-           const std::string& log = "");
+           const std::string& log = "", const std::string& toolLog = "");
 
 } // namespace altair

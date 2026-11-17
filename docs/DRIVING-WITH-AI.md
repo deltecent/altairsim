@@ -246,6 +246,22 @@ The file is emptied at each start, a bare name lands in the folder `altairsim` w
 and a file that cannot be opened is an error before the session starts. You can read the file
 too, when you want the full console history and not only what your last `run` returned.
 
+### Let a person see your tool calls: `--tool-log`
+
+`--tool-log SINK` next to `--mcp` writes each tool call you make, and its result, for a person
+to read. A call is a `>` line with the time, the tool and its arguments (cut at 200 characters).
+Its result is a `<` line, `(error)` when it failed, and the result text indented, cut at 24
+lines. `status` is not shown. The sink is a file (emptied at each start, followed with
+`tail -f`), or `pty`, `pty:LINK`, `socket:PORT` or `serial:DEVICE` as for `--mirror`. It is
+watch-only. On Windows use a file or `socket:PORT`.
+
+```
+altairsim examples/cpm/cpm22-buffered.toml --mcp --tool-log calls.log
+```
+
+The console mirror shows what the guest prints. The tool log shows what you did to the machine:
+a `monitor` command, a `reset`, a breakpoint. All three options can be given together.
+
 ## The tools
 
 `tools/list` is authoritative — ask it rather than working from the tables below. Each tool's

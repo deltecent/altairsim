@@ -216,6 +216,48 @@ The first command is for macOS and Linux, and the second is for PowerShell on Wi
 This is the `fmt=text` tap that the monitor has (`<endpoint>|FILE?fmt=text`, see the chapter
 *Serial ports, sockets and telnet*).
 
+## See the tool calls: `--tool-log`
+
+`--tool-log` shows each tool call that the assistant makes, and the result of the call. It
+shows the calls that do not go to the console, such as a `monitor` command, a `reset` or a
+breakpoint. Give it with `--mcp`. The output is a file, or a terminal program that you open:
+
+```
+$ altairsim examples/cpm/cpm22-buffered.toml --mcp --tool-log calls.log
+$ tail -f calls.log
+07:51:51.231 > monitor {"command":"REGS"}
+07:51:51.231 < monitor
+    C0Z0M0E0I0 A=00 BC=0000 DE=0000 HL=0000 SP=0000 IE=0 PC=0000  CPE 9A78
+```
+
+Each call has two parts:
+
+- A line with the time, `>`, the name of the tool and its arguments. The program cuts the
+  arguments after 200 characters.
+- A line with the time, `<` and the name of the tool, then the text of the result, indented.
+  The line has `(error)` when the call failed. The program shows 24 lines of the result, then
+  a line that gives the number of lines that it did not show.
+
+The program does not show a `status` call. The assistant can send `status` many times in a
+second, and the call does not change the machine.
+
+The output can be one of these:
+
+| `--tool-log` | Output |
+|---|---|
+| `FILE` | An ordinary text file. The program empties it each time that `altairsim` starts. Use a file that is different from the `--log` file. |
+| `pty` or `pty:LINK` | A pseudo-terminal, on macOS and Linux. Open it as for `--mirror pty`. |
+| `socket:PORT` | A TCP port. Connect to it with `nc localhost PORT` or `telnet localhost PORT`. Use this on Windows. |
+| `serial:DEVICE` | A terminal on a serial port, as for `--mirror serial:DEVICE`. |
+
+- The output is watch-only. A key that you type on the pseudo-terminal, socket or serial port
+  goes nowhere.
+- A pseudo-terminal, socket or serial port shows the calls from the time that you open it.
+  A file holds all of the calls.
+- You can give `--tool-log` with `--mirror` and `--log`. The mirror shows the console, and
+  `--tool-log` shows what the assistant does.
+- If the program cannot open the output, it stops with an error before the session starts.
+
 ## Start a project of your own
 
 When you want to write your own software, start in the same way as the example. **Make a folder

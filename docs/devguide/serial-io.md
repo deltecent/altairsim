@@ -214,6 +214,13 @@ block in `cv.wait`, and nothing called `pump()`: the tail of a long listing stay
 mirror's queue until the next `run`. With `--mirror` it now wakes every 10 ms and calls
 `m.pump()` on the worker thread. Without a mirror the wait is unchanged.
 
+**`--tool-log` is a mirror over `null`, owned by the session.** `openToolLog` in
+`mcp/server.cpp` resolves `null|<sink>?ro` for a pty, socket or serial sink, and
+`null|FILE?fmt=text&append` for a file. It reuses `MirrorStream` and `TeeStream` and has no sink
+code of its own. `NullStream` takes every byte, so the mirror copies all of it to the watcher.
+The stream lives in `McpSession`, not on a board, so a CONFIG LOAD does not rebuild it. The 10 ms
+idle tick also pumps it, and the free-run loop pumps it after each slice.
+
 ### Installing the resolver — in both mains
 
 The grammar travels to a board as a function it is handed, never as knowledge it holds:

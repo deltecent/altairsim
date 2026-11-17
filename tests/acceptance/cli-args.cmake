@@ -79,6 +79,29 @@ if(err MATCHES "TCP port" OR NOT err MATCHES "pty|/tmp/altairsim")
   fail("--Mirror PTY was not read as --mirror pty" "${out}" "${err}")
 endif()
 
+# ---- --tool-log (issue #672): needs --mcp, is case-blind, and makes its file empty. ----
+run_in("${work}/plain" rc out err --tool-log calls.log)
+if(NOT rc EQUAL 2 OR NOT err MATCHES "--tool-log needs --mcp")
+  fail("--tool-log without --mcp must be refused with exit 2" "${out}" "${err}")
+endif()
+run_in("${work}/plain" rc out err --mcp --log same.log --tool-log same.log)
+if(NOT rc EQUAL 2 OR NOT err MATCHES "must be different files")
+  fail("--tool-log and --log on one file must be refused" "${out}" "${err}")
+endif()
+file(WRITE "${work}/plain/calls.log" "old text\n")
+execute_process(
+  COMMAND           "${SIM}" --Tool-Log calls.log --MCP
+  WORKING_DIRECTORY "${work}/plain"
+  INPUT_FILE        "${work}/empty.jsonl"
+  RESULT_VARIABLE   rc
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    err
+  TIMEOUT           30)
+file(READ "${work}/plain/calls.log" calls)
+if(NOT rc EQUAL 0 OR NOT calls STREQUAL "")
+  fail("--Tool-Log was not read as --tool-log, or its file was not emptied" "${out}" "${err}")
+endif()
+
 # ---- -x AND -s STOP AT THE FIRST COMMAND THAT FAILS (issue #916). ----
 # A refused command leaves the machine as it was, so the commands after it would run on a
 # machine the caller did not write, and print output that is wrong without saying why.
