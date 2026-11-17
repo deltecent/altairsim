@@ -127,6 +127,7 @@ public:
     // The connect banner is the terminal server's, not guest traffic: it goes straight
     // to the wrapped socket and never into the capture.
     void greet(const std::string& owner) override { inner_->greet(owner); }
+    void setTitle(const std::string& t) override { inner_->setTitle(t); }
 
     // Reach the wrapped line -- for the --mcp console, which is a scripted line under a
     // `--log` tap and must still be fed and read directly (MirrorStream::inner()'s twin).

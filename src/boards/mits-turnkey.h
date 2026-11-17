@@ -85,7 +85,7 @@ public:
 
     // ---- serial units: the SIO's `tty`, delegated to the section ----
     std::vector<UnitDef>  units() const override { return sio_.units(); }
-    std::vector<Property> unitProperties(const std::string& unit) override {
+    std::vector<Property> boardUnitProperties(const std::string& unit) override {
         return sio_.unitProperties(unit);
     }
     bool connect(const std::string& unit, const std::string& endpoint, std::string& err) override;

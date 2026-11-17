@@ -92,6 +92,29 @@ a terminal needs a window, so `TerminalStream::hasWindow()` gates it — `SdlDis
 `CONNECT` rather than opening a serial line nobody can see. SDL is optional throughout: absent
 it, the endpoint is simply unavailable, never a compile break.
 
+## The window's name and the title bar
+
+A stream does not know which unit it is plugged into, because the board resolved the stream
+and never told it. The **machine** names it, the same way it hands a listener its greeting:
+
+- `Board::unitProperties()` adds a `title` key to every serial unit (the board's own list is
+  `boardUnitProperties()`). `Board::unitTitle()` answers the title, or `id:unit` when it is
+  empty. The value lives on the `Board`, so it survives a reconnect.
+- `ByteStream::setTitle()` is the seam. A `TerminalStream` constructor and a `title` setter
+  both call `ByteStream::titlesChanged()`, and `Machine::pump` walks the serial units and hands
+  each stream `unitTitle()` only when `titleEpoch()` has moved. On every other slice the cost
+  is one compare. The decorators that forward `greet()` (`SharedStream`, `TeeStream`,
+  `MirrorStream`) forward `setTitle()` too.
+- `TerminalStream::pump()` uses the title as the window label (the connect string until one
+  arrives). It repaints once when the title or `titlebar` changes, even on a still screen,
+  because `acquire()` is where the window learns its label and its height.
+- `TerminalRenderer::render()` takes a `banner`. Non-empty, it adds one cell row on top: a grey
+  bar (palette index 3) with the text centred in the background colour. The screen is drawn one
+  row down. `TerminalStream::cellAt()` subtracts the row, so a mouse selection lands on the
+  right cell. The VDB-8024 passes no banner and is unchanged.
+- `[terminal] titlebar` (default on) is a field of `TerminalStream::Settings`, published by
+  `properties()` like the other keys.
+
 ## The keyboard, and where it goes
 
 There is one `SdlDisplay g_display`, shared by every video board and every terminal, with one

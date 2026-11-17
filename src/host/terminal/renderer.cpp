@@ -29,18 +29,41 @@ bool TerminalRenderer::frameChanged(const TerminalScreen& scr, Display* d) const
 }
 
 void TerminalRenderer::render(Display::Owner owner, const std::string& label, Display& d,
-                              TerminalScreen& scr, int windowWidth) {
+                              TerminalScreen& scr, int windowWidth, const std::string& banner) {
     if (!font_) return;
     const int cw = font_->cellCols(), ch = font_->cellRows();
     const int rows = scr.rows(), cols = scr.cols();
+    const int top  = banner.empty() ? 0 : ch;  // the title bar's row, above the screen
 
     // owner keys this board's own window (issue #234); label titles it; windowWidth sizes it.
-    Surface* s = d.acquire(owner, label, cols * cw, rows * ch, PixelFormat::Indexed8, windowWidth);
+    Surface* s = d.acquire(owner, label, cols * cw, rows * ch + top, PixelFormat::Indexed8,
+                           windowWidth);
     if (!s) return;
 
-    const Color pal[3] = {bg_, fg_, dim_};
+    const Color pal[4] = {bg_, fg_, dim_, bar_};
     d.setPalette(owner, pal);
     s->clear(0);
+
+    // THE TITLE BAR (issue #940): a grey row the full width (index 3), with the title in the
+    // screen's background color, in the middle and cut to the width. The grey is the same for
+    // every phosphor, so the bar never looks like text on the screen. A byte that is not
+    // printable ASCII shows as '?'.
+    if (top) {
+        for (int y = 0; y < ch; ++y)
+            for (int x = 0; x < cols * cw; ++x) s->put(x, y, 3);
+        const std::string text = banner.substr(0, (size_t)cols);
+        const int         left = (cols - (int)text.size()) / 2;
+        for (size_t i = 0; i < text.size(); ++i) {
+            uint8_t code = (uint8_t)text[i];
+            if (code < 0x20 || code > 0x7E) code = '?';
+            const int px = (left + (int)i) * cw;
+            for (int ry = 0; ry < ch; ++ry) {
+                uint16_t bits = font_->glyphRow(code, ry);
+                for (int rx = 0; rx < cw; ++rx)
+                    if (bits & (0x8000 >> rx)) s->put(px + rx, ry, 0);
+            }
+        }
+    }
 
     const bool lit = blinkOn(&d);
     const bool cursorShown = cursorMode_ == 2 || (cursorMode_ == 1 && lit);
@@ -66,7 +89,7 @@ void TerminalRenderer::render(Display::Owner owner, const std::string& label, Di
             uint8_t bgIdx = reverse ? fgColor : 0;
             uint8_t fgIdx = reverse ? 0 : fgColor;
 
-            const int px = c * cw, py = dr * ch;
+            const int px = c * cw, py = dr * ch + top;
             if (bgIdx != 0)
                 for (int y = 0; y < ch; ++y)
                     for (int x = 0; x < cw; ++x) s->put(px + x, py + y, bgIdx);

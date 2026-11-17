@@ -20,6 +20,13 @@ TerminalStream::TerminalStream(std::string spec, int rows, int cols,
     : spec_(std::move(spec)), screen_(rows, cols), emu_(std::move(emu)) {
     renderer_.setFont(s_font);  // borrowed, session-lifetime; null just paints nothing
     s_live.insert(this);
+    ByteStream::titlesChanged();  // the machine names this new window on its next pump
+}
+
+void TerminalStream::setTitle(const std::string& title) {
+    if (title == title_) return;
+    title_      = title;
+    titleDirty_ = true;
 }
 
 TerminalStream::~TerminalStream() {
@@ -63,7 +70,8 @@ bool TerminalStream::routeCopy(const void* owner) {
 // selects to the edge.
 void TerminalStream::cellAt(int x, int y, int& row, int& col) const {
     const int cw = s_font ? s_font->cellCols() : 8, ch = s_font ? s_font->cellRows() : 16;
-    row = y < 0 ? 0 : y / ch;
+    const int top = barShown_ ? ch : 0;  // the title bar row is not part of the screen
+    row = y < top ? 0 : (y - top) / ch;
     col = x < 0 ? 0 : x / cw;
     if (row >= screen_.rows()) row = screen_.rows() - 1;
     if (col >= screen_.cols()) col = screen_.cols() - 1;
@@ -201,6 +209,7 @@ std::vector<Property> TerminalStream::properties() {
          &s->crlf);
     flag("echo", "Local echo of keystrokes, for half-duplex hardware", &s->echo);
     flag("bell", "Pass 0x07 through to the terminal", &s->bell);
+    flag("titlebar", "Show the unit's title on a bar at the top of the window", &s->titlebar);
 
     {
         Property x;
@@ -261,11 +270,18 @@ void TerminalStream::pump() {
     if (!d) return;
     // The terminal's window is a keyboard whatever `[display] keyboard` says (issue #767).
     d->claimKeyboard(this);
-    if (!renderer_.frameChanged(screen_, d)) return;
+    // A new title, or `SET TERMINAL titlebar=` (it changes the window's height), repaints at
+    // once, even on a still screen: acquire() is where the window learns its name.
+    const bool bar = s_settings.titlebar;
+    if (!titleDirty_ && bar == barShown_ && !renderer_.frameChanged(screen_, d)) return;
     if (!d->wantsFrame()) return;
-    // `this` keys this terminal's own window (issue #234), distinct from any video board's;
-    // its spec (e.g. "terminal:vt100") titles the window.
-    renderer_.render(this, spec_, *d, screen_, videoWidth_);
+    titleDirty_ = false;
+    barShown_   = bar;
+    // `this` keys this terminal's own window (issue #234), distinct from any video board's.
+    // The unit's title names it (issue #940); before the machine has handed one down, the
+    // connect string does.
+    const std::string& name = title_.empty() ? spec_ : title_;
+    renderer_.render(this, name, *d, screen_, videoWidth_, bar ? name : std::string());
 }
 
 } // namespace altair

@@ -268,6 +268,34 @@ the configuring chapter describes. With `crt = true`, a `width` opens the window
 The window has its own settings for changing bytes, under `[terminal]`. See "The built-in
 terminal has these too", below.
 
+### The name of a terminal window
+
+**A terminal window shows the name of its unit, such as `sio0:a`.** The name is in the title bar
+of the window, after the name of the machine. The name is also on a grey bar at the top of the
+window, in the font of the terminal. The guest does not see the bar. The screen keeps its rows
+and columns.
+
+To give a window a different name, set `title` on its unit:
+
+```
+altairsim> SET sio0:a TITLE=tty1
+```
+
+In a machine file:
+
+```toml
+  [board.unit.a]
+  connect = "terminal"
+  title   = "tty1"
+```
+
+- **Every serial unit has `title`.** With an empty `title`, the window shows the name of the
+  unit.
+- **A window that is open changes its name at once.** The name stays with the unit when you
+  connect the unit again.
+- **To remove the grey bar, set `titlebar` off.** Type `SET TERMINAL titlebar=off`, or write
+  `titlebar = false` under `[terminal]`. The title bar of the window still shows the name.
+
 ### Type in a terminal window
 
 **A key that you type in a terminal window goes down the line of that window.** A machine with
@@ -889,6 +917,7 @@ The built-in `terminal` window draws the text itself, so it has the same kind of
 | `echo` | shows your keys locally, for half-duplex software |
 | `bell` | passes `Ctrl-G` to the terminal. On by default |
 | `bsdel` | makes Backspace and Delete send the same code: `off` (the default), `bs`, or `del` |
+| `titlebar` | shows the name of the unit on a grey bar at the top of the window. On by default |
 
 Set them with `SET TERMINAL k=v`, read them with `SHOW TERMINAL`, or put a `[terminal]` table in
 a machine file. The settings apply to the `terminal` line that is open.

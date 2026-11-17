@@ -329,7 +329,7 @@ std::vector<Property> Bitstreamer2Board::channelProperties(Channel& ch) {
     return p;
 }
 
-std::vector<Property> Bitstreamer2Board::unitProperties(const std::string& unit) {
+std::vector<Property> Bitstreamer2Board::boardUnitProperties(const std::string& unit) {
     if (Channel* ch = channel(unit)) return channelProperties(*ch);
     return {};
 }

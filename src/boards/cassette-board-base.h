@@ -68,7 +68,7 @@ public:
     // the SIMULATOR because it is not on the card in REALITY: the plain cassette has no
     // motor control, no transport register, and no way to know or care which button is
     // down. The operator pressed it. Here, the operator types it.
-    std::vector<Property> unitProperties(const std::string& unit) override;
+    std::vector<Property> boardUnitProperties(const std::string& unit) override;
 
     // ONE TAPE. MOUNT puts a cassette in the recorder; UNMOUNT takes it out.
     std::vector<UnitDef> units() const override;

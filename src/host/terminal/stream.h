@@ -53,6 +53,11 @@ public:
 
     std::string describe() const override { return spec_; }
 
+    // The name of the unit this terminal is on (Machine::pump, issue #940). It names the
+    // window in the host title bar and, with `[terminal] titlebar`, on a bar at the top.
+    void setTitle(const std::string& title) override;
+    const std::string& title() const { return title_; }
+
     size_t read(uint8_t* buf, size_t n) override;   // guest <- reports + keystrokes
     size_t write(const uint8_t* buf, size_t n) override;  // guest -> screen
     bool   readable() const override;
@@ -101,6 +106,7 @@ public:
         bool  bell      = true;   // pass 0x07 to the emulator
         BsMap bsdel     = BsMap::Off;
         bool  crlf      = false;  // add LF after each CR the guest prints
+        bool  titlebar  = true;   // the unit's title on a bar at the top of the window
     };
     static Settings&             settings() { return s_settings; }
     static std::vector<Property> properties();
@@ -146,6 +152,9 @@ public:
 
 private:
     std::string                       spec_;
+    std::string                       title_;               // the unit's name (setTitle)
+    bool                              titleDirty_ = false;  // repaint for a new title
+    bool                              barShown_   = false;  // titlebar at the last paint
     TerminalScreen                    screen_;
     std::unique_ptr<TerminalEmulator> emu_;
     TerminalRenderer                  renderer_;

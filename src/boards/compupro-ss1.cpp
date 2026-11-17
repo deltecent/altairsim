@@ -517,7 +517,7 @@ std::vector<UnitDef> Ss1Board::units() const {
     return {{"serial", UnitKind::Serial, uart_.endpoint()}};
 }
 
-std::vector<Property> Ss1Board::unitProperties(const std::string& unit) {
+std::vector<Property> Ss1Board::boardUnitProperties(const std::string& unit) {
     if (unit != "serial") return {};
     // The 2651's own `connect` property setter opens the endpoint, so it -- like the
     // board's connect() -- must rebase a relative in:/out: PATH from a machine file.

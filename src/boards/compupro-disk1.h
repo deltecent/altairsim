@@ -61,7 +61,7 @@ public:
 
     // ---- the serial unit ('serial'), on port 3 D7, beside the drives ----
     std::vector<UnitDef>  units() const override;
-    std::vector<Property> unitProperties(const std::string& unit) override;
+    std::vector<Property> boardUnitProperties(const std::string& unit) override;
     bool connect(const std::string& unit, const std::string& endpoint, std::string& err) override;
     bool connectStream(const std::string& unit, std::unique_ptr<ByteStream> s,
                        std::string& err) override;

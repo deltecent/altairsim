@@ -718,7 +718,7 @@ std::vector<Property> Io4Board::channelProperties(SerialChannel& ch) {
     return p;
 }
 
-std::vector<Property> Io4Board::unitProperties(const std::string& unit) {
+std::vector<Property> Io4Board::boardUnitProperties(const std::string& unit) {
     if (SerialChannel* ch = channel(unit)) return channelProperties(*ch);
     if (ParallelChannel* pc = parallelChannel(unit)) return parallelProperties(*pc);
     return {};

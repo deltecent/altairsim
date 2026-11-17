@@ -106,7 +106,7 @@ public:
     // surfaces them PER-UNIT (units "a"/"b", the `[board.unit.a]` house pattern). The one
     // knob is boardLevelProps_; everything else is uniform over the channel vector.
     std::vector<Property> properties() override;
-    std::vector<Property> unitProperties(const std::string& unit) override;
+    std::vector<Property> boardUnitProperties(const std::string& unit) override;
     std::vector<UnitDef>  units() const override;
     std::vector<MapEntry> ioMap() const override;
 

@@ -301,7 +301,7 @@ std::vector<UnitDef> ZcbBoard::units() const {
     return out;
 }
 
-std::vector<Property> ZcbBoard::unitProperties(const std::string& unit) {
+std::vector<Property> ZcbBoard::boardUnitProperties(const std::string& unit) {
     if (unit != "serial") return {};
     std::vector<Property> p;
     p.push_back(vgBaudProperty(u_, "Switch S1, for a guest that selects a clock factor of 16. The "

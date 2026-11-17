@@ -75,7 +75,7 @@ public:
     std::vector<MapEntry> ioMap() const override;
 
     std::vector<UnitDef>  units() const override;
-    std::vector<Property> unitProperties(const std::string& unit) override;
+    std::vector<Property> boardUnitProperties(const std::string& unit) override;
     bool connect(const std::string& unit, const std::string& endpoint, std::string& err) override;
     bool disconnect(const std::string& unit, std::string& err) override;
     ByteStream* unitStream(const std::string& unit) override;

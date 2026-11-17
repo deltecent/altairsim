@@ -277,7 +277,7 @@ std::vector<UnitDef> FwiiBoard::units() const {
     return {{"keyboard", UnitKind::Serial, kb_->describe()}};
 }
 
-std::vector<Property> FwiiBoard::unitProperties(const std::string& unit) {
+std::vector<Property> FwiiBoard::boardUnitProperties(const std::string& unit) {
     if (unit != "keyboard") return {};
     std::vector<Property> p;
     Property x;
