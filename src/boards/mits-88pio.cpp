@@ -143,7 +143,7 @@ std::vector<Property> PioBoard::properties() {
     return p;
 }
 
-std::vector<Property> PioBoard::unitProperties(const std::string& unit) {
+std::vector<Property> PioBoard::boardUnitProperties(const std::string& unit) {
     if (unit != "out" && unit != "in") return {};
     std::vector<Property> p;
     {

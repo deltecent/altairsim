@@ -12,6 +12,13 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**New: a terminal window shows the name of its unit (issue #940).** Before, every terminal window
+had the name of its connect string, such as `terminal:vt100`, so two windows had the same name.
+Now the title bar of the window shows the unit, such as `sio0:a`. A grey bar at the top of the
+window shows the same name in the font of the terminal. The guest does not see the bar. Set
+`title` on a serial unit to give it a different name: `SET sio0:a TITLE=tty1`. Set
+`[terminal] titlebar = false` to remove the bar.
+
 **New: `--tool-log` shows each tool call and its result (issue #672).** Give it with `--mcp`. A
 person can see what the assistant does to the machine, such as a `monitor` command, a `reset` or
 a breakpoint, and not only what the guest prints. The output is a text file that you follow with

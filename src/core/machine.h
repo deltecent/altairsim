@@ -243,6 +243,7 @@ public:
 
 private:
     std::vector<std::unique_ptr<Board>> boards_;
+    uint64_t titleEpochSeen_ = 0;  // ByteStream::titleEpoch() at the last title walk (pump)
 };
 
 } // namespace altair

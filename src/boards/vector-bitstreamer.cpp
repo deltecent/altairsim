@@ -152,7 +152,7 @@ std::vector<UnitDef> BitstreamerBoard::units() const {
     return {{"serial", UnitKind::Serial, u_.endpoint()}};
 }
 
-std::vector<Property> BitstreamerBoard::unitProperties(const std::string& unit) {
+std::vector<Property> BitstreamerBoard::boardUnitProperties(const std::string& unit) {
     if (unit != "serial") return {};
     std::vector<Property> p;
     p.push_back(vgBaudProperty(u_, "The baud switch, for a guest that selects a clock factor of "

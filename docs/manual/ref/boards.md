@@ -190,6 +190,7 @@ Vector Graphic ZCB: a Z-80 processor with up to three PROM sockets in E000-EFFF 
 |---|---|---|---|---|
 | `baud` | enum | `9600` | `110` \| `150` \| `300` \| `600` \| `1200` \| `2400` \| `4800` \| `9600` | Switch S1, for a guest that selects a clock factor of 16. The 2 MHz clock over 13 makes the label 9600 run at 9615 |
 | `connect` | string | `null` | text | The endpoint on the serial line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `z80`
@@ -303,6 +304,7 @@ Cromemco 16FDC: WD FD1793 soft-sector floppy (single + double density), up to 4 
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
 | `lines` | string | — | — | Live pin state (show-only). CAPITALS = asserted. in: DCD CTS **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `64fdc`
@@ -338,6 +340,7 @@ Cromemco 64FDC: the 16FDC's 1983 successor -- same FD1793 + TMS 5501, carrying a
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
 | `lines` | string | — | — | Live pin state (show-only). CAPITALS = asserted. in: DCD CTS **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `dcdd`
@@ -398,6 +401,7 @@ CompuPro Disk 1 (1981), the Disk 1A's predecessor: an NEC uPD765A floppy control
 |---|---|---|---|---|
 | `baud` | int | `9600` | `50` .. `115200` | Line rate: the far end's setting, and what the guest's delay loop must match. 8 data bits, no parity, 1 stop bit |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `disk1a`
@@ -493,6 +497,12 @@ FarmTek FDC+ in serial-drive mode: an 88-DCDD/88-MDS-compatible controller with 
 | `drivetype` | int | `7` | `5` .. `7` | Drive Type switches (S3), read at power-on: 5 = 1.5 MB floppy, 6 = serial drive as a Minidisk, 7 = serial drive as an 8" drive |
 | `baud` | int | `403200` | `9600` .. `460800` | Serial drive baud rate: 9600, 19200, 38400, 57600, 76800, 230400, 403200 (preferred) or 460800 |
 | `connect` | string | `null` | text | The drive server on the other end of the line (CONNECT sets this) |
+
+#### Unit `line` — `[board.unit.line]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `hdsk`
@@ -794,6 +804,7 @@ MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
 | `lines` | string | — | — | Live pin state (show-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 #### Unit `b` — `[board.unit.b]`
 
@@ -805,6 +816,7 @@ MITS 88-2SIO: two 6850 ACIAs, units 'a' and 'b'. Four ports at BASE+0..3
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
 | `lines` | string | — | — | Live pin state (show-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `gsio`
@@ -829,6 +841,7 @@ Generic SIO: a strap-configurable serial board with TWO independent channels, un
 | `inverter_gate` | bool | `true` | `true` \| `false` | Route both status bits through the inverter gate -- asserted DAV/TBMT read 0 (active low) |
 | `baud` | int | `9600` | any | Line rate programmed onto a CONNECTed real serial port (8N1). Inert on a socket/file; does not pace the emulated line |
 | `connect` | string | `null` | text | The endpoint on the serial line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 #### Unit `b` — `[board.unit.b]`
 
@@ -842,6 +855,7 @@ Generic SIO: a strap-configurable serial board with TWO independent channels, un
 | `inverter_gate` | bool | `true` | `true` \| `false` | Route both status bits through the inverter gate -- asserted DAV/TBMT read 0 (active low) |
 | `baud` | int | `9600` | any | Line rate programmed onto a CONNECTed real serial port (8N1). Inert on a socket/file; does not pace the emulated line |
 | `connect` | string | `null` | text | The endpoint on the serial line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `interfacer1`
@@ -876,6 +890,7 @@ CompuPro Interfacer 1 (Godbout 133H): two serial channels 'a' and 'b', each a re
 | `tx_int` | enum | `none` | `none` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | J11: where TxINT (TBMT AND TXINTE) is jumpered: none \| vi0..vi7. A LEVEL, held while the transmitter is idle *(interrupt strap)* |
 | `control` | int | — | — | What the guest last wrote to the control port (the 74LS175 latches) **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 #### Unit `b` — `[board.unit.b]`
 
@@ -897,6 +912,7 @@ CompuPro Interfacer 1 (Godbout 133H): two serial channels 'a' and 'b', each a re
 | `tx_int` | enum | `none` | `none` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | J11: where TxINT (TBMT AND TXINTE) is jumpered: none \| vi0..vi7. A LEVEL, held while the transmitter is idle *(interrupt strap)* |
 | `control` | int | — | — | What the guest last wrote to the control port (the 74LS175 latches) **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `io4`
@@ -932,6 +948,7 @@ SSM IO-4 (2P+2S): the real Solid State Music board -- two full-duplex serial cha
 | `stop_bits` | int | `1` | `1` .. `2` | Stop bits (S1/S2 NSB): 1 or 2 |
 | `parity` | enum | `none` | `none` \| `odd` \| `even` | Parity (S1/S2 NPB/POE): none \| odd \| even |
 | `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 #### Unit `b` — `[board.unit.b]`
 
@@ -953,6 +970,7 @@ SSM IO-4 (2P+2S): the real Solid State Music board -- two full-duplex serial cha
 | `stop_bits` | int | `1` | `1` .. `2` | Stop bits (S1/S2 NSB): 1 or 2 |
 | `parity` | enum | `none` | `none` \| `odd` \| `even` | Parity (S1/S2 NPB/POE): none \| odd \| even |
 | `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 #### Unit `pa` — `[board.unit.pa]`
 
@@ -963,6 +981,7 @@ SSM IO-4 (2P+2S): the real Solid State Music board -- two full-duplex serial cha
 | `dav_source` | enum | `self` | `self` \| `sibling` | Whose service request the dav_bit shows: self (this port's) or sibling (the other parallel port's -- the status/data console reads the data port's flag at the status port) |
 | `dav_active_low` | bool | `false` | `true` \| `false` | Present the data-available flag active-low -- the dav_bit reads 0 when a byte is waiting (§3.2.2 "D0 going low"). Off = active-high |
 | `int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where this parallel input's interrupt (a byte latched in, service request) is strapped on header W4: none \| int \| vi0..vi7. Canonical: vi6 (Parallel A) / vi5 (Parallel B) *(interrupt strap)* |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 #### Unit `pb` — `[board.unit.pb]`
 
@@ -973,6 +992,7 @@ SSM IO-4 (2P+2S): the real Solid State Music board -- two full-duplex serial cha
 | `dav_source` | enum | `self` | `self` \| `sibling` | Whose service request the dav_bit shows: self (this port's) or sibling (the other parallel port's -- the status/data console reads the data port's flag at the status port) |
 | `dav_active_low` | bool | `false` | `true` \| `false` | Present the data-available flag active-low -- the dav_bit reads 0 when a byte is waiting (§3.2.2 "D0 going low"). Off = active-high |
 | `int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where this parallel input's interrupt (a byte latched in, service request) is strapped on header W4: none \| int \| vi0..vi7. Canonical: vi6 (Parallel A) / vi5 (Parallel B) *(interrupt strap)* |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `pmmi`
@@ -996,6 +1016,12 @@ PMMI MM-103: Bell 103 modem on an S-100 card, unit 'line'. Four ports at BASE+0.
 | `uart` | string | — | — | Live UART status (show-only). CAPITALS = asserted: TBMT DAV **(show-only — not a key you may set)** |
 | `lines` | string | — | — | Live modem lines (show-only). CAPITALS = asserted: SH RI DTR ST DT RING CTS AP (DT/RING/CTS/AP from the phone line + handshake state machine) **(show-only — not a key you may set)** |
 
+#### Unit `line` — `[board.unit.line]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
+
 
 ### `propio`
 
@@ -1015,6 +1041,12 @@ S100Computers Console IO Board (Parallax-Propeller console), unit 'serial'. A st
 | `inverter_gate` | bool | `false` | `true` \| `false` | Route both status bits through the inverter gate -- asserted DAV/TBMT read 0 (active low) |
 | `baud` | int | `9600` | any | Line rate programmed onto a CONNECTed real serial port (8N1). Inert on a socket/file; does not pace the emulated line |
 | `connect` | string | `null` | text | The endpoint on the serial line (CONNECT sets this): a file, socket, serial port, in:/out: file, null, loopback |
+
+#### Unit `serial` — `[board.unit.serial]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `sbc`
@@ -1049,6 +1081,7 @@ SD Systems SBC-100/200: Z80 single-board computer. One 8-port block (78-7F): Int
 | `baud` | int | `9600` | `50` .. `76800` | Line rate. On the SBC the CTC generates it; here it paces the receive line and sizes the auto-baud bit. No free-running setting (min 50) |
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where this port's IRQ is jumpered: none \| int \| vi0..vi7 (decoded; not yet honored) *(interrupt strap)* |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `sio`
@@ -1070,6 +1103,12 @@ MITS 88-SIO: one COM2502 UART, unit 'tty'. Two ports at BASE+0..1. INVERTED stat
 | `in_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the IN pad is soldered (RX): none \| int \| vi0..vi7 *(interrupt strap)* |
 | `out_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the OUT pad is soldered (TX): none \| int \| vi0..vi7 *(interrupt strap)* |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
+
+#### Unit `tty` — `[board.unit.tty]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `turnkey`
@@ -1104,6 +1143,7 @@ MITS 8800b Turnkey Module: phantom boot PROM (FC00-FFFF), integrated 6850 SIO (u
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
 | `lines` | string | — | — | Live pin state (show-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `vgbs`
@@ -1124,6 +1164,7 @@ Vector Graphic Bit Streamer: an I/O board at four ports from a multiple of 4. Ba
 |---|---|---|---|---|
 | `baud` | enum | `9600` | `110` \| `150` \| `300` \| `600` \| `1200` \| `2400` \| `4800` \| `9600` | The baud switch, for a guest that selects a clock factor of 16. The 2 MHz clock over 13 makes the label 9600 run at 9615 |
 | `connect` | string | `null` | text | The endpoint on the serial line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `vgbsii`
@@ -1148,6 +1189,7 @@ Vector Graphic Bitstreamer II: three 8251 serial channels (units a, b, c), two p
 | `rx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers RxRDY, through its mask bit: none \| int \| vi0..vi7 *(interrupt strap)* |
 | `tx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers TxRDY, through its mask bit: none \| int \| vi0..vi7. It is a level, held while the transmitter is ready *(interrupt strap)* |
 | `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 #### Unit `b` — `[board.unit.b]`
 
@@ -1157,6 +1199,7 @@ Vector Graphic Bitstreamer II: three 8251 serial channels (units a, b, c), two p
 | `rx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers RxRDY, through its mask bit: none \| int \| vi0..vi7 *(interrupt strap)* |
 | `tx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers TxRDY, through its mask bit: none \| int \| vi0..vi7. It is a level, held while the transmitter is ready *(interrupt strap)* |
 | `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 #### Unit `c` — `[board.unit.c]`
 
@@ -1166,6 +1209,7 @@ Vector Graphic Bitstreamer II: three 8251 serial channels (units a, b, c), two p
 | `rx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers RxRDY, through its mask bit: none \| int \| vi0..vi7 *(interrupt strap)* |
 | `tx_int` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where area A jumpers TxRDY, through its mask bit: none \| int \| vi0..vi7. It is a level, held while the transmitter is ready *(interrupt strap)* |
 | `connect` | string | `null` | text | The endpoint on this channel's line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ## Tape
@@ -1254,6 +1298,7 @@ MITS 88-UIO: serial + cassette on one board. A 6850 (unit 'serial', default 0x10
 | `cts` | enum | `ground` | `ground` \| `wired` | /CTS pin: grounded on the card, or wired -- and then it gates the transmitter |
 | `lines` | string | — | — | Live pin state (show-only). CAPITALS = asserted. in: DCD CTS, out: RTS BRK **(show-only — not a key you may set)** |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ## Parallel and printer
@@ -1276,12 +1321,14 @@ MITS 88-4PIO: up to four 6820 PIAs, sections ja/jb.. per port. 16 ports from BAS
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `connect` | string | `null` | text | The endpoint on the other end of this section (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 #### Unit `jb` — `[board.unit.jb]`
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `connect` | string | `null` | text | The endpoint on the other end of this section (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `c700`
@@ -1298,6 +1345,12 @@ MITS 88-C700: Centronics line-printer controller, unit 'prn'. Two ports at BASE+
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
 | `interrupt` | enum | `int` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the printer's interrupt is soldered: none \| int (pin 73) \| vi0..vi7 *(interrupt strap)* |
 | `interrupt_after` | enum | `char` | `char` \| `crlf` | SW2 #4: raise the interrupt after every 'char' or only after a 'crlf' |
+
+#### Unit `prn` — `[board.unit.prn]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `d7a`
@@ -1328,6 +1381,12 @@ MITS 88-LPC: 88-LP line-printer controller, unit 'prn'. Two ports at BASE+0..1 (
 | `port` | int | `0x2` | `0x0` .. `0xFE` | Base address -- MUST BE EVEN. Control/status at BASE, data at BASE+1 |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
 
+#### Unit `prn` — `[board.unit.prn]`
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
+
 
 ### `music6`
 
@@ -1357,12 +1416,14 @@ MITS 88-PIO: 8-bit parallel port, units 'out'/'in'. Two ports at BASE+0..1 (defa
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `connect` | string | `null` | text | The endpoint on the other end of this line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 #### Unit `in` — `[board.unit.in]`
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `connect` | string | `null` | text | The endpoint on the other end of this line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ## Video
@@ -1449,6 +1510,7 @@ SD Systems VDB-8024: an 80x24 video terminal on one board -- the video console f
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `connect` | string | `null` | text | The endpoint on the other end of the keyboard line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `vdm1`
@@ -1491,6 +1553,7 @@ Vector Graphic Flashwriter II: 2K of memory-mapped video RAM at BASE (default F0
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `connect` | string | `null` | text | The endpoint on the other end of the keyboard line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ## Systems
@@ -1514,18 +1577,21 @@ Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one bo
 | `connect` | string | `null` | text | The endpoint on the other end of this line (CONNECT sets this) |
 | `baud` | int | `9600` | `1` .. `1000000` | Serial line speed (the strap on the Sol-PC's serial UART) |
 | `data_bits` | int | `8` | `5` .. `8` | Serial word length: 8, 7, or 6 (the Sol-PC DIP) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 #### Unit `printer` — `[board.unit.printer]`
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `connect` | string | `null` | text | The endpoint on the other end of this line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 #### Unit `keyboard` — `[board.unit.keyboard]`
 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `connect` | string | `null` | text | The endpoint on the other end of this line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 #### Unit `tape1` — `[board.unit.tape1]`
 
@@ -1657,6 +1723,7 @@ CompuPro System Support 1: multifunction S-100 board. Dual 8259A interrupt contr
 | `baud` | int | `9600` | `50` .. `19200` | Line rate. The 2651 generates it from Mode Register 2, so the guest's MR2 write overwrites this; it seeds the line before then (min 50) |
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where this port's IRQ is jumpered: none \| int \| vi0..vi7. The chip raises it on RxRDY; the standard board routes it through the 8259A instead *(interrupt strap)* |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
+| `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
 
 
 ### `virtc`

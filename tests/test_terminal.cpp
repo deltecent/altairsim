@@ -1,4 +1,6 @@
 #include "test.h"
+#include "config/toml.h"
+#include "core/machine.h"
 
 #include "host/display_null.h"
 #include "host/endpoint.h"
@@ -762,9 +764,13 @@ void test_terminal() {
 
             const TerminalFont* f = TerminalStream::font();
             const int cw = f ? f->cellCols() : 8, ch = f ? f->cellRows() : 16;
-            CHECK(TerminalStream::routePointer(&ts, 0, 0 * cw + 1, 1) &&
-                      TerminalStream::routePointer(&ts, 1, 3 * cw + 1, 1) &&
-                      TerminalStream::routePointer(&ts, 2, 3 * cw + 1, 1),
+            // Paint once first: the title bar (on by default, issue #940) is the window's top
+            // row, so the screen's first row starts one cell row down, at y = ch.
+            ts.pump();
+            const int top = ch;
+            CHECK(TerminalStream::routePointer(&ts, 0, 0 * cw + 1, top + 1) &&
+                      TerminalStream::routePointer(&ts, 1, 3 * cw + 1, top + 1) &&
+                      TerminalStream::routePointer(&ts, 2, 3 * cw + 1, top + 1),
                   "the mouse in the terminal's window reaches the terminal");
             CHECK(!TerminalStream::routePointer(&videoBoard, 0, 0, 0),
                   "the mouse in a video window is not a terminal's");
@@ -776,7 +782,7 @@ void test_terminal() {
                 // is on cell 1, so neither is the cursor's cell.
                 auto litIn = [&](int col) {
                     int lit = 0;
-                    for (int y = 0; y < ch; ++y)
+                    for (int y = top; y < top + ch; ++y)
                         for (int x = col * cw; x < (col + 1) * cw; ++x)
                             lit += sf->pixels()[(size_t)y * sf->width() + x] != 0;
                     return lit;
@@ -787,6 +793,95 @@ void test_terminal() {
             CHECK(TerminalStream::routeCopy(&ts) && cd.clip == "A",
                   "the copy is the selection (the blanks at its end are cut)");
         }
+        TerminalStream::setDisplay(was);
+    }
+
+    SECTION("title -- a serial unit has `title`; empty names the window after the unit (#940)");
+    {
+        Machine     m;
+        std::string err;
+        Board*      sio = m.add("2sio", "sio0", err);
+        CHECK(sio != nullptr, "a 2SIO goes in as sio0");
+        if (sio) {
+            CHECK(sio->unitTitle("a") == "sio0:a", "no title set: the unit's address");
+            bool has = false;
+            for (const auto& p : sio->unitProperties("a")) has = has || p.name == "title";
+            CHECK(has, "a serial unit lists `title` with its own properties");
+            CHECK(setUnitProperty(*sio, "a", "title", "tty1", err), "SET sio0:a TITLE=tty1");
+            CHECK(sio->unitTitle("A") == "tty1", "the title is the unit's, by any case of its name");
+            CHECK(sio->unitTitle("b") == "sio0:b", "the other unit keeps its address");
+
+            // CONFIG SAVE writes it, and a load gives it back.
+            const std::string text = saveTomlText(m);
+            CHECK(text.find("title = \"tty1\"") != std::string::npos, "CONFIG SAVE writes the title");
+            Machine back;
+            CHECK(loadTomlText(text, "test", back, err), "the saved file loads");
+            Board* b2 = nullptr;
+            for (const auto& b : back.boards())
+                if (b->id == "sio0") b2 = b.get();
+            CHECK(b2 && b2->unitTitle("a") == "tty1" && b2->unitTitle("b") == "sio0:b",
+                  "the title survives a CONFIG SAVE and LOAD; the unset one stays empty");
+
+            CHECK(setUnitProperty(*sio, "a", "title", "", err) && sio->unitTitle("a") == "sio0:a",
+                  "an empty title goes back to the unit's address");
+        }
+        // A unit that is not a serial line has no window to name.
+        Board* acr = m.add("acr", "acr0", err);
+        UnitDef tape;
+        CHECK(acr && acr->findUnit("tape", tape) && tape.kind != UnitKind::Serial,
+              "the ACR's `tape` is a unit that is not a serial line");
+        bool tapeTitle = false;
+        if (acr)
+            for (const auto& p : acr->unitProperties("tape")) tapeTitle = tapeTitle || p.name == "title";
+        CHECK(!tapeTitle, "a non-serial unit has no `title`");
+    }
+
+    SECTION("title -- the machine names a terminal window after its unit; the bar sits on top");
+    {
+        // A display that keeps the label each window was opened or renamed with.
+        struct LabelDisplay : NullDisplay {
+            std::map<Owner, std::string> labels;
+            Surface* acquire(Owner o, const std::string& label, int w, int h, PixelFormat f,
+                             int tw) override {
+                labels[o] = label;
+                return NullDisplay::acquire(o, label, w, h, f, tw);
+            }
+        } ld;
+        Display* const was = TerminalStream::display();
+        TerminalStream::setDisplay(&ld);
+        TerminalStream::Settings& set = TerminalStream::settings();
+        {
+            Machine     m;
+            std::string err;
+            Board*      sio = m.add("2sio", "sio0", err);
+            // Through a SharedStream, as a decorator: the title must pass through it.
+            auto term = std::make_shared<TerminalStream>("terminal:vt100", 24, 80,
+                                                         std::make_unique<Vt100Emulator>());
+            CHECK(sio && sio->connectStream("b", std::make_unique<SharedStream>(term), err),
+                  "a terminal on sio0:b, behind a decorator");
+            const TerminalFont* f = TerminalStream::font();
+            const int ch = f ? f->cellRows() : 16;
+
+            m.pump();
+            term->pump();
+            const Surface* sf = ld.surface(term.get());
+            CHECK(ld.labels[term.get()] == "sio0:b",
+                  "the window is named after its unit, not its connect string");
+            CHECK(sf && sf->height() == 24 * ch + ch, "one row of title bar above the 24 rows");
+            CHECK(term->screen().rows() == 24, "the guest still sees 24 rows");
+
+            if (sio) setUnitProperty(*sio, "b", "title", "tty1", err);
+            m.pump();
+            term->pump();
+            CHECK(ld.labels[term.get()] == "tty1", "SET ... TITLE renames the open window at once");
+
+            CHECK(TerminalStream::set("titlebar", "off", err), "SET TERMINAL titlebar=off");
+            term->pump();
+            sf = ld.surface(term.get());
+            CHECK(sf && sf->height() == 24 * ch, "with the bar off the window is the screen alone");
+            CHECK(ld.labels[term.get()] == "tty1", "the host title bar still names the unit");
+        }
+        set = TerminalStream::Settings{};
         TerminalStream::setDisplay(was);
     }
 }

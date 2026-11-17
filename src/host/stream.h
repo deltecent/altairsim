@@ -196,6 +196,17 @@ public:
     // How many listeners, machine-wide, have a caller still owed a banner.
     static int greetingsDue() { return greetingsDue_; }
 
+    // THE NAME OF THE UNIT THIS LINE IS PLUGGED INTO, for a stream with a window to name
+    // (issue #940): a `terminal:` shows it in the host title bar and on its own title bar.
+    // Like greet(), only the machine can say it -- the board resolved the stream and never
+    // told it its unit -- so Machine::pump hands every serial unit's title (Board::unitTitle)
+    // down, but only when titleEpoch() has moved: a terminal opened or a `title` was set.
+    // Default: nothing to name. A decorator forwards it to the line it wraps.
+    virtual void setTitle(const std::string& title) { (void)title; }
+
+    static uint64_t titleEpoch() { return titleEpoch_; }
+    static void     titlesChanged() { ++titleEpoch_; }
+
     uint8_t readByte() {
         uint8_t b = 0;
         return read(&b, 1) == 1 ? b : 0;
@@ -207,6 +218,9 @@ protected:
     // goes out or the caller leaves first. Single-threaded, like every stream -- only
     // the run loop pumps and greets (DESIGN.md: no second thread touches the Machine).
     inline static int greetingsDue_ = 0;
+
+    // Moved by titlesChanged(); Machine::pump re-titles every line when it differs.
+    inline static uint64_t titleEpoch_ = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -346,6 +360,7 @@ public:
     void pump() override { line_->pump(); }
     std::vector<std::string> drainLog() override { return line_->drainLog(); }
     void greet(const std::string& owner) override { line_->greet(owner); }
+    void setTitle(const std::string& t) override { line_->setTitle(t); }
 
 private:
     std::shared_ptr<ByteStream> line_;

@@ -542,7 +542,7 @@ std::vector<Property> SolBoard::properties() {
     return p;
 }
 
-std::vector<Property> SolBoard::unitProperties(const std::string& unit) {
+std::vector<Property> SolBoard::boardUnitProperties(const std::string& unit) {
     // A DECK GETS NO `connect`, AND THAT IS THE POINT OF THE UNIT KIND. What is on the
     // end of a cassette line is a cassette; offering an endpoint would advertise a
     // socket where the hardware has a transport.

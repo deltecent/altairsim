@@ -393,7 +393,7 @@ std::vector<Property> StrapSerialBoard::properties() {
     return {};
 }
 
-std::vector<Property> StrapSerialBoard::unitProperties(const std::string& unit) {
+std::vector<Property> StrapSerialBoard::boardUnitProperties(const std::string& unit) {
     if (boardLevelProps_) return {};
     int idx = channelIndex(unit);
     if (idx < 0) return {};

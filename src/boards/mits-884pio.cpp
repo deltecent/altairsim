@@ -171,7 +171,7 @@ std::vector<Property> Pio4Board::properties() {
     return p;
 }
 
-std::vector<Property> Pio4Board::unitProperties(const std::string& unit) {
+std::vector<Property> Pio4Board::boardUnitProperties(const std::string& unit) {
     if (sectionIndex(unit) < 0) return {};
     std::vector<Property> p;
     {

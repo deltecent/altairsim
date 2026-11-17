@@ -309,7 +309,7 @@ std::vector<UnitDef> Vdb8024Board::units() const {
     return {{"keyboard", UnitKind::Serial, kb_->describe()}};
 }
 
-std::vector<Property> Vdb8024Board::unitProperties(const std::string& unit) {
+std::vector<Property> Vdb8024Board::boardUnitProperties(const std::string& unit) {
     if (unit != "keyboard") return {};
     std::vector<Property> p;
     // The keyboard is a line you CONNECT; `connect` is the endpoint on the far end, and

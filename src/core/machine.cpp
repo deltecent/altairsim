@@ -62,6 +62,19 @@ Board* Machine::adopt(std::unique_ptr<Board> b) {
 
 void Machine::pump() {
     bus.busClock().pump(clock);  // before the boards, so each reads this slice's count
+
+    // A TERMINAL OPENED OR A `title` WAS SET: name every line after its unit (Board::unitTitle,
+    // issue #940) before the boards pump, so a new terminal window opens with its name and not
+    // its connect string. Only the backplane knows which unit a stream is on, as with the
+    // greeting below. Nothing changed -- nearly every slice -- is one compare.
+    if (ByteStream::titleEpoch() != titleEpochSeen_) {
+        titleEpochSeen_ = ByteStream::titleEpoch();
+        for (auto& b : boards_)
+            for (const auto& u : b->units())
+                if (u.kind == UnitKind::Serial)
+                    if (ByteStream* s = b->unitStream(u.name)) s->setTitle(b->unitTitle(u.name));
+    }
+
     for (auto& b : boards_) b->pump();
 
     // A CALLER ANSWERED A LISTENER THAT GREETS, and only the backplane can say which

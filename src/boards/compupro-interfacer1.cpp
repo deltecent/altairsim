@@ -312,7 +312,7 @@ std::vector<Property> InterfacerOneBoard::properties() {
     return p;
 }
 
-std::vector<Property> InterfacerOneBoard::unitProperties(const std::string& unit) {
+std::vector<Property> InterfacerOneBoard::boardUnitProperties(const std::string& unit) {
     if (Channel* ch = channel(unit)) return channelProperties(*ch);
     return {};
 }

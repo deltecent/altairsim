@@ -198,9 +198,9 @@ std::vector<UnitDef> UioBoard::units() const {
     return u;
 }
 
-std::vector<Property> UioBoard::unitProperties(const std::string& unit) {
+std::vector<Property> UioBoard::boardUnitProperties(const std::string& unit) {
     if (isSerial(unit)) return serial_.unitProperties(lowerAscii(unit));
-    return CassetteBoardBase::unitProperties(unit);  // the tape's `mode`/`format`/leader/...
+    return CassetteBoardBase::boardUnitProperties(unit);  // the tape's `mode`/`format`/leader/...
 }
 
 bool UioBoard::connect(const std::string& unit, const std::string& endpoint, std::string& err) {

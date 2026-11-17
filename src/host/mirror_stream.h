@@ -204,6 +204,7 @@ public:
         return sink_->note();
     }
     void greet(const std::string& owner) override { inner_->greet(owner); }
+    void setTitle(const std::string& t) override { inner_->setTitle(t); }
 
     // Is a watcher on the line -- accepted by pump() and through its handshake? The one
     // thing about the rider the mirror will say, since status() is deliberately the

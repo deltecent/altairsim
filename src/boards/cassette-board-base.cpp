@@ -107,7 +107,7 @@ std::vector<Property> CassetteBoardBase::properties() {
 // one head, one transport, one way at a time. NOT because a deck has one button down:
 // on a real one you hold PLAY and RECORD together, and RECORD alone does nothing. The
 // buttons select a mode; it is the mode that excludes.
-std::vector<Property> CassetteBoardBase::unitProperties(const std::string& unit) {
+std::vector<Property> CassetteBoardBase::boardUnitProperties(const std::string& unit) {
     if (!isTape(unit)) return {};
 
     std::vector<Property> p;

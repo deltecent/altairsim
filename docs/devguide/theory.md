@@ -506,11 +506,15 @@ no moment at which a `SET` races a running CPU. And on real hardware the gate wo
 anyway: a card being worked on sits on an **extender**, out where you can reach it, and its
 jumpers get moved with the power on.
 
-**`unitProperties()` is for a real sub-thing with its own settings.**
+**`boardUnitProperties()` is for a real sub-thing with its own settings.**
 
 ```cpp
-virtual std::vector<Property> unitProperties(const std::string& unit) { return {}; }
+virtual std::vector<Property> boardUnitProperties(const std::string& unit) { return {}; }
 ```
+
+A board overrides `boardUnitProperties()`. Every caller reads the non-virtual
+`unitProperties()`, which is the board's list plus the keys that every unit of a kind shares and
+that the base adds. Today that is one key: `title` on a `UnitKind::Serial` unit (issue #940).
 
 The two halves of a 2SIO are **two independent 6850s** with their own crystals' worth of
 jumpers — independent baud rates, independent transforms — so they are units, and `SET sio0:a

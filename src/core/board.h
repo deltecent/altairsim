@@ -15,6 +15,7 @@
 #include "core/value.h"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -617,11 +618,24 @@ public:
     // jumpers. Folding them into the board's properties() as `a_baud`/`b_baud`
     // would work for a 2SIO and fall apart on the first card with eight ports.
     //
-    // Empty for a board whose units have no settings, which is most of them.
-    virtual std::vector<Property> unitProperties(const std::string& unit) {
+    // This is the board's own list (boardUnitProperties) plus the keys every unit of a kind
+    // shares, which the base adds: a SERIAL unit has `title`, the name of a terminal window
+    // on it (issue #940). Every caller -- SET, SHOW, CONFIG SAVE, the machine-file loader,
+    // the MCP tools -- reads this one list, so a shared key needs no line in any board.
+    std::vector<Property> unitProperties(const std::string& unit);
+
+    // The board's OWN unit properties. Empty for a board whose units have no settings,
+    // which is most of them.
+    virtual std::vector<Property> boardUnitProperties(const std::string& unit) {
         (void)unit;
         return {};
     }
+
+    // THE NAME OF A SERIAL UNIT'S WINDOW: what a `terminal:` on it shows in the host title
+    // bar and on its own title bar (ByteStream::setTitle, handed down by Machine::pump). The
+    // `title` property when it is set, else the unit's address, "sio0:a". It belongs to the
+    // unit, not the stream, so it survives a reconnect.
+    std::string unitTitle(const std::string& unit) const;
 
     // ---- Host services ----
 
@@ -1110,6 +1124,9 @@ private:
     // Null for the many cards that declare no flags. Owned here, so it registers for
     // exactly the card's lifetime -- destructing it unregisters from the dbg registry.
     std::unique_ptr<dbg::Channel> dbg_;
+
+    // The `title` of each serial unit that has one set (unitTitle), by lowercase unit name.
+    std::map<std::string, std::string> unitTitles_;
 };
 
 // ---------------------------------------------------------------------------

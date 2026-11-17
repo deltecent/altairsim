@@ -99,7 +99,7 @@ std::vector<UnitDef> CompuProDisk1Board::units() const {
     return u;
 }
 
-std::vector<Property> CompuProDisk1Board::unitProperties(const std::string& unit) {
+std::vector<Property> CompuProDisk1Board::boardUnitProperties(const std::string& unit) {
     if (unit != "serial") return {};
     return line_.properties(
         rebasingResolver(g_resolver, [this](const std::string& p) { return resolvePath(p); }));

@@ -99,7 +99,7 @@ public:
 
     std::vector<Property> properties() override;
     std::vector<UnitDef>  units() const override;
-    std::vector<Property> unitProperties(const std::string& unit) override;
+    std::vector<Property> boardUnitProperties(const std::string& unit) override;
     std::vector<MapEntry> ioMap() const override;
     std::vector<MapEntry> memMap() const override;
 

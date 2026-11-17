@@ -15,6 +15,7 @@
 #include "host/display.h"  // Color, Surface, Display
 
 #include <cstdint>
+#include <string>
 
 namespace altair {
 
@@ -53,9 +54,10 @@ public:
     // Paint the frame and present it. Clears the screen's dirty flag. `owner` is the board
     // whose window this is (issue #234 -- one window per video board), `label` titles that
     // window after the board, and `windowWidth` is the board's width choice (0 = auto) --
-    // all handed to the Display's acquire().
+    // all handed to the Display's acquire(). A non-empty `banner` adds one row above the
+    // screen with that text on a grey bar (issue #940); the screen itself is unchanged.
     void render(Display::Owner owner, const std::string& label, Display& d, TerminalScreen& scr,
-                int windowWidth);
+                int windowWidth, const std::string& banner = {});
 
 private:
     bool blinkOn(Display* d) const;
@@ -68,6 +70,7 @@ private:
     Color bg_  = {0x03, 0x06, 0x03, 0xFF};  // near-black, faint green cast
     Color fg_  = {0x28, 0xC8, 0x52, 0xFF};  // green, ~78% bright
     Color dim_ = {0x14, 0x64, 0x2A, 0xFF};  // half green
+    Color bar_ = {0xB4, 0xB4, 0xB4, 0xFF};  // the title bar: a light neutral grey, any phosphor
 
     bool    reverse_    = false;
     bool    selOn_      = false;

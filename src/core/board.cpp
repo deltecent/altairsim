@@ -121,6 +121,34 @@ bool Board::findUnit(const std::string& name, UnitDef& out) const {
     return false;
 }
 
+std::vector<Property> Board::unitProperties(const std::string& unit) {
+    std::vector<Property> props = boardUnitProperties(unit);
+    UnitDef u;
+    if (!findUnit(unit, u) || u.kind != UnitKind::Serial) return props;
+    const std::string key = lower(u.name);
+    Property t;
+    t.name = "title";
+    t.help = "Name of a terminal window on this unit. Empty means the unit's address";
+    t.kind = Kind::Str;
+    t.get  = [this, key] {
+        auto it = unitTitles_.find(key);
+        return Value::ofStr(it == unitTitles_.end() ? std::string() : it->second);
+    };
+    t.set = [this, key](const Value& v, std::string&) {
+        if (v.s().empty()) unitTitles_.erase(key);
+        else unitTitles_[key] = v.s();
+        ByteStream::titlesChanged();  // the machine renames the window on its next pump
+        return true;
+    };
+    props.push_back(std::move(t));
+    return props;
+}
+
+std::string Board::unitTitle(const std::string& unit) const {
+    auto it = unitTitles_.find(lower(unit));
+    return it != unitTitles_.end() ? it->second : id + ":" + unit;
+}
+
 // The one property-setting path, over a list of properties from wherever.
 //
 // `who` is only ever used to write a good error message -- "sio0:a has no

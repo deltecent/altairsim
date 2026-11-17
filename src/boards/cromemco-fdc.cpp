@@ -653,7 +653,7 @@ std::vector<UnitDef> CromemcoFdcBoard::units() const {
     return u;
 }
 
-std::vector<Property> CromemcoFdcBoard::unitProperties(const std::string& unit) {
+std::vector<Property> CromemcoFdcBoard::boardUnitProperties(const std::string& unit) {
     if (unit != "tty") return {};
     // The 5501's own `connect` property setter opens the endpoint, so it must rebase a
     // relative in:/out: PATH from a machine file, exactly as the card's connect() does.

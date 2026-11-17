@@ -464,7 +464,7 @@ std::vector<UnitDef> SbcBoard::units() const {
     return {{"tty", UnitKind::Serial, u_.endpoint()}};
 }
 
-std::vector<Property> SbcBoard::unitProperties(const std::string& unit) {
+std::vector<Property> SbcBoard::boardUnitProperties(const std::string& unit) {
     if (unit != "tty") return {};
     // The 8251's own `connect` property setter opens the endpoint, so it -- like the
     // card's connect() -- must rebase a relative in:/out: PATH from a machine file.

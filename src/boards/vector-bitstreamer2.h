@@ -72,7 +72,7 @@ public:
     std::vector<std::string> drainLog() override;
 
     std::vector<Property> properties() override;
-    std::vector<Property> unitProperties(const std::string& unit) override;
+    std::vector<Property> boardUnitProperties(const std::string& unit) override;
     std::vector<UnitDef>  units() const override;
     std::vector<MapEntry> ioMap() const override;
 
