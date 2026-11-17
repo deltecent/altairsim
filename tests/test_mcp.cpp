@@ -1126,6 +1126,9 @@ void test_mcp() {
         uint16_t port = freePort();
         CHECK(port != 0, "the OS hands us a free port");
         LiveMcp live(m, "", "socket:" + std::to_string(port));
+        // runMcp opens the --tool-log listener before it reads a request, so a reply means the
+        // port is listening. Dial in before that, and the connection is refused.
+        CHECK(!live.call("monitor", R"({"command":"REGS"})").isNull(), "the session is up");
 
         std::string err;
         auto        client = platform::connectTcp("127.0.0.1", port, err);
