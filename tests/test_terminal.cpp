@@ -291,7 +291,9 @@ void test_terminal() {
             uint8_t buf[8];
             s.upper = true;
             ts.keyAscii('a');
+            CHECK(ts.rxPending() == 1, "a typed key waits for the guest (#934)");
             CHECK(ts.read(buf, sizeof buf) == 1 && buf[0] == 'A', "upper folds a typed key");
+            CHECK(ts.rxPending() == 0, "...and is gone once the guest reads it");
             s.upper = false;
 
             s.strip7in = true;

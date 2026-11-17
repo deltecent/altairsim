@@ -163,6 +163,42 @@ A `telnet` client on a raw `socket:` shows each key two times, because the clien
 both echo it. Enter sends a whole line, with a line feed in place of the carriage return. You
 cannot fix this from the keyboard. The Telnet protocol sets up the two ends to agree.
 
+### See the bytes that wait on a line
+
+`SHOW <id>:<unit>` shows one unit. For a serial unit, it also shows two counts:
+
+- `rx waiting`: the bytes that came from the host and that the guest has not read.
+- `tx waiting`: the bytes that the guest sent and that the host has not taken.
+
+```
+altairsim> CONNECT sio0:b socket:2399
+sio0:b: connected to socket:2399
+altairsim> SHOW sio0:b
+sio0:b  (serial)
+  holds       socket:2399
+  rx waiting  0
+  tx waiting  0
+
+  property         value            legal
+  ---------------- ---------------- --------------------------------
+  baud             9600             50..76800
+  interrupt        none             none|int|vi0|vi1|vi2|vi3|vi4|vi5|vi6|vi7
+  dcd              ground           ground|wired
+  cts              ground           ground|wired
+  lines            DCD CTS RTS brk  (show-only)
+  connect          socket:2399      
+```
+
+A program on a `socket:` line can write many bytes at one time. The write of the program ends
+before the guest reads the bytes. The guest reads them at the baud rate of the unit. To know
+when the guest has read all the bytes, send `SHOW sio0:b` until `rx waiting` is 0.
+
+A `tx waiting` count that does not go down shows that the host does not read the line. When
+the line holds as many bytes as it can, the guest waits to send.
+
+The counts are the bytes that altairsim holds. Your computer can also hold bytes for a socket
+or a serial port, and altairsim cannot see those bytes.
+
 ### The connect banner
 
 A `telnet:PORT` line greets each person who connects, before the guest sends anything. This is

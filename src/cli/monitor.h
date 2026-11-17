@@ -226,6 +226,7 @@ private:
     std::string renderInsn(const Debugger::InsnRec& rec);
 
     void showBoard(Board* b, std::ostream& out);
+    void showUnit(Board* b, const UnitDef& u, std::ostream& out);  // SHOW <id>:<unit>
     void showBoards(std::ostream& out, const Machine& m);  // the backplane: BOARDS
     void showProps(const std::vector<Property>& ps, std::ostream& out);
 

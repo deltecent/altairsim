@@ -166,6 +166,10 @@ public:
     bool pacesItself() const override { return inner_->pacesItself(); }
     bool pacedReceive() const override { return inner_->pacedReceive(); }
     bool realWire() const override { return inner_->realWire(); }
+    // The watcher's typing waits in injectBuf_ like the line's own bytes. txQueue_ is NOT
+    // counted: it is the watcher's copy of the guest's output, not the line's.
+    size_t rxPending() const override { return injectBuf_.size() + inner_->rxPending(); }
+    size_t txPending() const override { return inner_->txPending(); }
 
     // flush() pushes the inner's buffer AND drains the client queue, so a watcher sees
     // guest output as promptly as the guest emits it.

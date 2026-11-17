@@ -74,6 +74,8 @@ a serial socket" in `references/driving-with-ai.md`. The rules:
 - The host write ends before the guest reads the bytes. Wait for a PC breakpoint, not a sleep.
 - Put the breakpoint after the routine prints, not on its first instruction.
 - Poll `status` until `stop_reason` is `breakpoint`. `start {}` continues from there.
+- To see the bytes the guest has not read, poll `monitor {command: "SHOW sio0:b"}` (the unit
+  you connected). `rx waiting` is 0 when the guest has read them all. It works while the guest runs.
 
 **For a person who wants to watch**, start the server with `--log FILE`: it writes what the
 guest prints to `FILE` as plain text. It is an ordinary file — they can `cat` it, open it, or

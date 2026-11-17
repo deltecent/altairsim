@@ -12,6 +12,13 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**New: `SHOW <id>:<unit>` shows one unit (issue #934).** It shows what the unit holds and its
+settings. For a serial unit, it also shows `rx waiting`, the bytes from the host that the guest
+has not read, and `tx waiting`, the bytes from the guest that the host has not taken. To know
+that the guest has read all the bytes, a program that writes to a `socket:` line sends
+`SHOW sio0:b` until `rx waiting` is 0. Over `--mcp`, send the command with the `monitor` tool. It
+works while the guest runs.
+
 **A 6850 now does nothing until the program resets it (issue #938).** Before, a 6850 on the
 88-2SIO, the 88-UIO or the Turnkey Module was ready at power-on. Its status read `02` (TDRE set),
 a character written to the data port was sent, and RTS was on. A real 6850 is held in reset

@@ -244,7 +244,11 @@ void test_mirror() {
         CHECK(!m.readable(), "nothing is readable until pump drains the socket");
         m.pump();
         CHECK(m.readable(), "after pump the injected keystrokes make the line readable");
-        CHECK(get(m, 16) == "DIR\r", "and the guest reads exactly what the watcher typed");
+        sc->feed("AB");
+        CHECK(m.rxPending() == 6, "the backlog is the watcher's typing plus the line's own (#934)");
+        CHECK(get(m, 4) == "DIR\r", "and the guest reads exactly what the watcher typed");
+        CHECK(get(m, 16) == "AB", "...then the line's own bytes");
+        CHECK(m.rxPending() == 0, "with both read, nothing waits");
         CHECK(!m.readable(), "with the inject buffer drained the line is quiet again");
     }
 

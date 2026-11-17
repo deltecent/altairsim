@@ -58,6 +58,8 @@ public:
     size_t      write(const uint8_t* buf, size_t n) override;  // dropped unless off-hook & up
     bool        readable() const override;               // false until answered
     bool        writable() const override;               // send-buffer backpressure = CTS
+    size_t      rxPending() const override { return rx_.size(); }
+    size_t      txPending() const override { return tx_.size(); }
     void        flush() override;
     void        pump() override;                          // accept / poll / drain: the host turn
     LineStatus  status() const override;                  // carrier = answered && established

@@ -88,6 +88,7 @@ void test_tee() {
             TeeStream tee = makeTee(sc, tf.str(), p, clk);
             put(tee, "ATZ\r");            // guest -> line
             sc->feed("OK");               // stage the far end's reply
+            CHECK(tee.rxPending() == 2, "the tap reports the backlog of the line it wraps (#934)");
             CHECK(get(tee, 16) == "OK", "the tap forwards the reply byte-for-byte");
         }  // destructor flushes the pending RX row and closes the file
         std::string log = slurp(tf.str());

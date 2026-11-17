@@ -107,7 +107,7 @@ Type the part before the bracket.
 | `SA[VE]` | Write a range of memory out to a file. | `SAVE <file> <range> [FORMAT=BIN\|HEX\|OCTAL\|PRN]` |
 | `SEA[RCH]` | Find bytes or a string in a range of memory. | `SEARCH <range> <bytes...>\|"str"` |
 | `SE[T]` | Change a property of a board, the console, display, a register, the bus, or the machine. | `SET <id>[:<u>]\|CONSOLE\|DISPLAY\|TERMINAL\|MACHINE\|REG\|BUS <k>=<v>` |
-| `SH[OW]` | Display the state of a board, the bus, or the machine. | `SHOW <id>\|BOARDS\|BOARD <type> [UNITS]\|MACHINES\|MACHINE [<name>]\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|DISPLAY\|TERMINAL\|JOYSTICKS\|SERIAL\|DEBUG\|SYMBOLS\|CLOCK\|VERSION` |
+| `SH[OW]` | Display the state of a board, the bus, or the machine. | `SHOW <id>[:<unit>]\|BOARDS\|BOARD <type> [UNITS]\|MACHINES\|MACHINE [<name>]\|BUS [MAP\|IO\|IRQ\|CONTENTION]\|ROMS\|MOUNTS\|PATHS\|CONSOLE\|DISPLAY\|TERMINAL\|JOYSTICKS\|SERIAL\|DEBUG\|SYMBOLS\|CLOCK\|VERSION` |
 | `SN[APSHOT]` | Save the whole machine state to a file. | `SNAPSHOT <file>` |
 | `STA[RTUP]` | Edit the machine's boot list (the commands CONFIG SAVE saves as startup = [...]). | `STARTUP [ADD <command> \| REMOVE <n> \| CLEAR]` |
 | `S[TEP]` | Run one instruction (or n), showing the registers after each. | `STEP [n]` |

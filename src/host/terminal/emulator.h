@@ -64,6 +64,7 @@ public:
         return got;
     }
     bool hasReply() const { return replyHead_ < reply_.size(); }
+    size_t replyPending() const { return reply_.size() - replyHead_; }
 
 protected:
     void emit(uint8_t b) { reply_.push_back(b); }

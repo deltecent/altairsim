@@ -62,12 +62,14 @@ void test_printer() {
             put(ps, "HELLO");
             ps.pump();
             CHECK(sink.jobs.empty(), "nothing goes out before the idle time elapses");
+            CHECK(ps.txPending() == 5, "the unspooled job is the line's transmit backlog (#934)");
             clk.advance(4.9);
             ps.pump();
             CHECK(sink.jobs.empty(), "and nothing goes out a hair early");
             clk.advance(0.2);  // now 5.1s of silence
             ps.pump();
             CHECK(sink.jobs.size() == 1, "one job after the idle time elapses");
+            CHECK(ps.txPending() == 0, "...and once it is spooled nothing waits");
             if (!sink.jobs.empty()) CHECK(sink.jobs[0] == vec("HELLO"), "with the bytes the guest wrote");
         }
         CHECK(sink.jobs.size() == 1, "the destructor does not add an empty second job");

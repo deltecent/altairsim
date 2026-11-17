@@ -48,6 +48,8 @@ public:
 
     // A program that is there and slow makes the guest wait. Nobody there never does.
     bool writable() const override { return !pty_->attached() || tx_.size() < kTxCap; }
+    size_t rxPending() const override { return rx_.size(); }
+    size_t txPending() const override { return tx_.size(); }
 
     void flush() override;
     void pump() override;
