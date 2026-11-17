@@ -1770,6 +1770,14 @@ is a wait on the request queue, never a sleep — a request is served at once. `
 refused while it runs; a free run ends on `stop`, the StopReasons `run` stops on, or a `^C`, never
 on idle or a timeout.
 
+**A person can watch the calls, not only the console (`--tool-log`, issue #672).** The console
+mirror shows what the guest prints. It cannot show a `monitor` command, a `reset` or a breakpoint,
+and the client does not always show them. `--tool-log` writes one `>` line per `tools/call`, with
+its arguments, and one `<` block with the result text, cut at 24 lines. The output is a file or a
+watch-only mirror sink. It is the session's, not the machine's, so it outlives a CONFIG LOAD.
+`status` is left out for two reasons. The reader thread answers it, and only the worker thread
+writes the log. A client also polls `status` in a loop, and the call changes nothing.
+
 **MCP is a first-class interface, not a wrapper.** The monitor and MCP both sit on one `Machine` API and one `properties()` reflection layer, so they cannot drift. Any board added later is fully drivable from both without touching either.
 
 ---

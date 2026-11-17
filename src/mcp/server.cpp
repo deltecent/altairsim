@@ -16,6 +16,7 @@
 #include "host/tee_stream.h"
 #include "host/stream.h"
 #include "isa/isa.h"
+#include "platform/localtime.h"
 #include "util/json.h"
 
 #include <chrono>
@@ -807,6 +808,13 @@ struct McpSession {
     // tap is outside the mirror and inside the console filter, so the file holds what a
     // terminal would show. Set once at startup, read by console().
     std::string log;
+    // `--tool-log SINK` (issue #672): each tool call and its result, as text, for a person
+    // who watches. A text file (`null|FILE?fmt=text&append`) or a watch-only mirror
+    // (`null|pty?ro`, `null|socket:PORT?ro`, `null|serial:DEV?ro`) -- the resolver's own
+    // streams over a NullStream, so no sink code of its own. Owned by the session, not by
+    // the machine: a CONFIG LOAD does not rebuild it. Worker thread only. Null = off.
+    std::unique_ptr<ByteStream> toolLog;
+    bool                        toolLogCrlf = false;  // a mirror sink is a raw terminal
 
     // #490: guards `status` below. Every read/write is a whole-struct copy under this
     // lock -- see RunSnapshot's own comment for why individual atomics are not enough
@@ -2348,10 +2356,109 @@ struct QueuedMsg {
 // rather than on this cap, and a `notifications/cancelled` behind it waits the same way.
 constexpr size_t kMaxPending = 4096;
 
+// ---- --tool-log (issue #672) ----
+//
+// One block per tool call, for a person who watches:
+//
+//   14:02:07.311 > monitor {"command":"REGS"}
+//   14:02:07.312 < monitor
+//       PC=0100 SP=F000 ...
+//
+// The arguments are cut at kToolLogArgMax characters (a mem_load payload can be large) and
+// the result text at kToolLogLines lines -- a watcher sees what the assistant saw, and a
+// long DUMP does not bury the next call.
+constexpr size_t kToolLogArgMax = 200;
+constexpr size_t kToolLogLines  = 24;
+
+std::string toolLogStamp() {
+    using namespace std::chrono;
+    const auto now  = system_clock::now();
+    const auto secs = system_clock::to_time_t(now);
+    const auto ms   = (long long)(duration_cast<milliseconds>(now.time_since_epoch()).count() % 1000);
+    const platform::CalendarTime c = platform::localCalendar(secs);
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%02d:%02d:%02d.%03lld", c.hour, c.minute, c.second, ms);
+    return buf;
+}
+
+void toolLogWrite(McpSession& sess, const std::string& text) {
+    if (!sess.toolLog) return;
+    std::string out;
+    out.reserve(text.size() + 32);
+    for (char ch : text) {
+        if (ch == '\n' && sess.toolLogCrlf) out += '\r';
+        out += ch;
+    }
+    sess.toolLog->write(reinterpret_cast<const uint8_t*>(out.data()), out.size());
+    sess.toolLog->flush();
+}
+
+void toolLogCall(McpSession& sess, const std::string& name, const Json& args) {
+    if (!sess.toolLog) return;
+    std::string line = toolLogStamp() + " > " + name;
+    if (args.isObj() && !args.fields().empty()) {
+        std::string a = args.dump();
+        if (a.size() > kToolLogArgMax) a = a.substr(0, kToolLogArgMax) + "...";
+        line += " " + a;
+    }
+    toolLogWrite(sess, line + "\n");
+}
+
+void toolLogResult(McpSession& sess, const std::string& name, const Json& result) {
+    if (!sess.toolLog) return;
+    std::string block = toolLogStamp() + " < " + name;
+    if (result.at("isError").boolean()) block += "  (error)";
+    block += "\n";
+    std::string text;
+    for (const auto& c : result.at("content").items())
+        if (c.at("type").str() == "text") {
+            if (!text.empty() && text.back() != '\n') text += '\n';
+            text += c.at("text").str();
+        }
+    // Each line of the text, indented. A CR left in a line is dropped, so a file holds clean
+    // lines and a terminal gets exactly one CR, from toolLogWrite().
+    size_t shown = 0, total = 0;
+    for (size_t start = 0; start < text.size();) {
+        const size_t nl  = text.find('\n', start);
+        std::string  one = text.substr(start, nl == std::string::npos ? std::string::npos
+                                                                       : nl - start);
+        start            = nl == std::string::npos ? text.size() : nl + 1;
+        if (!one.empty() && one.back() == '\r') one.pop_back();
+        ++total;
+        if (shown < kToolLogLines) {
+            block += "    " + one + "\n";
+            ++shown;
+        }
+    }
+    if (total > shown)
+        block += "    ... " + std::to_string(total - shown) + " more line" +
+                 (total - shown == 1 ? "" : "s") + "\n";
+    toolLogWrite(sess, block);
+}
+
+// Open the --tool-log sink. A mirror sink (pty, socket:, serial:) is forced watch-only: what a
+// watcher types there goes nowhere. Any other text is a file, opened to append (main() empties
+// it once, as for --log). Both are the resolver's own streams over a NullStream.
+bool openToolLog(McpSession& sess, const std::string& spec, std::string& err) {
+    std::string sink = spec;
+    if (isMirrorSink(spec)) {
+        sink += spec.find('?') == std::string::npos ? "?ro" : "&ro";
+        sess.toolLogCrlf = true;
+    } else {
+        sink += "?fmt=text&append";
+    }
+    sess.toolLog = resolveEndpoint("null|" + sink, err);
+    if (!sess.toolLog) return false;
+    if (auto* ms = dynamic_cast<MirrorStream*>(sess.toolLog.get()))
+        if (std::string note = ms->takeNote(); !note.empty())
+            std::cerr << "altairsim: --tool-log: open " << note << "\n";
+    return true;
+}
+
 } // namespace
 
 int runMcp(Machine& m, std::istream& in, std::ostream& out, const std::string& mirror,
-           const std::string& log) {
+           const std::string& log, const std::string& toolLog) {
     // Take the console off "console" NOW, before anything runs: under --mcp stdin is the
     // JSON-RPC channel, not a keyboard, and a guest reading it would eat our next request.
     // A scripted line is one the interactive tools own. Quietly does nothing if the
@@ -2380,6 +2487,17 @@ int runMcp(Machine& m, std::istream& in, std::ostream& out, const std::string& m
     // tool call retries and surfaces the same error to the client.
     // The same goes for a --log file that could not be opened; with both asked for, the
     // error text itself says which one it was (a port, or a file).
+    // --tool-log is opened once, here, and kept for the whole session. A sink that cannot
+    // open (a port in use, a pty that cannot be made) ends the session before it starts:
+    // a person who asked to watch the calls must not find out an hour in.
+    if (!toolLog.empty()) {
+        std::string terr;
+        if (!openToolLog(sess, toolLog, terr)) {
+            std::cerr << "altairsim: --tool-log " << toolLog << " failed: " << terr << "\n";
+            return 2;
+        }
+    }
+
     if (!bindErr.empty() && (!mirror.empty() || !log.empty())) {
         std::cerr << "altairsim:";
         if (!mirror.empty()) std::cerr << " --mirror " << mirror;
@@ -2486,9 +2604,10 @@ int runMcp(Machine& m, std::istream& in, std::ostream& out, const std::string& m
                     !cv.wait_until(lk, sess.free.nextSlice, ready)) {
                     lk.unlock();
                     freeRunSlice(m, sess);
+                    if (sess.toolLog) sess.toolLog->pump();
                     continue;
                 }
-            } else if (!sess.mirror.empty()) {
+            } else if (!sess.mirror.empty() || sess.toolLog) {
                 // #683: A MIRROR NEEDS HOST I/O WHILE NOTHING RUNS. The watcher's wire is
                 // serviced from pump(), and between requests nothing called it: the tail
                 // of a long listing sat in the mirror's queue (a pseudo-terminal's kernel
@@ -2497,9 +2616,11 @@ int runMcp(Machine& m, std::istream& in, std::ostream& out, const std::string& m
                 // on THIS thread, the only one that may touch the machine. Without a
                 // mirror the wait is the plain one it always was. The tick is short because
                 // each one moves at most a kernel buffer's worth of a queued tail.
+                // The --tool-log watcher's wire is serviced the same way (issue #672).
                 if (!cv.wait_for(lk, std::chrono::milliseconds(10), ready)) {
                     lk.unlock();
-                    m.pump();
+                    if (!sess.mirror.empty()) m.pump();
+                    if (sess.toolLog) sess.toolLog->pump();
                     continue;
                 }
             } else {
@@ -2563,7 +2684,10 @@ int runMcp(Machine& m, std::istream& in, std::ostream& out, const std::string& m
         } else if (method == "tools/call") {
             const Json& params = req.at("params");
             std::string name = params.at("name").str();
-            safeReply(id, callTool(m, sess, name, params.at("arguments")));
+            toolLogCall(sess, name, params.at("arguments"));
+            Json result = callTool(m, sess, name, params.at("arguments"));
+            toolLogResult(sess, name, result);
+            safeReply(id, result);
         } else if (method == "ping") {
             safeReply(id, Json::obj());
         } else {

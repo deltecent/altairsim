@@ -30,6 +30,7 @@ options before the machine: `altairsim mine.toml -s check.cmd` and
 | `--set <setting>` | change a setting for this run, before the machine's startup commands. You can give it more than one time |
 | `--mcp` | run as an MCP server on stdio. You cannot give `-s`, `-x`, `-i` or `--set` with it |
 | `--mirror <sock>` | with `--mcp`, copy the console to a socket so that a person can watch |
+| `--tool-log <sink>` | with `--mcp`, show each tool call and its result in a file, a pseudo-terminal or a socket |
 | `-v, --version` | print the version and exit |
 | `-h, --help` | print this help and exit |
 

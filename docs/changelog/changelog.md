@@ -12,6 +12,13 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**New: `--tool-log` shows each tool call and its result (issue #672).** Give it with `--mcp`. A
+person can see what the assistant does to the machine, such as a `monitor` command, a `reset` or
+a breakpoint, and not only what the guest prints. The output is a text file that you follow with
+`tail -f`, or a pseudo-terminal, a TCP socket or a serial port, as for `--mirror`. On Windows,
+use a file or a socket. Each call shows the time, the tool and its arguments, then the result
+text, cut at 24 lines.
+
 **New: `SHOW <id>:<unit>` shows one unit (issue #934).** It shows what the unit holds and its
 settings. For a serial unit, it also shows `rx waiting`, the bytes from the host that the guest
 has not read, and `tx waiting`, the bytes from the guest that the host has not taken. To know

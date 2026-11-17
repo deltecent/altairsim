@@ -130,10 +130,11 @@ std::map<int, Json> repliesById(const std::string& text) {
 }
 
 std::map<int, Json> runScript(Machine& m, const std::string& script,
-                              const std::string& mirror = "", const std::string& log = "") {
+                              const std::string& mirror = "", const std::string& log = "",
+                              const std::string& toolLog = "") {
     std::istringstream in(script);
     std::ostringstream out;
-    runMcp(m, in, out, mirror, log);
+    runMcp(m, in, out, mirror, log, toolLog);
 
     return repliesById(out.str());
 }
@@ -315,8 +316,10 @@ struct LiveMcp {
     int          id = 0;
     std::thread  worker;  // last: everything it touches is built first
 
-    explicit LiveMcp(Machine& m, std::string mirror = "")
-        : worker([this, &m, sink = std::move(mirror)] { runMcp(m, in, out, sink); }) {}
+    explicit LiveMcp(Machine& m, std::string mirror = "", std::string toolLog = "")
+        : worker([this, &m, sink = std::move(mirror), tl = std::move(toolLog)] {
+              runMcp(m, in, out, sink, "", tl);
+          }) {}
     ~LiveMcp() { close(); }
 
     // The reply's `result`; null if none came within 30 s.
@@ -1040,6 +1043,125 @@ void test_mcp() {
         }
         std::filesystem::remove(log, ec);
         std::filesystem::remove(toml, ec);
+    }
+
+    SECTION("MCP: --tool-log FILE writes each tool call and its result");
+    {
+        // Issue #672. One `>` line per call, one `<` line per result, the result text
+        // indented and cut at 24 lines, the arguments cut at 200 characters. `status` is
+        // answered on the reader thread and is not logged.
+        const std::string tlog = tmpPath("altair_mcp_tool.log");
+        std::error_code   ec;
+        std::filesystem::remove(tlog, ec);
+        {
+            Machine m;
+            if (!loadAltmon(m)) return;
+            std::ostringstream s;
+            int                id  = 0;
+            auto               req = [&](const std::string& params) {
+                s << R"({"jsonrpc":"2.0","id":)" << ++id
+                  << R"(,"method":"tools/call","params":)" << params << "}\n";
+            };
+            s << R"({"jsonrpc":"2.0","id":0,"method":"initialize","params":{}})" << "\n";
+            req(R"({"name":"monitor","arguments":{"command":"REGS"}})");
+            req(R"({"name":"monitor","arguments":{"command":"NOSUCH"}})");
+            req(R"({"name":"status","arguments":{}})");
+            req(R"({"name":"monitor","arguments":{"command":"DUMP 0-1FF"}})");
+            req(R"({"name":"monitor","arguments":{"command":"REGS )" + std::string(300, 'x') +
+                R"("}})");
+            auto rep = runScript(m, s.str(), "", "", tlog);
+            CHECK(rep.count(5), "every call answered");
+        }
+        std::ifstream            f(tlog, std::ios::binary);
+        std::vector<std::string> lines;
+        for (std::string l; std::getline(f, l);) lines.push_back(l);
+        f.close();
+        auto has = [&](const std::string& needle) {
+            for (const auto& l : lines)
+                if (l.find(needle) != std::string::npos) return true;
+            return false;
+        };
+        auto at = [&](const std::string& needle) {
+            for (size_t i = 0; i < lines.size(); ++i)
+                if (lines[i].find(needle) != std::string::npos) return i;
+            return lines.size();
+        };
+        CHECK(has(R"( > monitor {"command":"REGS"})"), "the REGS call is logged with its arguments");
+        const size_t regs = at(R"( > monitor {"command":"REGS"})");
+        CHECK(regs + 2 < lines.size() && lines[regs + 1].find(" < monitor") != std::string::npos &&
+                  lines[regs + 1].find("(error)") == std::string::npos,
+              "its result follows, not marked as an error");
+        CHECK(regs + 2 < lines.size() && lines[regs + 2].rfind("    ", 0) == 0 &&
+                  lines[regs + 2].find("PC=") != std::string::npos,
+              "and the REGS output is under it, indented");
+        const size_t bad = at(R"({"command":"NOSUCH"})");
+        CHECK(bad + 1 < lines.size() && lines[bad + 1].find("< monitor  (error)") != std::string::npos,
+              "a failed call is marked (error)");
+        CHECK(!has("status"), "a status poll is not logged");
+        CHECK(lines.size() > 0 && lines.back().find('\r') == std::string::npos,
+              "a file gets plain \\n line ends");
+
+        const size_t dump = at(R"({"command":"DUMP 0-1FF"})");
+        size_t       body = 0;
+        for (size_t i = dump + 2; i < lines.size() && lines[i].rfind("    ", 0) == 0; ++i) ++body;
+        CHECK(body == 25, "the 32-line DUMP shows 24 lines and one more-line note");
+        CHECK(dump + 26 < lines.size() && lines[dump + 26] == "    ... 8 more lines",
+              "the note counts the lines left out");
+
+        const size_t lng = at(R"({"command":"REGS xxx)");
+        CHECK(lng < lines.size(), "the long call is logged");
+        if (lng < lines.size()) {
+            const std::string& l    = lines[lng];
+            const size_t       args = l.find('{');
+            CHECK(l.size() - args == 203 && l.compare(l.size() - 3, 3, "...") == 0,
+                  "its arguments are cut at 200 characters and end in ...");
+        }
+        std::filesystem::remove(tlog, ec);
+    }
+
+    SECTION("MCP: --tool-log socket:PORT shows the calls to a watcher, with CRLF line ends");
+    {
+        Machine m;
+        if (!loadAltmon(m)) return;
+        uint16_t port = freePort();
+        CHECK(port != 0, "the OS hands us a free port");
+        LiveMcp live(m, "", "socket:" + std::to_string(port));
+        // runMcp opens the --tool-log listener before it reads a request, so a reply means the
+        // port is listening. Dial in before that, and the connection is refused.
+        CHECK(!live.call("monitor", R"({"command":"REGS"})").isNull(), "the session is up");
+
+        std::string err;
+        auto        client = platform::connectTcp("127.0.0.1", port, err);
+        CHECK(client != nullptr, ("a watcher dials in: " + err).c_str());
+        if (client) {
+            CHECK(waitFor([&] { client->poll(); return client->established(); }),
+                  "the connection is up");
+            // A connected client is not yet a watcher: the server accepts it on its idle tick.
+            // Make calls until one reaches the wire.
+            std::string got;
+            CHECK(waitFor([&] {
+                      live.call("monitor", R"({"command":"REGS"})");
+                      client->poll();
+                      uint8_t buf[4096];
+                      for (size_t r; (r = client->read(buf, sizeof buf)) != 0;)
+                          got.append(reinterpret_cast<const char*>(buf), r);
+                      return got.find("PC=") != std::string::npos;
+                  }),
+                  "the watcher sees a call and its result");
+            CHECK(got.find(R"( > monitor {"command":"REGS"})" "\r\n") != std::string::npos,
+                  "the call line ends in CRLF on a terminal sink");
+            bool crlf = true;
+            for (size_t i = 0; i < got.size(); ++i)
+                if (got[i] == '\n' && (i == 0 || got[i - 1] != '\r')) crlf = false;
+            CHECK(crlf, "every LF has its CR");
+
+            // Watch-only: what the watcher types goes nowhere, and the session goes on.
+            const uint8_t typed[] = {'R', 'E', 'G', 'S', '\r'};
+            client->write(typed, sizeof typed);
+            Json r = live.call("monitor", R"({"command":"REGS"})");
+            CHECK(!r.isNull() && !LiveMcp::isError(r), "the session still answers after typing");
+        }
+        live.close();
     }
 
     SECTION("MCP: the console stand-in carries the machine's [console] transforms");

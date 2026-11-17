@@ -57,10 +57,15 @@ altairsim [machine] [options]
       --mcp          MCP server on stdio.
       --mirror <sink>  with --mcp: mirror the console so a person can watch and
                      take over. socket:PORT (telnet in), or on macOS and Linux
-                     pty or pty:LINK (open the link with a terminal program).
-                     Add ?ro for watch-only.
+                     pty or pty:LINK (open the link with a terminal program), or
+                     serial:DEVICE[?baud=N] (a terminal on a real port, 9600 baud
+                     8N1 by default). Add ?ro for watch-only.
       --log <file>   with --mcp: write what the guest prints to a text file, as
                      it prints it. An ordinary file; starts empty each run.
+      --tool-log <sink>  with --mcp: show each tool call and its result, so a
+                     person can see what the assistant does. A file (starts
+                     empty each run), or pty, pty:LINK, socket:PORT or
+                     serial:DEVICE as for --mirror. Watch-only.
   -v, --version      print the version and exit.
   -h, --help         print this help and exit.
 ```

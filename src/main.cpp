@@ -143,6 +143,10 @@ static void usage(std::ostream& o) {
          "                     8N1 by default). Add ?ro for watch-only.\n"
          "      --log <file>   with --mcp: write what the guest prints to a text file, as\n"
          "                     it prints it. An ordinary file; starts empty each run.\n"
+         "      --tool-log <sink>  with --mcp: show each tool call and its result, so a\n"
+         "                     person can see what the assistant does. A file (starts\n"
+         "                     empty each run), or pty, pty:LINK, socket:PORT or\n"
+         "                     serial:DEVICE as for --mirror. Watch-only.\n"
          "  -v, --version      print the version and exit.\n"
          "  -h, --help         print this help and exit.\n";
 }
@@ -167,6 +171,7 @@ int main(int argc, char** argv) {
     std::string script;
     std::string mirror;  // --mirror socket:PORT[?ro]: a live console mirror (issue #381)
     std::string log;     // --log FILE: a text transcript of the console under --mcp (#666)
+    std::string toolLog; // --tool-log SINK: each MCP tool call and its result (#672)
     std::vector<std::string> exec;
     std::vector<std::string> sets;  // --set "<id> <key>=<value>": a SET before `startup` (#736)
 
@@ -211,6 +216,16 @@ int main(int argc, char** argv) {
         } else if (s == "--log") {
             if (!need(i, "a file (--log session.log)")) return 2;
             log = a[i];
+        } else if (s == "--tool-log") {
+            if (!need(i, "a file or a sink (--tool-log calls.log, --tool-log pty or "
+                         "--tool-log socket:2324)"))
+                return 2;
+            // A sink word (pty, socket:, serial:) is folded as for --mirror; anything else is
+            // a file name, kept as typed. A bare number is a port, as for --mirror.
+            const std::string t = canonicalEndpoint("null|" + a[i]).substr(5);
+            const bool        port =
+                !t.empty() && t.find_first_not_of("0123456789") == std::string::npos;
+            toolLog = port ? "socket:" + t : t;
         } else if (s == "-n" || s == "--none") {
             none = true;
         } else if (s == "-i" || s == "--interactive") {
@@ -287,6 +302,21 @@ int main(int argc, char** argv) {
         return 2;
     }
 
+    // --tool-log shows what the MCP tools do; without --mcp there are no tool calls.
+    if (!toolLog.empty() && !mcp) {
+        std::cerr << "--tool-log needs --mcp (it shows the calls an MCP client makes).\n";
+        return 2;
+    }
+    if (toolLog.rfind("pty", 0) == 0 && isMirrorSink(toolLog) && !platform::havePty()) {
+        std::cerr << "--tool-log pty is not available on Windows; use --tool-log socket:PORT "
+                     "or a file\n";
+        return 2;
+    }
+    if (!toolLog.empty() && !log.empty() && toolLog == log) {
+        std::cerr << "--tool-log and --log must be different files.\n";
+        return 2;
+    }
+
     // -x, -s, -i AND --set ARE THE MONITOR'S, AND --mcp NEVER REACHES THE MONITOR: main() hands
     // the machine to the server and returns from there. They were accepted and dropped -- a
     // `-x "SET cpu0 clock_hz=2000000"` changed nothing, a script that did not exist was not
@@ -317,6 +347,14 @@ int main(int argc, char** argv) {
         std::ofstream probe(log, std::ios::out | std::ios::trunc | std::ios::binary);
         if (!probe) {
             std::cerr << "--log: cannot open '" << log << "' for writing\n";
+            return 2;
+        }
+    }
+    // The same for a --tool-log file: empty once here, opened to append by the server.
+    if (!toolLog.empty() && !isMirrorSink(toolLog)) {
+        std::ofstream probe(toolLog, std::ios::out | std::ios::trunc | std::ios::binary);
+        if (!probe) {
+            std::cerr << "--tool-log: cannot open '" << toolLog << "' for writing\n";
             return 2;
         }
     }
@@ -553,7 +591,7 @@ int main(int argc, char** argv) {
 
     // MCP and the monitor sit on the SAME Machine. Not a wrapper, not a second
     // model of the world -- the same object, reached two ways (DESIGN.md 11).
-    if (mcp) return runMcp(m, std::cin, std::cout, mirror, log);
+    if (mcp) return runMcp(m, std::cin, std::cout, mirror, log, toolLog);
 
     Monitor mon(m);
 
