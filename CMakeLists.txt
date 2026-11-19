@@ -107,8 +107,14 @@ endif()
 # CONFIGURE_DEPENDS: re-glob on every BUILD, not just on configure. Without it,
 # dropping a new ROM into roms/ does nothing until someone remembers to re-run
 # cmake -- and DELETING one breaks the build outright, with an error naming a
-# file you just deliberately removed. Both are ten confusing minutes, and both
-# are avoidable for one word.
+# file you just deliberately removed.
+#
+# CONFIGURE_DEPENDS ALONE DOES NOT RE-RUN THE EMBED ON A DELETE (issue #950). The
+# custom command runs only when a DEPENDS file is newer than its output, and after
+# a delete nothing left is newer -- the deleted ROM stays in the binary. So each
+# embed also depends on an input-list file (cmake/input_list.cmake) that configure
+# rewrites whenever the list of names changes. The machine embed below does the same.
+include("${CMAKE_SOURCE_DIR}/cmake/input_list.cmake")
 set(ROMS_GENERATED "${CMAKE_BINARY_DIR}/generated/roms_generated.cpp")
 file(GLOB ROM_DIRS RELATIVE "${CMAKE_SOURCE_DIR}/roms"
      CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/roms/*")
@@ -128,6 +134,8 @@ foreach(d ${ROM_DIRS})
     list(APPEND ROM_IMAGE_FILES ${descsrc})
   endif()
 endforeach()
+set(ROMS_INPUTS "${CMAKE_BINARY_DIR}/generated/roms_inputs.txt")
+write_input_list("${ROMS_INPUTS}" ${ROM_IMAGE_FILES})
 
 add_custom_command(
   OUTPUT "${ROMS_GENERATED}"
@@ -135,7 +143,7 @@ add_custom_command(
           -DROMS_DIR=${CMAKE_SOURCE_DIR}/roms
           -DOUT=${ROMS_GENERATED}
           -P ${CMAKE_SOURCE_DIR}/cmake/embed_roms.cmake
-  DEPENDS ${CMAKE_SOURCE_DIR}/cmake/embed_roms.cmake ${ROM_IMAGE_FILES}
+  DEPENDS ${CMAKE_SOURCE_DIR}/cmake/embed_roms.cmake ${ROMS_INPUTS} ${ROM_IMAGE_FILES}
   COMMENT "Embedding ROMs from roms/"
   VERBATIM)
 
@@ -157,6 +165,8 @@ add_custom_command(
 # ---------------------------------------------------------------------------
 set(MACHINES_GENERATED "${CMAKE_BINARY_DIR}/generated/machines_generated.cpp")
 file(GLOB MACHINE_FILES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/machines/*.toml")
+set(MACHINES_INPUTS "${CMAKE_BINARY_DIR}/generated/machines_inputs.txt")
+write_input_list("${MACHINES_INPUTS}" ${MACHINE_FILES})
 
 add_custom_command(
   OUTPUT "${MACHINES_GENERATED}"
@@ -164,7 +174,7 @@ add_custom_command(
           -DMACHINES_DIR=${CMAKE_SOURCE_DIR}/machines
           -DOUT=${MACHINES_GENERATED}
           -P ${CMAKE_SOURCE_DIR}/cmake/embed_machines.cmake
-  DEPENDS ${CMAKE_SOURCE_DIR}/cmake/embed_machines.cmake ${MACHINE_FILES}
+  DEPENDS ${CMAKE_SOURCE_DIR}/cmake/embed_machines.cmake ${MACHINES_INPUTS} ${MACHINE_FILES}
   COMMENT "Embedding machines from machines/"
   VERBATIM)
 
@@ -1302,6 +1312,17 @@ add_test(NAME acceptance-cli-args
                  -DBIN=${CMAKE_CURRENT_BINARY_DIR}
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/cli-args.cmake)
 set_tests_properties(acceptance-cli-args PROPERTIES LABELS acceptance TIMEOUT 60)
+
+# A file deleted from roms/ or machines/ leaves the embedded table (issue #950). A small project
+# with the same wiring as the embeds, built with this build's generator: delete, add, no change.
+add_test(NAME acceptance-embed-input-list
+         COMMAND ${CMAKE_COMMAND}
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -DWORK=${CMAKE_CURRENT_BINARY_DIR}/embed-input-list
+                 -DGEN=${CMAKE_GENERATOR}
+                 -DPLATFORM=${CMAKE_GENERATOR_PLATFORM}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/embed-input-list.cmake)
+set_tests_properties(acceptance-embed-input-list PROPERTIES LABELS acceptance TIMEOUT 120)
 
 # The per-directory command-history file is written only for a human at a terminal; a
 # script (-x/-s), a pipe, or --mcp must leave the directory untouched. This proves that

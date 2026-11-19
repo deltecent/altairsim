@@ -147,7 +147,9 @@ endif
 # every file by hand). Everything under src/, then: drop the other OS's platform
 # dir, the standalone terminal test, and the SDL/CUPS-gated TUs -- adding the
 # gated ones back only when the feature is on. Objective-C++ (.mm) is added by
-# hand because the glob is *.cpp.
+# hand because the glob is *.cpp. The glob goes three folders deep, so a per-OS
+# file one level further down (src/platform/posix/<os>/) is added by hand too,
+# as CMakeLists.txt does (issue #951).
 ALL_CPP := $(wildcard src/*.cpp src/*/*.cpp src/*/*/*.cpp)
 
 ifeq ($(WIN32),1)
@@ -169,6 +171,15 @@ GATED := \
 SRCS := $(filter-out src/platform/$(OTHER)/%,$(ALL_CPP))
 SRCS := $(filter-out $(GATED),$(SRCS))
 MM_SRCS :=
+
+# A baud with no termios constant is set by an OS-specific ioctl, one file per OS.
+ifneq ($(WIN32),1)
+  ifeq ($(UNAME_S),Darwin)
+    SRCS += src/platform/posix/macos/serial_custombaud_macos.cpp
+  else ifeq ($(UNAME_S),Linux)
+    SRCS += src/platform/posix/linux/serial_custombaud_linux.cpp
+  endif
+endif
 
 ifeq ($(SDL),1)
   SRCS += src/host/display_sdl.cpp src/host/joystick_sdl.cpp src/host/audio_sdl.cpp
