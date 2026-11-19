@@ -183,7 +183,8 @@ size_t Console::read(uint8_t* buf, size_t n) {
     // A transfer running on a 2SIO's OTHER port -- the usual arrangement, console on 'a'
     // and the file on 'b' -- crossed no console byte, so it napped anyway (bug #6). The
     // run loop's idle signal is now Machine::rxBytes(), which is THIS SAME IDEA counted at
-    // every UART in the backplane (Mc6850::rxBytes). This counter stays as the console's
+    // every UART in the backplane (Mc6850::rxBytes). Waiting and sending are counted on
+    // every line too (Machine::lineActivity, #948). This counter stays as the console's
     // own honest tally of what it delivered; it is no longer what the nap consults.
     size_t got = filter_.read(buf, n);
     consumed_ += got;
@@ -295,7 +296,7 @@ void Console::inject(const std::string& s) {
     inject(reinterpret_cast<const uint8_t*>(s.data()), s.size());
 }
 
-size_t Console::write(const uint8_t* buf, size_t n) { return filter_.write(buf, n); }
+size_t Console::doWrite(const uint8_t* buf, size_t n) { return filter_.write(buf, n); }
 
 size_t Console::writeRaw(const uint8_t* buf, size_t n) {
     size_t w = platform::writeOutput(buf, n);

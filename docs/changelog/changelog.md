@@ -12,6 +12,25 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**At full speed, `idle` now watches every serial line, not only the console (issue #948).**
+`idle` lets the processor rest while the guest waits for a byte. Before, it watched only the
+line that held the console, and it rested only when a unit held the console. Two things went
+wrong:
+
+- Port A of a 2SIO was on the console. An XMODEM program on port B waited for an ACK, and read
+  the console for a `Ctrl-X`. That looked like a prompt, so the processor rested. The timeout
+  loop of the program took about 2 seconds. With port A on a serial port, it took almost no time.
+- With the console line on a serial port, a socket or a terminal window, the processor never
+  rested. CP/M at the
+  `A>` prompt kept one core of your computer busy.
+
+Now the processor rests when the guest reads the status of an empty line, on any port. The
+console line can connect to any endpoint. The processor does not rest while a byte goes out or comes in on
+any line, so a transfer is not slowed. When the console reads from a pipe or a file, the
+processor never rests, as before. A tape or a `file:` reader at 300 baud now lets the processor
+rest between bytes, and the load time does not change. If a guest runs slower with this change,
+type `SET cpu0 idle=off`.
+
 **New: a terminal window shows the name of its unit (issue #940).** Before, every terminal window
 had the name of its connect string, such as `terminal:vt100`, so two windows had the same name.
 Now the title bar of the window shows the unit, such as `sio0:a`. A grey bar at the top of the

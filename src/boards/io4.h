@@ -90,6 +90,10 @@ public:
 
     // Both channels sum into the run loop's live-traffic signal (Board::rxBytes).
     uint64_t rxBytes() const override { return a_.uart.rxBytes() + b_.uart.rxBytes(); }
+    // The guest found no byte on a status read, on any line (Board::emptyPolls, #948).
+    uint64_t emptyPolls() const override {
+        return a_.uart.emptyPolls() + b_.uart.emptyPolls() + parEmptyPolls_;
+    }
 
     // What either wire said when the card tried to program its straps into it.
     std::vector<std::string> drainLog() override;
@@ -226,6 +230,9 @@ private:
     // ---- THE TWO SERIAL CHANNELS. U9 = Serial A, U8 = Serial B. ----
     SerialChannel a_{"a"};
     SerialChannel b_{"b"};
+
+    // A parallel port's strapped data-available flag, read clear (emptyPolls).
+    uint64_t parEmptyPolls_ = 0;
 
     // ---- THE TWO PARALLEL PORTS. Parallel A = J6/J5, Parallel B = J4/J3. ----
     ParallelChannel pa_{"pa"};

@@ -138,7 +138,7 @@ MITS 88-CPU: an 8080A CPU board. Decodes nothing -- it drives the bus
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
-| `idle` | bool | `true` | `true` \| `false` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
+| `idle` | bool | `true` | `true` \| `false` | At full speed, rest while the guest reads an empty serial line, on any port. On by default. The guest cannot see the rest. |
 | `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Show-only; 0 until it has run. **(show-only — not a key you may set)** |
 
 
@@ -153,7 +153,7 @@ Generic 8085 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin,
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
-| `idle` | bool | `true` | `true` \| `false` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
+| `idle` | bool | `true` | `true` \| `false` | At full speed, rest while the guest reads an empty serial line, on any port. On by default. The guest cannot see the rest. |
 | `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Show-only; 0 until it has run. **(show-only — not a key you may set)** |
 
 
@@ -175,7 +175,7 @@ Vector Graphic ZCB: a Z-80 processor with up to three PROM sockets in E000-EFFF 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
-| `idle` | bool | `true` | `true` \| `false` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
+| `idle` | bool | `true` | `true` \| `false` | At full speed, rest while the guest reads an empty serial line, on any port. On by default. The guest cannot see the rest. |
 | `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Show-only; 0 until it has run. **(show-only — not a key you may set)** |
 | `group` | int | `0x0` | `0x0` .. `0xE0` | The 32-port group of both chips (area G): 00, 20, 40 ... E0 |
 | `serial_port` | int | `0x4` | `0x0` .. `0x1C` | Base of the 8251 in the group (area E). Data at BASE, status and command at BASE+1, repeated at BASE+2 and BASE+3 |
@@ -204,7 +204,7 @@ Generic Z80 CPU board. Decodes nothing -- it drives the bus. The 88-CPU's twin, 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `clock_hz` | int | `0` | `0` .. `100000000` | Crystal on the board. 0 runs flat out -- as fast as the host can. |
-| `idle` | bool | `true` | `true` \| `false` | Stand down when the guest is only polling an empty keyboard. On by default -- the guest cannot tell, and a prompt stops burning a core. |
+| `idle` | bool | `true` | `true` \| `false` | At full speed, rest while the guest reads an empty serial line, on any port. On by default. The guest cannot see the rest. |
 | `achieved_hz` | int | — | — | LIVE: T-states per real second the run loop last reached -- the crystal you got, beside the one you asked for. Show-only; 0 until it has run. **(show-only — not a key you may set)** |
 
 

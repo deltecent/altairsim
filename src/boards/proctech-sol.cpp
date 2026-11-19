@@ -62,6 +62,7 @@ uint8_t SolBoard::read(const BusCycle& c) {
     switch ((uint8_t)(c.port() - base_)) {
         case 0:  // F8 -- serial status
             if (clock_) serial_.poll(*clock_);  // the receiver runs on its own clock
+            serial_.statusRead();
             return serialStatus();
         case 1:  // F9 -- serial data (the read strobe clears Data Available)
             if (clock_) serial_.poll(*clock_);
@@ -83,6 +84,8 @@ uint8_t SolBoard::read(const BusCycle& c) {
             // not the machine. Still one strobe at a time: nothing is latched while the
             // last key is unread.
             latchKeyboard();
+            tapeUart_.statusRead();
+            if (!kbHave_) ++kbEmptyPolls_;  // SOLOS asked for a key and there was none (#948)
             return generalStatus();
         case 3:  // FB -- tape (CUTS) data. The read strobe clears Tape Data Ready.
             if (clock_) tapeUart_.poll(*clock_);

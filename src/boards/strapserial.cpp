@@ -159,7 +159,9 @@ uint8_t StrapSerialBoard::read(const BusCycle& c) {
         return b;
     }
     // The status/control port. A read is the synthesized status byte; the data port took
-    // the branch above, so anything reaching here is the status port.
+    // the branch above, so anything reaching here is the status port. The guest asking with
+    // nothing on the line is the guest waiting (Board::emptyPolls).
+    if (!ch.stream->readable()) ++ch.emptyPolls;
     return statusByte(ch);
 }
 
@@ -219,6 +221,12 @@ std::vector<std::string> StrapSerialBoard::drainLog() {
     auto out = std::move(log_);
     log_.clear();
     return out;
+}
+
+uint64_t StrapSerialBoard::emptyPolls() const {
+    uint64_t n = 0;
+    for (const auto& ch : chans_) n += ch.emptyPolls;
+    return n;
 }
 
 uint64_t StrapSerialBoard::rxBytes() const {

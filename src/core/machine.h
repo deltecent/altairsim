@@ -95,6 +95,19 @@ public:
     // monitor.cpp). Summed on demand: a handful of boards, once per slice, is noise.
     uint64_t rxBytes() const;
 
+    // WHAT THE GUEST DID ON ITS SERIAL LINES, across the whole backplane, monotonic. The
+    // run loop watches the deltas to judge a slice on EVERY line, not only the one that
+    // holds the host terminal (issue #948). `emptyPolls`: the times the guest read a status
+    // bit and found no byte (waiting, Board::emptyPolls). `txBytes`: the bytes the guest sent
+    // (working), read from the OUTERMOST stream on each unit (Board::unitStream), so a
+    // decorator and the stream it wraps are not both summed. A line with nothing connected
+    // counts too.
+    struct LineActivity {
+        uint64_t emptyPolls = 0;
+        uint64_t txBytes    = 0;
+    };
+    LineActivity lineActivity();
+
     Board* find(const std::string& id);
     Board* add(const std::string& type, const std::string& id, std::string& err);
     // Fit a board that is already built -- into the backplane, onto the bus and the

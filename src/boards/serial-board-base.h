@@ -132,6 +132,7 @@ public:
     ByteStream* unitStream(const std::string& unit) override {
         return unit == "tty" ? &u_.stream() : nullptr;
     }
+    uint64_t emptyPolls() const override { return u_.emptyPolls(); }
 
     // ---- The pins, so a test can look at them without going through the bus. ----
     uint8_t statusByte() const;

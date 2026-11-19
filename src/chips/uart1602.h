@@ -67,6 +67,12 @@ public:
 
     // ---- THE STATUS WORD (/SWE), IN TRUE SENSE. The board may inverte it; we don't.
     bool dataAvailable() const { return rda_; }        // RDA  -- pin 19
+
+    // /SWE STROBED: the guest read the status word. The board calls this on that read and
+    // nowhere else. RDA low then means the guest asked and there was no byte -- it is
+    // WAITING, the run loop's idle signal (#948, Board::emptyPolls).
+    void     statusRead() { if (!rda_) ++emptyPolls_; }
+    uint64_t emptyPolls() const { return emptyPolls_; }
     bool txBufferEmpty(const Clock& clk) const;        // TBMT -- pin 22
 
     // TEOC -- Transmitter End Of Character (pin 24). High when the transmitter is idle:
@@ -200,6 +206,7 @@ private:
 
     uint8_t  rxData_  = 0;
     uint64_t rxCount_ = 0;  // rxBytes() -- the run loop's live-traffic signal
+    uint64_t emptyPolls_ = 0;  // statusRead() -- the guest found no byte
     bool    rda_    = false;  // Data Available -- the RDAV flip-flop
 
     TwoStageTx tx_;          // TBMT and TEOC are deadlines, not flags

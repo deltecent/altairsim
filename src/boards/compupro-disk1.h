@@ -70,6 +70,8 @@ public:
         return unit == "serial" ? &line_.stream() : nullptr;
     }
     uint64_t rxBytes() const override { return line_.rxBytes(); }
+    // The guest found no byte on a status read (Board::emptyPolls, #948).
+    uint64_t emptyPolls() const override { return line_.emptyPolls(); }
 
     // The monitor resolves an endpoint string to a stream; the board holds the resolver
     // (DESIGN.md 7.7). Installed in main.cpp and tests/main.cpp.

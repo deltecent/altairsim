@@ -458,6 +458,7 @@ uint8_t Mc6850::readStatus(const Clock& clk) {
 
     uint8_t s = 0;
     if (rdrf_) s |= kRdrf;
+    else ++emptyPolls_;  // the guest asked and there was no byte: it is waiting
     if (tdre(clk)) s |= kTdre;
     if (ovrn_) s |= kOvrn;
 

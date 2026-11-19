@@ -90,6 +90,11 @@ public:
     ByteStream& stream() { return *stream_; }
     std::string endpoint() const { return stream_->describe(); }
     uint64_t    rxBytes() const { return rxCount_; }
+    // STATUS READS THAT FOUND NO BYTE, monotonic: the guest asked and the line had nothing
+    // for it -- the guest WAITING, the run loop's idle signal (#948, Board::emptyPolls).
+    // Counted here and not in the stream: the chip also checks the line to keep its own
+    // receiver current, and that is not the guest asking.
+    uint64_t emptyPolls() const { return emptyPolls_; }
     void        pump() { stream_->pump(); }
 
     // ---- state in TRUE sense, for the card and for tests ----
@@ -156,6 +161,7 @@ private:
     uint64_t rxDoneAt_  = 0;       // rxStart_ + charTStates: when RxRDY rises
     uint64_t rxNextAt_  = 0;       // earliest a NEW frame may begin (flow-control pacing)
     uint64_t rxCount_   = 0;       // bytes taken off the line -- the run loop's traffic signal
+    uint64_t emptyPolls_ = 0;  // emptyPolls() -- see above
 
     // ---- transmit: DOUBLE-buffered (chips/twostagetx.h) ----
     TwoStageTx tx_;                // TxRDY = holding register free, TxEMPTY = shift register too

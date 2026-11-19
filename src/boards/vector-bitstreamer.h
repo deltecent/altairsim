@@ -46,6 +46,8 @@ public:
     void deserialize(StateReader& r) override;
 
     uint64_t rxBytes() const override { return u_.rxBytes(); }
+    // The guest found no byte on a status read (Board::emptyPolls, #948).
+    uint64_t emptyPolls() const override { return u_.emptyPolls(); }
     std::vector<std::string> drainLog() override { return u_.drainLog(); }
 
     std::vector<Property> properties() override;

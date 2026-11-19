@@ -109,6 +109,17 @@ uint64_t Machine::rxBytes() const {
     return n;
 }
 
+Machine::LineActivity Machine::lineActivity() {
+    LineActivity a;
+    for (auto& b : boards_) {
+        a.emptyPolls += b->emptyPolls();
+        for (const auto& u : b->units())
+            if (u.kind == UnitKind::Serial)
+                if (const ByteStream* s = b->unitStream(u.name)) a.txBytes += s->txBytes();
+    }
+    return a;
+}
+
 bool Machine::burn(uint16_t addr, uint8_t v, std::string& why) {
     // ASK WHO ANSWERS A READ, NOT A WRITE, and that is the whole trick. A ROM region
     // does not decode a write -- that is what makes it a ROM -- so asking the bus who

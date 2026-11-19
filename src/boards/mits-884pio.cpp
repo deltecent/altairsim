@@ -48,6 +48,7 @@ uint8_t Pio4Board::read(const BusCycle& c) {
         // Control/status: the stored bits, plus the live IRQ1 flag (data available).
         uint8_t v = s.ctrl & kCtrlStored;
         if (s.inFull) v |= kIrq1Flag;
+        else ++emptyPolls_;  // the guest asked and no byte has arrived: it is waiting
         return v;
     }
     // Data address.

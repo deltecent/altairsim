@@ -160,6 +160,11 @@ public:
     // host/console.h) and a transfer runs on some OTHER line -- so the count has to live
     // where EVERY line's bytes pass, which is right here, at the one read from the stream.
     uint64_t rxBytes() const { return rxCount_; }
+    // STATUS READS THAT FOUND NO BYTE, monotonic: the guest asked and the line had nothing
+    // for it -- the guest WAITING, the run loop's idle signal (#948, Board::emptyPolls).
+    // Counted here and not in the stream: the chip also checks the line to keep its own
+    // receiver current, and that is not the guest asking.
+    uint64_t emptyPolls() const { return emptyPolls_; }
 
     // `resolve` is how the `connect` property turns an endpoint string into a
     // stream. It comes in from the card because the chip is not allowed to know
@@ -330,6 +335,7 @@ private:
     uint8_t heldTraced_ = 0;
 
     uint64_t rxCount_ = 0;  // rxBytes() -- see above. The run loop's live-traffic signal.
+    uint64_t emptyPolls_ = 0;  // emptyPolls() -- see above
 
     bool rdrf_ = false;
     bool ovrn_ = false;

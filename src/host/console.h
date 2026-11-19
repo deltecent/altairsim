@@ -127,7 +127,7 @@ public:
     std::string describe() const override { return "console"; }
 
     size_t read(uint8_t* buf, size_t n) override;
-    size_t write(const uint8_t* buf, size_t n) override;
+    size_t doWrite(const uint8_t* buf, size_t n) override;
     bool   readable() const override;
     bool   writable() const override { return true; }
     size_t rxPending() const override { return pending(); }  // type-ahead and paste
@@ -237,14 +237,15 @@ public:
     uint64_t starved() const { return starved_; }
 
     // How many times the guest has come to the keyboard and FOUND IT EMPTY -- whether or
-    // not the input has ended, so unlike starved() this one MOVES ON A TERMINAL. It is
-    // the live idle signal, and it is what lets the run loop tell a machine that is
-    // WORKING from one that is merely WAITING FOR YOU (DESIGN.md 8, `idle`).
+    // not the input has ended, so unlike starved() this one MOVES ON A TERMINAL. The
+    // --mcp `run` reads it to stop when the guest is WAITING FOR THE CALLER TO TYPE.
     //
-    // Every guest status-register read reaches it: readStatus() -> poll() ->
-    // stream_->readable() (chips/mc6850.cpp), and readable() is right below. A CP/M
-    // prompt polls once every three instructions; a program that checks for an abort key
-    // once a thousand does not, and that gap is the whole discrimination.
+    // It is NOT the nap's signal any more (#948). It saw only the console, so a guest
+    // waiting on another port never napped, and one spinning on the console while a
+    // transfer ran elsewhere napped through it. The run loop's nap now counts the
+    // guest's own empty status reads on EVERY board (Board::emptyPolls) and the bytes
+    // sent on every line (ByteStream::txBytes) -- Machine::lineActivity(), DESIGN.md 8.
+    // This counter also moves when a chip refreshes its receiver, which is not the guest.
     //
     // IT IS NOT starved(), AND THEY MUST NOT BE MERGED. starved() means empty AND ENDED
     // -- a guest BEGGING at a pipe that is never going to answer -- and a scripted run
@@ -262,7 +263,8 @@ public:
     // early draft of the run loop napped straight through one. Bytes arriving is the
     // difference -- but this counter only ever saw the CONSOLE'S bytes, so a transfer on
     // any other line still napped (bug #6). The nap now consults Machine::rxBytes(), the
-    // same signal summed over every UART. This remains the console's own tally.
+    // same signal summed over every UART, and Machine::lineActivity() for the rest (#948).
+    // This remains the console's own tally.
     uint64_t consumed() const { return consumed_; }
 
     std::vector<Property> properties();
@@ -291,7 +293,7 @@ private:
         explicit Raw(Console* c) : c_(c) {}
         std::string describe() const override { return "console"; }
         size_t      read(uint8_t* b, size_t n) override { return c_->readRaw(b, n); }
-        size_t      write(const uint8_t* b, size_t n) override { return c_->writeRaw(b, n); }
+        size_t      doWrite(const uint8_t* b, size_t n) override { return c_->writeRaw(b, n); }
         bool        readable() const override { return !c_->in_.empty() || c_->pasteReady(); }
         bool        writable() const override { return true; }
         size_t      rxPending() const override { return c_->pending(); }
@@ -378,7 +380,7 @@ class ConsoleRef : public ByteStream {
 public:
     std::string describe() const override { return "console"; }
     size_t read(uint8_t* b, size_t n) override { return Console::instance().read(b, n); }
-    size_t write(const uint8_t* b, size_t n) override { return Console::instance().write(b, n); }
+    size_t doWrite(const uint8_t* b, size_t n) override { return Console::instance().write(b, n); }
     bool   readable() const override { return Console::instance().readable(); }
     bool   writable() const override { return true; }
     size_t rxPending() const override { return Console::instance().pending(); }

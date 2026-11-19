@@ -65,7 +65,7 @@ size_t FileStream::read(uint8_t* buf, size_t n) {
 // -- 7.1 forbids a board manufacturing a data loss the transport does not have. If
 // no `out:` file is connected the bytes are dropped, exactly as an unconnected line
 // drops them; either way the whole run is reported consumed.
-size_t FileStream::write(const uint8_t* buf, size_t n) {
+size_t FileStream::doWrite(const uint8_t* buf, size_t n) {
     if (out_.is_open()) out_.write(reinterpret_cast<const char*>(buf), (std::streamsize)n);
     return n;
 }

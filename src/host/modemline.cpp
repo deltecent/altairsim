@@ -39,7 +39,7 @@ size_t ModemLine::read(uint8_t* buf, size_t n) {
 // writable() (CTS). Off-hook-and-up is the gate: bytes written to a line that is
 // on-hook or still ringing go nowhere, exactly as a 6850 transmitting into a modem
 // that has not connected. (host/tcp.cpp makes the same call for a dead client.)
-size_t ModemLine::write(const uint8_t* buf, size_t n) {
+size_t ModemLine::doWrite(const uint8_t* buf, size_t n) {
     if (!(offHook_ && conn_ && conn_->established())) return n;
     if (telnet_) {
         codec_.send(buf, n);   // encode (0xFF doubled) onto the wire buffer

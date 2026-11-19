@@ -93,7 +93,7 @@ public:
     // reads, as on a real terminal, so logging RX too would double every typed key
     // (the same reasoning as MirrorStream, host/mirror_stream.h).
     size_t read(uint8_t* buf, size_t n) override;
-    size_t write(const uint8_t* buf, size_t n) override;
+    size_t doWrite(const uint8_t* buf, size_t n) override;
 
     // Everything below is verbatim passthrough, so RDRF/TDRE, pacing, the modem pins
     // and the line rate are exactly as if the tap were not there.

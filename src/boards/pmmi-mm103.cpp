@@ -117,7 +117,9 @@ uint8_t PmmiBoard::read(const BusCycle& c) {
     case 3:  return 0xFF;            // IN BA+3 -- strobe: nothing drives the bus, floats
                                      // 0xFF (inferred, reference §5). It would latch the
                                      // staged interrupt mask -- inert without interrupts.
-    default: return uartStatus();    // IN BA+0 -- UART status
+    default:                         // IN BA+0 -- UART status
+        u_.statusRead();
+        return uartStatus();
     }
 }
 

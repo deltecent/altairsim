@@ -215,6 +215,14 @@ void test_88acr() {
         // asserted as a whole byte and not a mask, so the convention cannot drift a
         // bit at a time. Bit 0 SET = no data (inverted!); bit 7 CLEAR = ready to send.
         CHECK(in(*r.acr, 0x06) == 0x63, "idle status is 0x63 -- the Rev 1 88-SIO's byte");
+
+        // ...and a status read with no byte is the guest WAITING, the run loop's idle
+        // signal on this line (#948). The data port is not a status read and counts nothing.
+        const uint64_t polls = r.m.lineActivity().emptyPolls;
+        (void)in(*r.acr, 0x06);
+        CHECK(r.m.lineActivity().emptyPolls == polls + 1, "a status read with no byte: one empty poll");
+        (void)in(*r.acr, 0x07);
+        CHECK(r.m.lineActivity().emptyPolls == polls + 1, "a data read is not a status read");
     }
     {
         // And the trap, said out loud: CLEAR means READY.
@@ -223,7 +231,9 @@ void test_88acr() {
         r.mount("t.tap");
         CHECK((in(*r.acr, 0x06) & 0x01) == 0,
               "INVERTED: with a byte waiting, bit 0 reads ZERO");
+        const uint64_t polls = r.m.lineActivity().emptyPolls;
         CHECK((in(*r.acr, 0x06) & 0x80) == 0, "and bit 7 CLEAR means ready to transmit");
+        CHECK(r.m.lineActivity().emptyPolls == polls, "a status read that finds a byte is not waiting");
     }
     {
         // A SECOND CASSETTE STARTS AT ITS OWN FIRST BYTE (issue #671). The UART takes the
@@ -781,6 +791,38 @@ void test_88acr() {
             }
             CHECK(rest == "BCDEFGHIJ",
                   "absolute cadence: every byte on its own mark, the lateness never piling up");
+        }
+
+        // A NAP BETWEEN BYTES DOES NOT SLOW THE LOAD (issue #948). At 300 baud the loader
+        // polls the empty line for 36 ms between bytes, and every poll is an empty poll: the
+        // run loop now sees that and may nap, so the guest reads a byte up to one nap (4 ms)
+        // late. The tape holds the byte, and the schedule stays on its own marks.
+        {
+            Clock          clk;
+            uint64_t       nowNs = 0;
+            const uint64_t step  = 36'666'667;  // one 300-baud 8N2 byte (11 bits), in ns
+            const uint64_t nap   = 4'000'000;   // the run loop's nap (kIdleNap)
+            auto           tape  = image("ABCDEFG");
+            auto           ts    = std::make_unique<TapeStream>(*tape, TapeStream::Mode::Play, step,
+                                                                [&] { return nowNs; });
+            Uart1602       u("acr");
+            u.connect(std::move(ts));
+
+            CHECK(drain(u, clk, 4) == "A", "the free first byte");
+            std::string rest;
+            for (int k = 1; k <= 5; ++k) {
+                nowNs                = (uint64_t)k * step - 1;  // just before byte k is due
+                const uint64_t polls = u.emptyPolls();
+                u.poll(clk);
+                u.statusRead();  // the loader's status read, as the card makes it (/SWE)
+                CHECK(!u.dataAvailable(), "300 baud: nothing yet");
+                CHECK(u.emptyPolls() == polls + 1, "the wait between bytes is empty polls, which the run loop sees");
+                nowNs = (uint64_t)k * step + nap;  // read after a whole nap
+                rest += drain(u, clk, 1);
+            }
+            CHECK(rest == "BCDEF", "every byte read one nap late, and none is lost");
+            nowNs = 6 * step;  // byte 6's own mark: a schedule that slipped by a nap would hold it
+            CHECK(drain(u, clk, 4) == "G", "the next byte is ready on its own mark -- no drift");
         }
     }
 

@@ -148,7 +148,10 @@ bool BitSerialLine::rx() {
     const uint64_t now = clock_->now();
     if (rxBusy_ && now >= rxStart_ + at(kFrame)) rxBusy_ = false;
     if (!rxBusy_) {
-        if (!stream_->readable()) return true;
+        if (!stream_->readable()) {
+            ++emptyPolls_;  // the guest read an idle wire with nothing coming: it is waiting
+            return true;
+        }
         uint8_t b = 0;
         if (stream_->read(&b, 1) != 1) return true;
         rxByte_  = b;

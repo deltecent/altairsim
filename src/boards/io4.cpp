@@ -197,6 +197,7 @@ uint8_t Io4Board::read(const BusCycle& c) {
         ch->uart.poll(clock_ ? *clock_ : deadCard());
         // The DATA port's read strobe is wired to /RDAR: reading it clears Data Available. The
         // other port is /SWE -- the synthesized status byte.
+        if (!isData) ch->uart.statusRead();
         v = isData ? ch->uart.readData() : statusByte(*ch);
         break;
     }
@@ -262,6 +263,7 @@ uint8_t Io4Board::parallelRead(ParallelChannel& pc) {
     // it drives the bit either way -- set or clear -- rather than OR-ing over the data).
     if (pc.davBit >= 0) {
         bool waiting = pc.davFromSibling ? sibling(pc).srq : pc.srq;
+        if (!waiting) ++parEmptyPolls_;  // the guest asked the strapped flag: no byte (#948)
         bool bit     = pc.davActiveLow ? !waiting : waiting;
         uint8_t mask = (uint8_t)(1u << pc.davBit);
         if (bit) v |= mask;

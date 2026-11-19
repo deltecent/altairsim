@@ -105,7 +105,7 @@ public:
     std::string describe() const override { return inner_->describe(); }
 
     size_t read(uint8_t* buf, size_t n) override;
-    size_t write(const uint8_t* buf, size_t n) override;
+    size_t doWrite(const uint8_t* buf, size_t n) override;
 
     bool readable() const override { return inner_->readable(); }
     bool pacedReceive() const override { return inner_->pacedReceive(); }

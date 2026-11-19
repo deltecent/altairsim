@@ -73,7 +73,7 @@ size_t TapeStream::read(uint8_t* buf, size_t n) {
     return got;  // 0 at the end of the tape: a quiet line, not an error
 }
 
-size_t TapeStream::write(const uint8_t* buf, size_t n) {
+size_t TapeStream::doWrite(const uint8_t* buf, size_t n) {
     if (mode_ != Mode::Record) return 0;  // RECORD was never pressed
     size_t put = 0;
     while (put < n && tape_.write(buf[put])) ++put;

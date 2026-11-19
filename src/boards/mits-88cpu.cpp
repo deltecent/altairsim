@@ -42,8 +42,8 @@ std::vector<Property> Cpu8080Board::properties() {
     {
         Property x;
         x.name = "idle";
-        x.help = "Stand down when the guest is only polling an empty keyboard. On by "
-                 "default -- the guest cannot tell, and a prompt stops burning a core.";
+        x.help = "At full speed, rest while the guest reads an empty serial line, on "
+                 "any port. On by default. The guest cannot see the rest.";
         x.kind = Kind::Bool;
         x.get  = [this] { return Value::ofBool(idle_); };
         x.set  = [this](const Value& v, std::string&) {

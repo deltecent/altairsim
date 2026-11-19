@@ -55,6 +55,8 @@ public:
 
     bool    decodes(const BusCycle& c) const override;
     uint8_t read(const BusCycle& c) override;
+    // The guest found no byte on a status read (Board::emptyPolls, #948).
+    uint64_t emptyPolls() const override { return emptyPolls_; }
     void    write(const BusCycle& c) override;
 
     void reset(Reset) override;
@@ -103,6 +105,7 @@ private:
     uint8_t     base_    = 0x04;         // even. Control/status at base_, data at base_+1
     uint8_t     inLatch_ = 0;            // the byte the input latch (8212 H) holds
     bool        inFull_  = false;        // DI1 -- a byte has arrived and not yet been read
+    uint64_t    emptyPolls_ = 0;         // status reads with DI1 clear (emptyPolls)
     uint8_t     ctrl_    = 0;            // DO0/DO1 interrupt-enable -- stored, not acted on
 };
 

@@ -76,6 +76,8 @@ public:
     // A keystroke arriving is live traffic, so the idle policy stands the machine back
     // up for it (Board::rxBytes), the signal the VDB-8024 gives.
     uint64_t rxBytes() const override { return kbRx_; }
+    // The guest found no byte on a status read (Board::emptyPolls, #948).
+    uint64_t emptyPolls() const override { return kbEmptyPolls_; }
 
     bool connect(const std::string& unit, const std::string& endpoint,
                  std::string& err) override;
@@ -130,6 +132,7 @@ private:
     uint8_t  kbData_ = 0;
     bool     kbHave_ = false;  // the service-request flip-flop, shown as "a key waits"
     uint64_t kbRx_   = 0;      // keystrokes handed to the guest -- the idle-traffic signal
+    uint64_t kbEmptyPolls_ = 0;  // status reads that found no key (emptyPolls)
 };
 
 } // namespace altair

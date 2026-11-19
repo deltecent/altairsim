@@ -94,6 +94,8 @@ public:
     }
     ByteStream* unitStream(const std::string& unit) override { return sio_.unitStream(unit); }
     uint64_t    rxBytes() const override { return sio_.rxBytes(); }
+    // The guest found no byte on a status read (Board::emptyPolls, #948).
+    uint64_t emptyPolls() const override { return sio_.emptyPolls(); }
     std::vector<std::string> drainLog() override;
 
     // ---- PROM sockets: `[[board.socket]]` ----

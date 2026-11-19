@@ -85,6 +85,10 @@ public:
 
     // Bytes handed to the guest, monotonic -- the run loop's live-traffic signal.
     uint64_t rxBytes() const { return rxCount_; }
+    // READS OF AN IDLE WIRE, monotonic: the guest asked and the line had nothing
+    // for it -- the guest WAITING, the run loop's idle signal (#948, Board::emptyPolls).
+    // Counted here, on the guest's read of the wire, and not in the stream.
+    uint64_t emptyPolls() const { return emptyPolls_; }
 
     // Framing errors and wire refusals, for the board to say out loud.
     std::vector<std::string> drainLog() {
@@ -126,6 +130,7 @@ private:
     uint64_t rxStart_ = 0;
     uint8_t  rxByte_  = 0;
     uint64_t rxCount_ = 0;
+    uint64_t emptyPolls_ = 0;  // emptyPolls() -- see above
 };
 
 } // namespace altair

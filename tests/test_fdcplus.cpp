@@ -94,7 +94,7 @@ public:
         return k;
     }
 
-    size_t write(const uint8_t* b, size_t n) override {
+    size_t doWrite(const uint8_t* b, size_t n) override {
         in_.insert(in_.end(), b, b + n);
         for (;;) {
             if (wantData_) {

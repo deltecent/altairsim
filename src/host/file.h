@@ -60,7 +60,7 @@ public:
     std::string describe() const override { return spec_; }
 
     size_t read(uint8_t* buf, size_t n) override;
-    size_t write(const uint8_t* buf, size_t n) override;
+    size_t doWrite(const uint8_t* buf, size_t n) override;
 
     bool readable() const override;
     bool writable() const override { return true; }  // a punch, or a dropped write

@@ -91,7 +91,7 @@ public:
 
     // A quiet line, forever: nothing reads back off a printout.
     size_t read(uint8_t*, size_t) override { return 0; }
-    size_t write(const uint8_t* buf, size_t n) override;
+    size_t doWrite(const uint8_t* buf, size_t n) override;
 
     bool readable() const override { return false; }
     bool writable() const override { return true; }

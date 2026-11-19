@@ -136,7 +136,7 @@ TeeStream::~TeeStream() {
     }
 }
 
-size_t TeeStream::write(const uint8_t* buf, size_t n) {
+size_t TeeStream::doWrite(const uint8_t* buf, size_t n) {
     if (p_.fmt == Fmt::Text) {
         // What the line TOOK, as it took it, on disk now -- see the header.
         size_t w = inner_->write(buf, n);
