@@ -12,7 +12,7 @@ size_t LoopbackStream::read(uint8_t* buf, size_t n) {
     return got;
 }
 
-size_t LoopbackStream::write(const uint8_t* buf, size_t n) {
+size_t LoopbackStream::doWrite(const uint8_t* buf, size_t n) {
     q_.append((const char*)buf, n);
     return n;
 }
@@ -24,7 +24,7 @@ size_t ScriptedStream::read(uint8_t* buf, size_t n) {
     return got;
 }
 
-size_t ScriptedStream::write(const uint8_t* buf, size_t n) {
+size_t ScriptedStream::doWrite(const uint8_t* buf, size_t n) {
     out_.append((const char*)buf, n);
     return n;
 }

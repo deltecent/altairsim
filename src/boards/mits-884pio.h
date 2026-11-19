@@ -55,6 +55,8 @@ public:
 
     bool    decodes(const BusCycle& c) const override;
     uint8_t read(const BusCycle& c) override;
+    // The guest found no byte on a status read (Board::emptyPolls, #948).
+    uint64_t emptyPolls() const override { return emptyPolls_; }
     void    write(const BusCycle& c) override;
 
     void reset(Reset) override;
@@ -93,6 +95,7 @@ private:
         std::unique_ptr<ByteStream> stream;  // never null (NullStream when idle)
         std::string spec = "null";
     };
+    uint64_t emptyPolls_ = 0;  // control/status reads with IRQ1 clear (emptyPolls)
 
     // Unit name ("ja".."mb") -> section index, or -1 if not a populated section.
     int sectionIndex(const std::string& unit) const;

@@ -45,7 +45,7 @@ size_t MirrorStream::read(uint8_t* buf, size_t n) {
 // Forward to the inner line, then COPY what it accepted to the watcher. The guest's
 // return value is the inner's -- the watcher is never allowed to shorten a write, or a
 // slow telnet would look to the guest like a full UART and cost it a byte.
-size_t MirrorStream::write(const uint8_t* buf, size_t n) {
+size_t MirrorStream::doWrite(const uint8_t* buf, size_t n) {
     size_t w = inner_->write(buf, n);
     queueToClient(buf, w);
     sendToClient();

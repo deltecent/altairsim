@@ -55,7 +55,7 @@ public:
     // ---- ByteStream ----
     std::string describe() const override;
     size_t      read(uint8_t* buf, size_t n) override;   // 0 while RINGING (not answered)
-    size_t      write(const uint8_t* buf, size_t n) override;  // dropped unless off-hook & up
+    size_t      doWrite(const uint8_t* buf, size_t n) override;  // dropped unless off-hook & up
     bool        readable() const override;               // false until answered
     bool        writable() const override;               // send-buffer backpressure = CTS
     size_t      rxPending() const override { return rx_.size(); }

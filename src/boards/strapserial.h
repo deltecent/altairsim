@@ -87,6 +87,7 @@ struct StrapSerialChannel {
     long long                   baud    = 9600;    // programmed onto a real serial port only
     std::unique_ptr<ByteStream> stream;            // never null -- a NullStream when unplugged
     uint64_t                    rxBytes = 0;
+    uint64_t                    emptyPolls = 0;  // status reads with DAV clear (#948)
 };
 
 class StrapSerialBoard : public Board {
@@ -117,6 +118,7 @@ public:
     bool disconnect(const std::string& unit, std::string& err) override;
     ByteStream* unitStream(const std::string& unit) override;
     uint64_t rxBytes() const override;
+    uint64_t emptyPolls() const override;
     std::vector<std::string> drainLog() override;
 
     // ---- SNAPSHOT / RESTORE (DESIGN.md 13): only the byte counters are runtime state;

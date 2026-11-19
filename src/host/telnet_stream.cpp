@@ -15,7 +15,7 @@ size_t TelnetStream::read(uint8_t* buf, size_t n) {
 // The guest's bytes, telnet-encoded (a data 0xFF doubled), then written straight to
 // the wrapped socket. We always take all of them -- the socket's tx buffer is what
 // applies backpressure, exactly as under a bare socket:.
-size_t TelnetStream::write(const uint8_t* buf, size_t n) {
+size_t TelnetStream::doWrite(const uint8_t* buf, size_t n) {
     codec_.send(buf, n);
     std::string wire = codec_.takeOut();
     if (!wire.empty()) inner_->write((const uint8_t*)wire.data(), wire.size());

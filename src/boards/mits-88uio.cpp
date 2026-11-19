@@ -236,6 +236,9 @@ ByteStream* UioBoard::unitStream(const std::string& unit) {
 }
 
 uint64_t UioBoard::rxBytes() const { return SerialBoardBase::rxBytes() + serial_.rxBytes(); }
+uint64_t UioBoard::emptyPolls() const {
+    return SerialBoardBase::emptyPolls() + serial_.emptyPolls();
+}
 
 std::vector<std::string> UioBoard::drainLog() {
     std::vector<std::string> out = CassetteBoardBase::drainLog();  // tape codec + cassette UART

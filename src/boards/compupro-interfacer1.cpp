@@ -155,6 +155,7 @@ uint8_t InterfacerOneBoard::read(const BusCycle& c) {
     if (!decodePort(c.port(), ch, isData)) return 0xFF;
     ch->uart.poll(clock_ ? *clock_ : deadCard());
     // RDAV is tied to RDE: reading the data port clears DAV. The other address is SWE.
+    if (!isData) ch->uart.statusRead();
     uint8_t v = isData ? ch->uart.readData() : status(*ch);
     refresh();  // a data read can drop RxINT
     return v;

@@ -14,7 +14,7 @@ size_t PtyStream::read(uint8_t* buf, size_t n) {
 //
 // WITH NOBODY ON THE LINE, THE BYTES GO NOWHERE. Keeping them for a program that has
 // not opened the link yet would mean it opens to output the guest printed an hour ago.
-size_t PtyStream::write(const uint8_t* buf, size_t n) {
+size_t PtyStream::doWrite(const uint8_t* buf, size_t n) {
     if (!pty_->attached()) return n;
     tx_.append((const char*)buf, n);
     flush();

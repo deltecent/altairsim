@@ -81,6 +81,7 @@ public:
     ByteStream* unitStream(const std::string& unit) override;
 
     uint64_t                 rxBytes() const override;
+    uint64_t                 emptyPolls() const override;
     std::vector<std::string> drainLog() override;
 
     // ---- SNAPSHOT / RESTORE: AcrBoard (UART + tape) then the serial section then the

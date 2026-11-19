@@ -173,6 +173,7 @@ uint8_t Tms5501::readStatus(const Clock& clk) {
 
     uint8_t s = kSrv;  // the line idles at mark; no framing/noise model (DESIGN.md 0.1)
     if (rdrf_)     s |= kRda;
+    else ++emptyPolls_;  // the guest asked and there was no byte: it is waiting
     if (tbe(clk))  s |= kTbe;
     if (ovrn_)     s |= kOre;
     if (pendingSources(clk) & mask_) s |= kIpg;  // INT pending: an unmasked timer fired

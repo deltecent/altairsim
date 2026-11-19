@@ -138,7 +138,7 @@ public:
 
     std::string describe() const override { return tape_.describe(); }
     size_t read(uint8_t* buf, size_t n) override;
-    size_t write(const uint8_t* buf, size_t n) override;
+    size_t doWrite(const uint8_t* buf, size_t n) override;
 
     // Nothing plays back out of a recorder that is recording, and nothing is cut
     // into a tape that is merely playing. The write-protect tab is a SECOND, and

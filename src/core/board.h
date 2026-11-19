@@ -697,6 +697,17 @@ public:
     // happens to have a UART.
     virtual uint64_t rxBytes() const { return 0; }
 
+    // TIMES THE GUEST ASKED THIS CARD FOR A BYTE AND THERE WAS NONE, since power-on, across
+    // every line it carries, monotonic. Zero for a card with no serial line.
+    //
+    // The run loop sums this over the backplane to know whether the guest is WAITING on a
+    // line -- any line, not only the host terminal (issue #948). It is counted where the
+    // guest reads a status bit (data available, RDRF, RxRDY, DAV) and finds it clear. It is
+    // NOT counted in the stream: a chip also checks its line to keep its own receiver current
+    // (a 2SIO brings both of its 6850s up to date after any register access), and that is not
+    // the guest asking.
+    virtual uint64_t emptyPolls() const { return 0; }
+
     // A ONE-LINE PROGRESS LABEL FOR SOMETHING SLOW THE OPERATOR IS WATCHING, or "" for a
     // card with nothing to report -- which is nearly all of them, on nearly every cycle.
     // A tape deck loading in wall-clock time returns its counter here; the run loop paints

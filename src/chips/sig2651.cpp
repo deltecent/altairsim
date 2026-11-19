@@ -185,6 +185,7 @@ uint8_t Sig2651::statusByte(const Clock& clk) const {
 
 uint8_t Sig2651::readStatus(const Clock& clk) {
     poll(clk);
+    if (!rxRdy_) ++emptyPolls_;  // the guest asked and there was no byte: it is waiting
     return statusByte(clk);
 }
 

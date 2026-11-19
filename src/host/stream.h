@@ -94,10 +94,27 @@ public:
     // NON-BLOCKING, both of them. read() returns 0 when there is nothing there,
     // which is not an error and not an end of file -- it is a quiet line.
     virtual size_t read(uint8_t* buf, size_t n) = 0;
-    virtual size_t write(const uint8_t* buf, size_t n) = 0;
+
+    // write() is NOT virtual: it counts, then asks the stream (doWrite). The count is half
+    // of the run loop's idle signal on EVERY line (#948): a byte the guest sent is work.
+    size_t write(const uint8_t* buf, size_t n) {
+        const size_t took = doWrite(buf, n);
+        txBytes_ += took;
+        return took;
+    }
 
     virtual bool readable() const = 0;  // -> drives RDRF
     virtual bool writable() const = 0;  // -> drives TDRE
+
+    // BYTES THIS STREAM TOOK FROM write(), monotonic. Only a guest's write sends a byte, so
+    // this is the guest working (#948). The run loop watches its delta per slice, summed over
+    // the backplane (Machine::lineActivity). A decorator forwards to the line it wraps, so
+    // both count; only the outermost stream, the one the unit holds, is summed.
+    //
+    // The other half, the guest WAITING, is not counted here: a chip also asks readable() to
+    // bring its own receiver up to date, which is not the guest asking. The chip counts the
+    // guest's status reads that find no byte (Board::emptyPolls).
+    uint64_t txBytes() const { return txBytes_; }
 
     // THIS STREAM CARRIES ITS OWN CLOCK. A cassette releases bytes at a cadence of its
     // own -- full speed, or a wall-clock baud the CPU's speed cannot drag -- and it
@@ -214,6 +231,9 @@ public:
     void writeByte(uint8_t b) { write(&b, 1); }
 
 protected:
+    // What write() above calls. Every stream implements it.
+    virtual size_t doWrite(const uint8_t* buf, size_t n) = 0;
+
     // Kept by the owing stream: raised when a caller answers, lowered when the banner
     // goes out or the caller leaves first. Single-threaded, like every stream -- only
     // the run loop pumps and greets (DESIGN.md: no second thread touches the Machine).
@@ -221,6 +241,9 @@ protected:
 
     // Moved by titlesChanged(); Machine::pump re-titles every line when it differs.
     inline static uint64_t titleEpoch_ = 0;
+
+private:
+    uint64_t txBytes_ = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -237,7 +260,7 @@ class NullStream : public ByteStream {
 public:
     std::string describe() const override { return "null"; }
     size_t read(uint8_t*, size_t) override { return 0; }
-    size_t write(const uint8_t*, size_t n) override { return n; }  // consumed, gone
+    size_t doWrite(const uint8_t*, size_t n) override { return n; }  // consumed, gone
     bool readable() const override { return false; }
     bool writable() const override { return true; }
 };
@@ -256,7 +279,7 @@ class LoopbackStream : public ByteStream {
 public:
     std::string describe() const override { return "loopback"; }
     size_t read(uint8_t* buf, size_t n) override;
-    size_t write(const uint8_t* buf, size_t n) override;
+    size_t doWrite(const uint8_t* buf, size_t n) override;
     bool readable() const override { return !q_.empty(); }
     bool writable() const override { return true; }
     size_t rxPending() const override { return q_.size(); }
@@ -288,7 +311,7 @@ class ScriptedStream : public ByteStream {
 public:
     std::string describe() const override { return "scripted"; }
     size_t read(uint8_t* buf, size_t n) override;
-    size_t write(const uint8_t* buf, size_t n) override;
+    size_t doWrite(const uint8_t* buf, size_t n) override;
 
     // AND IT COUNTS THE EMPTY POLLS, exactly as the Console does (host/console.cpp).
     // The guest came to the line and found nothing on it: that, and not silence, is
@@ -343,7 +366,7 @@ public:
 
     std::string describe() const override { return line_->describe(); }
     size_t read(uint8_t* buf, size_t n) override { return line_->read(buf, n); }
-    size_t write(const uint8_t* buf, size_t n) override { return line_->write(buf, n); }
+    size_t doWrite(const uint8_t* buf, size_t n) override { return line_->write(buf, n); }
     bool readable() const override { return line_->readable(); }
     bool writable() const override { return line_->writable(); }
     bool pacesItself() const override { return line_->pacesItself(); }

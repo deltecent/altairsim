@@ -180,7 +180,9 @@ uint8_t SerialBoardBase::read(const BusCycle& c) {
 
     // The DATA channel is where the read strobe is wired to the chip's /RDAR pin, so
     // reading it clears Data Available. The other one is /SWE -- the status word.
-    uint8_t v = ((c.port() - base_) & 1) ? u_.readData() : statusByte();
+    const bool isData = ((c.port() - base_) & 1) != 0;
+    if (!isData) u_.statusRead();
+    uint8_t v = isData ? u_.readData() : statusByte();
 
     refresh();  // reading the data channel cleared DAV -- and with it, the interrupt
     return v;

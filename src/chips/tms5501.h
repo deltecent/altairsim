@@ -119,6 +119,11 @@ public:
     // Bytes handed to the guest since power-on, monotonic -- the run loop's live-traffic
     // signal (the same role Mc6850::rxBytes plays; see board.h rxBytes()).
     uint64_t rxBytes() const { return rxCount_; }
+    // STATUS READS THAT FOUND NO BYTE, monotonic: the guest asked and the line had nothing
+    // for it -- the guest WAITING, the run loop's idle signal (#948, Board::emptyPolls).
+    // Counted here and not in the stream: the chip also checks the line to keep its own
+    // receiver current, and that is not the guest asking.
+    uint64_t emptyPolls() const { return emptyPolls_; }
 
     // The `connect` property turns an endpoint string into a stream. The resolver comes
     // in from the card because the chip is not allowed to know the grammar (DESIGN.md 7.7).
@@ -221,6 +226,7 @@ private:
 
     uint8_t rxData_  = 0;
     uint64_t rxCount_ = 0;
+    uint64_t emptyPolls_ = 0;  // emptyPolls() -- see above
     bool     rdrf_   = false;  // RDA: a byte is waiting
     bool     ovrn_   = false;  // ORE: a byte overwrote one not yet read
 

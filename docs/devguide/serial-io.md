@@ -29,7 +29,7 @@ The interface a card actually uses:
 
 ```cpp
 virtual size_t read(uint8_t* buf, size_t n) = 0;   // NON-BLOCKING
-virtual size_t write(const uint8_t* buf, size_t n) = 0;
+size_t write(const uint8_t* buf, size_t n);         // NOT virtual: counts, then doWrite()
 virtual bool readable() const = 0;  // -> drives RDRF / RxRDY
 virtual bool writable() const = 0;  // -> drives TDRE / TxRDY
 virtual std::string describe() const = 0;   // round-trips the operator's spec
@@ -58,13 +58,35 @@ Two more methods complete the contract, and both exist so a board stays pure:
   `Machine::drainBoardLog()` drains it from the stream of every unit, and the monitor prints
   it after every command and run. A board never drains a stream itself.
 
+A stream implements `doWrite()`, not `write()`. `write()` is non-virtual: it calls `doWrite()`
+and adds what it took to `txBytes()`. The idle nap reads that count (next section).
+
+### The idle nap counts on every line
+
+At full speed with the CPU board's `idle` on, the run loop naps when the guest is waiting
+(`DESIGN.md` §8). It judges that from three counts, all summed over the backplane:
+
+- **Bytes sent**: `ByteStream::txBytes()` on the outermost stream of each serial unit
+  (`Machine::lineActivity()`). Only the outermost stream is read, so a decorator that forwards
+  to an inner stream is not counted twice.
+- **Bytes received**: `Board::rxBytes()` (`Machine::rxBytes()`).
+- **Empty status reads**: `Board::emptyPolls()` (`Machine::lineActivity()`). This is a status
+  read by the guest that found no byte, counted at the chip or board the guest addressed.
+
+`emptyPolls()` is counted at the status read, not in `readable()`, because a chip also calls
+`readable()` for itself. `Sio2Port::refresh()` brings both 6850s up to date after any access to
+the board, and that is not the guest waiting on the other port. Each chip counts in its status
+read: `Mc6850`, `Intel8251`, `Sig2651` and `Tms5501` in `readStatus()`, `BitSerialLine::rx()`
+for an idle wire, and `Uart1602::statusRead()`, which each 1602 board calls from its status
+port. A board with no chip (88-PIO, VDB-8024, FWII) counts in its own status read.
+
 ### The unconnected line is not a special case
 
 ```cpp
 class NullStream : public ByteStream {
     bool readable() const override { return false; }
     bool writable() const override { return true; }   // TDRE set forever
-    size_t write(const uint8_t*, size_t n) override { return n; }  // consumed, gone
+    size_t doWrite(const uint8_t*, size_t n) override { return n; }  // consumed, gone
 };
 ```
 
@@ -476,6 +498,9 @@ The general playbook is `adding-a-board.md`; the serial-specific steps on top of
    in the constructor. Or embed a `Sio2Port` and let it hold the streams.
 2. **`readable()`→RDRF, `writable()`→TDRE.** Synthesize your status byte from those; apply your
    card's polarity here, in true sense at the pins.
+   Count each guest status read that finds no byte, and return the total from
+   `Board::emptyPolls()`. A chip in `src/chips/` already counts it; return the chip's count.
+   `tests/test_lines.cpp` walks the registry and fails for a serial board that does not count.
 3. **Expose one serial unit** per channel (`units()` → `UnitKind::Serial`), wire
    `connect`/`disconnect`/`unitStream`, and route `pump()` to the stream.
 4. **Install the resolver in both mains** — `src/main.cpp` and `tests/main.cpp` — via your

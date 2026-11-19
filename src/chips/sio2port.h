@@ -96,6 +96,7 @@ public:
 
     std::vector<std::string> drainLog();   // raw messages; the card adds its id prefix
     uint64_t rxBytes() const;
+    uint64_t emptyPolls() const;  // summed over the chips, like rxBytes()
 
     // ---- reflection / units ----
     std::vector<UnitDef>  units() const;

@@ -148,7 +148,7 @@ bool TerminalStream::routeSpecial(const void* owner, int key) {
 
 size_t TerminalStream::read(uint8_t* buf, size_t n) { return emu_->takeReply(buf, n); }
 
-size_t TerminalStream::write(const uint8_t* buf, size_t n) {
+size_t TerminalStream::doWrite(const uint8_t* buf, size_t n) {
     // Outbound (guest -> screen): strip7out first, so an even-parity 0x8D becomes the
     // 0x0D the emulator homes on; then drop a bell if muted, then feed. crlf adds
     // the LF a bare-CR guest omits, AFTER masking so it triggers on the real 0x0D.

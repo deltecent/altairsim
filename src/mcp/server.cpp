@@ -1130,7 +1130,9 @@ void freeRunSlice(Machine& m, McpSession& sess) {
     ScriptedStream* con          = console(m, sess, err);  // null on a machine with none
     const uint64_t  rxBefore     = m.rxBytes();
     const size_t    outBefore    = con ? con->out().size() : 0;
-    const uint64_t  hungryBefore = con ? con->hungry() : 0;
+    // Every line's counts, as in runMachine (#948): a console on a socket, or a guest waiting
+    // on a line other than the console, waits as one on the scripted console does.
+    const Machine::LineActivity linesBefore = m.lineActivity();
 
     RunResult r = m.debug.run(kSliceSteps, false);  // keep a pending stop -- see `run`
     m.pump();
@@ -1141,8 +1143,11 @@ void freeRunSlice(Machine& m, McpSession& sess) {
     f.meter.sample(m.cpuCard(), f.tStates, clk::now());
 
     // What this slice did, taken BEFORE the held output is trimmed below.
-    const SliceWork work{r.steps, con ? con->out().size() - outBefore : 0,
-                         m.rxBytes() - rxBefore, con ? con->hungry() - hungryBefore : 0};
+    const Machine::LineActivity lines = m.lineActivity();
+    const SliceWork work{r.steps,
+                         (con ? con->out().size() - outBefore : 0) +
+                             (lines.txBytes - linesBefore.txBytes),
+                         m.rxBytes() - rxBefore, lines.emptyPolls - linesBefore.emptyPolls};
     if (con) f.dropped += con->trimOut(kMaxHeldOutput);
 
     if (sliceStops(r.why)) {
@@ -1156,7 +1161,7 @@ void freeRunSlice(Machine& m, McpSession& sess) {
     const auto now = clk::now();
 
     // THE IDLE NAP -- runMachine's rule (monitor.cpp): a guest that said nothing, received
-    // nothing and kept finding the console empty is at a prompt. Once that has lasted
+    // nothing and kept finding a line empty is at a prompt. Once that has lasted
     // kIdleWarmup, wait kIdleNap before the next slice, so a free-running guest at A> does
     // not hold a whole core. The wait ends early for a request, and a typed key is read
     // within one nap.
@@ -1169,7 +1174,9 @@ void freeRunSlice(Machine& m, McpSession& sess) {
     static constexpr uint64_t kIdleRatio  = 32;
     static constexpr auto     kIdleWarmup = std::chrono::milliseconds(20);
     static constexpr auto     kIdleNap    = std::chrono::milliseconds(4);
-    const bool idling = m.clock.free() && m.clock.idle() && con && con->drained() &&
+    // Typed input the guest has not read yet means it is not idle. A machine with no scripted
+    // console (its console on a socket or a serial port) naps on the lines alone (#948).
+    const bool idling = m.clock.free() && m.clock.idle() && (!con || con->drained()) &&
                         guestIsWaiting(work, kIdleRatio);
     if (!idling) {
         f.idleSince = clk::time_point{};

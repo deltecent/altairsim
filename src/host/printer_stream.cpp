@@ -43,7 +43,7 @@ PrinterStream::~PrinterStream() {
     }
 }
 
-size_t PrinterStream::write(const uint8_t* buf, size_t n) {
+size_t PrinterStream::doWrite(const uint8_t* buf, size_t n) {
     lastWriteNs_ = hostNs_();  // every byte restarts the idle timer
     for (size_t i = 0; i < n; ++i) {
         buf_.push_back(buf[i]);

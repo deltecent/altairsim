@@ -18,7 +18,7 @@ size_t HostSerialStream::read(uint8_t* buf, size_t n) {
     return k;
 }
 
-size_t HostSerialStream::write(const uint8_t* buf, size_t n) {
+size_t HostSerialStream::doWrite(const uint8_t* buf, size_t n) {
     tx_.append((const char*)buf, n);
     flush();
     return n;  // ALWAYS all of it: what the driver would not take is still ours to send

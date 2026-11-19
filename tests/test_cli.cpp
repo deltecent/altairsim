@@ -2997,6 +2997,10 @@ void test_idle_judgement() {
 
     // A guest with something to say is working, not waiting -- excluded before we even count.
     CHECK(!guestIsWaiting({2000, 1, 0, 600}), "a guest that PRINTED something is not waiting");
+    // `wrote` is every line's bytes, not the console's (#948): an XMODEM sender sends a block
+    // on port B and polls it for the ACK, with nothing on the console. It is working.
+    CHECK(!guestIsWaiting({2000, 132, 0, 600}),
+          "a slice that only TRANSMITTED, on any line, is not waiting");
 
     // A stopped machine is not an idle one. A slice that retired nothing hit a breakpoint or
     // a HLT, and napping on it would be napping on a machine that is not running at all.
@@ -3085,9 +3089,83 @@ void test_may_nap() {
     // `SET cpu0 idle=off` ends the argument.
     CHECK(!mayNap(/*idle=*/false, true, true, /*paced=*/false), "idle=off -> never");
 
-    // Only an interactive console: a line wired to the console AND a host tty.
-    CHECK(!mayNap(/*idle=*/true, false, true, /*paced=*/false), "no console line -> never");
-    CHECK(!mayNap(/*idle=*/true, true, false, /*paced=*/false), "a piped console is a script -> never");
+    // WHERE THE CONSOLE IS DOES NOT MATTER (#948). A machine whose console is on a serial
+    // port, a socket or a terminal window has no line on the host console, and it waits at a
+    // prompt all the same. It used to need a line on the host console, so CP/M at A> on a
+    // serial console held a host core at 100%.
+    CHECK(mayNap(/*idle=*/true, /*stdioConsole=*/false, /*tty=*/true, /*paced=*/false),
+          "a console on a serial port or a socket, run from a terminal -> may nap");
+    CHECK(mayNap(/*idle=*/true, /*stdioConsole=*/false, /*tty=*/false, /*paced=*/false),
+          "no line on the host console, stdin not a terminal -> may nap: stdin is not read");
+
+    // A piped console is a script: it has a byte or it is at its end, so it runs flat out.
+    CHECK(!mayNap(/*idle=*/true, /*stdioConsole=*/true, /*tty=*/false, /*paced=*/false),
+          "a piped console is a script -> never");
+
+    SECTION("RUN naps on a guest waiting on port B, with no line on the host console (#948)");
+    {
+        // The guest spins on the 2SIO's port B status with nothing on either line, and counts
+        // its passes in DE:HL. Five instructions a pass, one empty status read: a wait. The
+        // console was the only line the nap watched, so this guest never napped: an XMODEM
+        // sender waiting on port B timed out at its own speed only when port A was not on
+        // the host console.
+        //
+        // 0000 MVI A,03 / OUT 12 / MVI A,15 / OUT 12  -- reset port B's 6850, then 8N1
+        // 0008 IN 12 / INX H / MOV A,H / ORA L / JNZ 0008 / INX D / JMP 0008
+        auto passes = [&](bool idle, const char* program) {
+            Machine m;
+            Monitor mon(m);
+            std::ostringstream sink;
+            mon.exec("BOARDS ADD 8080 cpu0", sink);
+            mon.exec("BOARDS ADD memory mem0", sink);
+            mon.exec("REGION ADD mem0 type=ram at=0 size=1K", sink);
+            mon.exec("BOARDS ADD 2sio sio0", sink);
+            mon.exec(std::string("SET cpu0 idle=") + (idle ? "on" : "off"), sink);
+            mon.exec(std::string("DEPOSIT 0 ") + program, sink);
+            CHECK(m.clock.free(), "precondition: flat out");
+
+            std::atomic<bool>  done{false};
+            std::ostringstream o;
+            std::thread        t([&] { mon.exec("RUN 0", o); done = true; });
+            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+            while (!done) {
+                Debugger::requestStop();
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+            t.join();
+            Debugger::clearStopRequest();
+
+            uint64_t de = 0, hl = 0;
+            for (auto& rd : m.cpu()->registers()) {
+                if (rd.name == "DE") de = rd.get();
+                if (rd.name == "HL") hl = rd.get();
+            }
+            return de * 65536 + hl;
+        };
+
+        // The same 150 ms, the same host. Flat out, the 20 ms warmup is the only time the
+        // napping guest runs at full speed; after it, 2,000 instructions take a 4 ms nap.
+        // The bar is a factor of 2, far from the 7 or more the two runs differ by.
+        const char*    wait   = "3E 03 D3 12 3E 15 D3 12 DB 12 23 7C B5 C2 08 00 13 C3 08 00";
+        const uint64_t spun   = passes(/*idle=*/false, wait);
+        const uint64_t napped = passes(/*idle=*/true, wait);
+        CHECK(spun > 0 && napped > 0, "precondition: both guests ran");
+        CHECK(napped * 2 < spun,
+              "a guest waiting on port B naps, with its console on no host line at all");
+
+        // The same spin, but it sends a byte on port B each time TDRE is set, as an XMODEM
+        // sender sends a block. It reads an empty receiver just as often, and it is WORKING.
+        // A transfer is never slowed, so it keeps its full speed with `idle` on.
+        //
+        // 0008 IN 12 / ANI 02 / JZ 0011 / OUT 13 / 0011 INX H / MOV A,H / ORA L / JNZ 0008
+        //      / INX D / JMP 0008
+        const char*    send   = "3E 03 D3 12 3E 15 D3 12 DB 12 E6 02 CA 11 00 D3 13 "
+                                "23 7C B5 C2 08 00 13 C3 08 00";
+        const uint64_t sendOff = passes(/*idle=*/false, send);
+        const uint64_t sendOn  = passes(/*idle=*/true, send);
+        CHECK(sendOff > 0 && sendOn > 0, "precondition: both senders ran");
+        CHECK(sendOn * 2 > sendOff, "a guest sending on port B never naps");
+    }
 }
 
 // ---------------------------------------------------------------------------

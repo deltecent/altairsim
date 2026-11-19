@@ -628,6 +628,45 @@ void test_sio2() {
         CHECK((g.m.bus.ioRead(0x12) & 0x01) == 0, "and never has anything to say");
     }
 
+    // THE RUN LOOP'S IDLE SIGNAL, READ ON A LINE THAT IS NOT THE CONSOLE (issue #948). An
+    // XMODEM sender on port B polls B for the receiver's ACK: those are empty polls, the
+    // guest waiting. Its block going out on B is bytes sent, the guest working. Both were
+    // invisible when the run loop watched only the host terminal, so the nap judged port B
+    // by whatever port A happened to be doing.
+    SECTION("88-2SIO -- the machine counts the guest waiting and working on port B (#948)");
+    {
+        Rig  g;
+        auto b = std::make_unique<ScriptedStream>();
+        ScriptedStream* line = b.get();
+        g.sio->channel("b")->connect(std::move(b));
+
+        // Waiting is the GUEST reading a status register and finding no byte. Each status
+        // read of port B counts once on port B's chip -- and nothing on port A, though the
+        // section brings port A's receiver up to date after the access too (that is the
+        // card keeping its other chip current, not the guest asking).
+        const Machine::LineActivity a0 = g.m.lineActivity();
+        (void)g.m.bus.ioRead(0x12);  // port B status, nothing on the line
+        (void)g.m.bus.ioRead(0x12);
+        const Machine::LineActivity a1 = g.m.lineActivity();
+        CHECK(a1.emptyPolls == a0.emptyPolls + 2, "two status reads of an empty port B: two empty polls");
+        CHECK(g.sio->channel("a")->emptyPolls() == 0, "...and none on port A, which the guest never read");
+        CHECK(a1.txBytes == a0.txBytes, "...and nothing was sent");
+
+        g.m.bus.ioWrite(0x13, 'x');  // port B data
+        CHECK(line->out() == "x", "the byte went out on port B");
+        CHECK(g.m.lineActivity().txBytes == a1.txBytes + 1, "a byte sent on port B is counted as work");
+
+        // A byte in the receive register is not a miss: polling B then is not waiting.
+        line->feed("A");
+        g.settle(0x12);  // the byte shifts in; RDRF rises
+        const uint64_t before = g.m.lineActivity().emptyPolls;
+        CHECK((g.m.bus.ioRead(0x12) & 0x01) != 0, "RDRF: port B has the byte");
+        CHECK(g.m.lineActivity().emptyPolls == before, "a status read that finds a byte is not waiting");
+        CHECK(g.m.bus.ioRead(0x13) == 'A', "the guest reads it");
+        (void)g.m.bus.ioRead(0x12);
+        CHECK(g.m.lineActivity().emptyPolls == before + 1, "...and the next status read finds none again");
+    }
+
     SECTION("88-2SIO -- the LINE IS 8-BIT CLEAN. The transforms are the console's");
     {
         // THE INVERSE OF WHAT THIS TEST USED TO ASSERT, deliberately. It used to set

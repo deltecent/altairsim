@@ -2513,6 +2513,43 @@ void test_mcp() {
               "... as interrupted, not lost");
     }
 
+    SECTION("MCP: a free run naps on a guest waiting on port B, and never on one sending "
+            "there, with no console line (#948)");
+    {
+        // runMachine's test (test_cli.cpp, may_nap) for the free run: the two loops read the
+        // same signals. The machine has no console line. The free run napped only with a
+        // scripted console, so neither guest here napped.
+        //
+        // 0000 reset port B's 6850, then 8N1. `wait` spins on its status. `send` also sends
+        // a byte each time TDRE is set.
+        auto steps = [&](bool idle, const char* program) -> long long {
+            Machine m;
+            LiveMcp mcp(m);
+            for (const char* c : {"BOARDS ADD 8080 cpu0", "BOARDS ADD memory mem0",
+                                  "REGION ADD mem0 type=ram at=0 size=1K", "BOARDS ADD 2sio sio0"})
+                mcp.call("monitor", std::string(R"({"command":")") + c + R"("})");
+            mcp.call("monitor", std::string(R"({"command":"SET cpu0 idle=)") +
+                                    (idle ? "on" : "off") + R"("})");
+            mcp.call("mem_deposit", std::string(R"({"addr":0,"bytes":")") + program + R"("})");
+            mcp.call("start", R"({"from":0})");
+            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+            const Json stop = mcp.data("stop");
+            CHECK(stop.at("was_running").boolean(), "precondition: the guest free-ran");
+            return stop.at("steps").integer();
+        };
+        const char* wait = "3E 03 D3 12 3E 15 D3 12 DB 12 23 7C B5 C2 08 00 13 C3 08 00";
+        const char* send = "3E 03 D3 12 3E 15 D3 12 DB 12 E6 02 CA 11 00 D3 13 "
+                           "23 7C B5 C2 08 00 13 C3 08 00";
+
+        // The same 150 ms: the bar is a factor of 2, far from what a nap does (see may_nap).
+        const long long spun = steps(/*idle=*/false, wait);
+        CHECK(spun > 0 && steps(/*idle=*/true, wait) * 2 < spun,
+              "a free-running guest waiting on port B naps, with no console line");
+        const long long sendOff = steps(/*idle=*/false, send);
+        CHECK(sendOff > 0 && steps(/*idle=*/true, send) * 2 > sendOff,
+              "a free-running guest sending on port B never naps");
+    }
+
     SECTION("MCP: a paced free run keeps to its crystal and still answers at once; EOF ends "
             "the session (#602)");
     {

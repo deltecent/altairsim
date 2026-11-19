@@ -68,6 +68,7 @@ public:
     void deserialize(StateReader& r) override;
 
     uint64_t rxBytes() const override;
+    uint64_t emptyPolls() const override;
 
     std::vector<std::string> drainLog() override;
 

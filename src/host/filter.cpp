@@ -35,7 +35,7 @@ size_t FilterStream::read(uint8_t* buf, size_t n) {
 }
 
 // Outbound: the guest's bytes, on their way to the endpoint.
-size_t FilterStream::write(const uint8_t* buf, size_t n) {
+size_t FilterStream::doWrite(const uint8_t* buf, size_t n) {
     // Nothing to do? Don't copy. The overwhelmingly common case is a guest
     // printing 7-bit ASCII with its own CRLFs, and it should cost nothing.
     if (!s_->strip7out && !s_->crlf && s_->bell) return inner_->write(buf, n);

@@ -634,14 +634,22 @@ SIMCLK: clock_hz must be 0..100000000
 
 ### `idle`: the processor rests at a prompt
 
-At a prompt, a guest only reads the serial status register again and again, and waits for a key.
+At a prompt, a guest only reads a serial status register again and again, and waits for a byte.
 At full speed, that keeps one core of your computer busy. **`idle` lets the processor rest while
-the guest reads an empty keyboard.** It is on by default. The busy core then uses a few percent.
-**The guest cannot see the difference**, because the processor starts again as soon as a byte
+the guest reads an empty line.** It is on by default. The busy core then uses a few percent.
+**The guest cannot see the difference**, because the processor starts again when a byte
 arrives, before the next read. An XMODEM transfer is correct with `idle` on.
+
+The processor rests when the guest waits on any serial line, on any port. The guest's console
+line can connect to the console, a terminal window, a socket or a serial port. The
+processor does not rest while a byte goes out or comes in on a line. Because of this, a transfer
+on any line runs at full speed. When the console reads from a pipe or a file, the processor
+never rests.
 
 `idle` has an effect only at full speed. When you set a crystal with `clock_hz`, the program
 already rests to keep the crystal's time, and the guest's time at a prompt stays correct.
+
+To stop the rest, type `SET cpu0 idle=off`. Do this if a guest runs slower with `idle` on.
 
 ### `8080`: the MITS 88-CPU
 

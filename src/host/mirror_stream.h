@@ -152,7 +152,7 @@ public:
     //            Nothing is echoed to the client here; the guest echoes what it reads.
     //   write -> forward to inner_, then COPY the accepted bytes to the client's queue.
     size_t read(uint8_t* buf, size_t n) override;
-    size_t write(const uint8_t* buf, size_t n) override;
+    size_t doWrite(const uint8_t* buf, size_t n) override;
 
     // readable() is true when the guest has input from EITHER source. The inject buffer
     // is checked first so a human mid-take-over does not spin the inner's empty-poll

@@ -70,10 +70,13 @@ bool FwiiBoard::decodes(const BusCycle& c) const {
 uint8_t FwiiBoard::read(const BusCycle& c) {
     if (c.type == Cycle::MemRead) return vram_[c.addr - base_];
     if ((c.port() & 1) == 0) {
-        // A guest waiting for a key polls here. The line counts each time it is found
-        // empty, and that count is how the run loop tells a prompt from a busy guest. The
-        // key still comes in through pump(): this only asks.
-        if (!kbHave_) kb_->readable();
+        // A guest waiting for a key polls here. With no key latched it is waiting
+        // (Board::emptyPolls, #948); the line hears of it too, for the console's own count
+        // (#861). The key still comes in through pump(): this only asks.
+        if (!kbHave_) {
+            ++kbEmptyPolls_;
+            kb_->readable();
+        }
         return statusByte();
     }
 

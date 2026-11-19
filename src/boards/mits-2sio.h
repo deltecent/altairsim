@@ -62,6 +62,8 @@ public:
     // Both ports, because either can carry the transfer -- a byte on any line is a byte
     // arriving. (Board::rxBytes; the section sums its channels.)
     uint64_t rxBytes() const override { return sio_.rxBytes(); }
+    // The guest found no byte on a status read (Board::emptyPolls, #948).
+    uint64_t emptyPolls() const override { return sio_.emptyPolls(); }
 
     // What the chips want said out loud -- today, only "the host cannot do that baud
     // rate". The section returns the raw messages; the card prefixes its id.

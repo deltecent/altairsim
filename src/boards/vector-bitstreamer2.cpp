@@ -214,6 +214,10 @@ void Bitstreamer2Board::deserialize(StateReader& r) {
     refresh();
 }
 
+uint64_t Bitstreamer2Board::emptyPolls() const {
+    return a_.uart.emptyPolls() + b_.uart.emptyPolls() + c_.uart.emptyPolls();
+}
+
 uint64_t Bitstreamer2Board::rxBytes() const {
     return a_.uart.rxBytes() + b_.uart.rxBytes() + c_.uart.rxBytes();
 }

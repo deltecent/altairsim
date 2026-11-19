@@ -75,6 +75,8 @@ public:
 
     // One serial line -- a transfer arriving on it is traffic. (Board::rxBytes.)
     uint64_t rxBytes() const override { return u_.rxBytes(); }
+    // The guest found no byte on a status read, on any line (Board::emptyPolls, #948).
+    uint64_t emptyPolls() const override { return u_.emptyPolls(); }
 
     // What the far end said when the card tried to program its frame into a real port.
     std::vector<std::string> drainLog() override { return u_.drainLog(); }

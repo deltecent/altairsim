@@ -162,6 +162,12 @@ std::vector<std::string> Sio2Port::drainLog() {
     return out;  // the card prefixes each with its id -- the section has none
 }
 
+uint64_t Sio2Port::emptyPolls() const {
+    uint64_t n = 0;
+    for (const auto& ch : chans_) n += ch.emptyPolls();
+    return n;
+}
+
 uint64_t Sio2Port::rxBytes() const {
     uint64_t n = 0;
     for (const auto& ch : chans_) n += ch.rxBytes();

@@ -31,7 +31,7 @@ size_t TcpStream::read(uint8_t* buf, size_t n) {
 // with no modem attached transmits into the air quite happily. Buffering them for a
 // client who has not called yet would mean the first telnet session opens with a
 // faceful of output the guest printed an hour ago.
-size_t TcpStream::write(const uint8_t* buf, size_t n) {
+size_t TcpStream::doWrite(const uint8_t* buf, size_t n) {
     if (!conn_ || conn_->closed()) return n;
     tx_.append((const char*)buf, n);
     flush();

@@ -47,7 +47,7 @@ public:
     std::string describe() const override { return spec_; }
 
     size_t read(uint8_t* buf, size_t n) override;
-    size_t write(const uint8_t* buf, size_t n) override;
+    size_t doWrite(const uint8_t* buf, size_t n) override;
 
     // Readability is about DECODED data, not raw bytes: the far end may have sent
     // nothing but a negotiation, which the codec eats whole in pump().
