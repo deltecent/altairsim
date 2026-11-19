@@ -10,6 +10,7 @@ that are easier to read as separate files.
 |---|---|
 | `embed_machines.cmake` | Reads each `.toml` in [`machines/`](../machines/) and writes `machines_generated.cpp`. The built-in machines are compiled into the program from that file. |
 | `embed_roms.cmake` | Reads each folder in [`roms/`](../roms/) and writes `roms_generated.cpp`. The built-in ROMs are compiled into the program from that file. |
+| `input_list.cmake` | Writes the list of input file names for each embed step, and writes it only when the list changes. Each embed step depends on that list. When you delete a file from `machines/` or a folder from `roms/`, the list changes, and the next build runs the embed step again. |
 | `lint_platform.cmake` | Searches the source for operating-system macros and headers outside `src/platform/`. The build fails if it finds one. |
 | `version.h.in` | The template for the generated `version.h`. The version number is set in `CMakeLists.txt`. |
 
