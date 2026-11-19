@@ -89,7 +89,14 @@ public:
 
     // What the operator typed to make this: "console", "socket:2323", "null".
     // Reported by SHOW; round-tripped by CONFIG SAVE.
-    virtual std::string describe() const = 0;
+    //
+    // NOT virtual, like write(): a stream says what it was OPENED with (doDescribe), and
+    // showAs() can put the typed text in front of that. A path in an endpoint is opened
+    // against the machine file's folder, so the stream is given "out:sub/o.txt" for a typed
+    // "out:o.txt"; openEndpoint() calls showAs("out:o.txt") so that SHOW and CONFIG SAVE give
+    // back what was typed, as MOUNT does for a disk (issue #953).
+    std::string describe() const { return shownAs_.empty() ? doDescribe() : shownAs_; }
+    void showAs(std::string typed) { shownAs_ = std::move(typed); }
 
     // NON-BLOCKING, both of them. read() returns 0 when there is nothing there,
     // which is not an error and not an end of file -- it is a quiet line.
@@ -234,6 +241,9 @@ protected:
     // What write() above calls. Every stream implements it.
     virtual size_t doWrite(const uint8_t* buf, size_t n) = 0;
 
+    // What describe() above calls when showAs() was not: the spec the stream was opened with.
+    virtual std::string doDescribe() const = 0;
+
     // Kept by the owing stream: raised when a caller answers, lowered when the banner
     // goes out or the caller leaves first. Single-threaded, like every stream -- only
     // the run loop pumps and greets (DESIGN.md: no second thread touches the Machine).
@@ -243,7 +253,8 @@ protected:
     inline static uint64_t titleEpoch_ = 0;
 
 private:
-    uint64_t txBytes_ = 0;
+    uint64_t    txBytes_ = 0;
+    std::string shownAs_;  // set by showAs(); describe() prefers it
 };
 
 // ---------------------------------------------------------------------------
@@ -258,7 +269,7 @@ private:
 // ---------------------------------------------------------------------------
 class NullStream : public ByteStream {
 public:
-    std::string describe() const override { return "null"; }
+    std::string doDescribe() const override { return "null"; }
     size_t read(uint8_t*, size_t) override { return 0; }
     size_t doWrite(const uint8_t*, size_t n) override { return n; }  // consumed, gone
     bool readable() const override { return false; }
@@ -277,7 +288,7 @@ public:
 // exactly what it is for.
 class LoopbackStream : public ByteStream {
 public:
-    std::string describe() const override { return "loopback"; }
+    std::string doDescribe() const override { return "loopback"; }
     size_t read(uint8_t* buf, size_t n) override;
     size_t doWrite(const uint8_t* buf, size_t n) override;
     bool readable() const override { return !q_.empty(); }
@@ -309,7 +320,7 @@ private:
 // timing anywhere in the picture.
 class ScriptedStream : public ByteStream {
 public:
-    std::string describe() const override { return "scripted"; }
+    std::string doDescribe() const override { return "scripted"; }
     size_t read(uint8_t* buf, size_t n) override;
     size_t doWrite(const uint8_t* buf, size_t n) override;
 
@@ -364,7 +375,7 @@ public:
     explicit SharedStream(std::shared_ptr<ByteStream> line) : line_(std::move(line)) {}
     ByteStream* inner() { return line_.get(); }
 
-    std::string describe() const override { return line_->describe(); }
+    std::string doDescribe() const override { return line_->describe(); }
     size_t read(uint8_t* buf, size_t n) override { return line_->read(buf, n); }
     size_t doWrite(const uint8_t* buf, size_t n) override { return line_->write(buf, n); }
     bool readable() const override { return line_->readable(); }

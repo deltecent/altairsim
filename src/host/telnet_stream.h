@@ -44,7 +44,7 @@ public:
     // the client, so we ask the far end to echo).
     TelnetStream(std::unique_ptr<TcpStream> inner, std::string spec, bool server);
 
-    std::string describe() const override { return spec_; }
+    std::string doDescribe() const override { return spec_; }
 
     size_t read(uint8_t* buf, size_t n) override;
     size_t doWrite(const uint8_t* buf, size_t n) override;

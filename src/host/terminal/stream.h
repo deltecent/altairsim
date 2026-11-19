@@ -51,7 +51,7 @@ public:
                    std::unique_ptr<TerminalEmulator> emu);
     ~TerminalStream() override;
 
-    std::string describe() const override { return spec_; }
+    std::string doDescribe() const override { return spec_; }
 
     // The name of the unit this terminal is on (Machine::pump, issue #940). It names the
     // window in the host title bar and, with `[terminal] titlebar`, on a bar at the top.

@@ -80,7 +80,7 @@ public:
     ~TeeStream() override;
 
     // The tap is `inner|FILE?opts`, so SHOW / CONFIG SAVE round-trip it.
-    std::string describe() const override { return inner_->describe() + "|" + fileSpec_; }
+    std::string doDescribe() const override { return inner_->describe() + "|" + fileSpec_; }
 
     // The data path -- the ONLY bytes logged are real transfers, never empty polls:
     //   write -> log a TX event, then forward.

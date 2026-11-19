@@ -852,14 +852,12 @@ bool Io4Board::connect(const std::string& unit, const std::string& ep, std::stri
         err = "no endpoint resolver installed";
         return false;
     }
-    // A machine-file in:/out: PATH is relative to the machine file; rebase the copy the
-    // resolver opens. describe() still echoes the operator's original spec.
+    // A machine-file in:/out: PATH is relative to the machine file. openEndpoint() rebases
+    // the copy it opens, and the line still describes itself as typed (issue #953).
     std::vector<std::string> paths;
-    std::string              spec = rebaseEndpointPaths(ep, [&](const std::string& pth) {
-        paths.push_back(pth);
-        return resolvePath(pth);
-    });
-    auto s = g_resolver(spec, err);
+    auto s = openEndpoint(
+        g_resolver, ep, [this](const std::string& pth) { return resolvePath(pth); }, err,
+        &paths);
     if (!s) {
         for (const std::string& pth : paths) err += pathNote(pth);
         return false;

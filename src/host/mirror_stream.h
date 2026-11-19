@@ -145,7 +145,7 @@ public:
                  std::unique_ptr<MirrorSink> sink, bool readOnly);
 
     // The mirror is `inner|socket:PORT[?ro]`, so SHOW / CONFIG SAVE round-trip it.
-    std::string describe() const override { return inner_->describe() + "|" + sinkSpec_; }
+    std::string doDescribe() const override { return inner_->describe() + "|" + sinkSpec_; }
 
     // The data path:
     //   read  -> INJECTED client bytes first (a human taking over), else inner_.read().

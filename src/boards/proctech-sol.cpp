@@ -912,15 +912,12 @@ bool SolBoard::connect(const std::string& unit, const std::string& endpoint,
         err = "no endpoint resolver installed";
         return false;
     }
-    // A machine-file in:/out: PATH is relative to the machine file; rebase the copy the
-    // resolver opens (rebaseEndpointPaths knows the grammar). describe() then echoes the
-    // resolved path, which reloads idempotently. Nothing else in the grammar is a path.
+    // A machine-file in:/out: PATH is relative to the machine file. openEndpoint() rebases
+    // the copy it opens, and the line still describes itself as typed (issue #953).
     std::vector<std::string> paths;
-    std::string              spec = rebaseEndpointPaths(endpoint, [&](const std::string& p) {
-        paths.push_back(p);
-        return resolvePath(p);
-    });
-    auto s = g_resolver(spec, err);
+    auto s = openEndpoint(
+        g_resolver, endpoint, [this](const std::string& p) { return resolvePath(p); }, err,
+        &paths);
     if (!s) {
         for (const std::string& p : paths) err += pathNote(p);
         return false;

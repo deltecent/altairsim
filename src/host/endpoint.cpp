@@ -285,13 +285,33 @@ std::string rebaseEndpointPaths(const std::string&                              
     return rebaseCanonical(canonicalEndpoint(spec), rebase);
 }
 
+std::unique_ptr<ByteStream> openEndpoint(
+    const std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)>& open,
+    const std::string& ep, const std::function<std::string(const std::string&)>& rebase,
+    std::string& err, std::vector<std::string>* paths) {
+    if (!open) {
+        err = "no endpoint resolver installed";
+        return nullptr;
+    }
+    const std::string typed = canonicalEndpoint(ep);
+    const std::string spec  = !rebase ? typed : rebaseCanonical(typed, [&](const std::string& p) {
+        if (paths) paths->push_back(p);
+        return rebase(p);
+    });
+    auto s = open(spec, err);
+    // Only when a PATH moved. A spec with no PATH, or none that moved, is opened as typed and
+    // the stream already describes it so.
+    if (s && spec != typed) s->showAs(typed);
+    return s;
+}
+
 std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)> rebasingResolver(
     std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)> base,
     std::function<std::string(const std::string&)>                              rebase) {
     if (!rebase) return base;
     return [baseFn = std::move(base), rebaseFn = std::move(rebase)](const std::string& spec,
                                                                     std::string&       err) {
-        return baseFn(rebaseEndpointPaths(spec, rebaseFn), err);
+        return openEndpoint(baseFn, spec, rebaseFn, err);
     };
 }
 

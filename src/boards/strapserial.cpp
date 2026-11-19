@@ -438,15 +438,12 @@ bool StrapSerialBoard::connect(const std::string& unit, const std::string& endpo
         err = "no endpoint resolver installed";
         return false;
     }
-    // A machine-file in:/out: PATH is relative to the machine file; rebase the copy the
-    // resolver opens (rebaseEndpointPaths knows the grammar). describe() still echoes the
-    // operator's original spec, so we rebase only the resolver's copy.
+    // A machine-file in:/out: PATH is relative to the machine file. openEndpoint() rebases
+    // the copy it opens, and the line still describes itself as typed (issue #953).
     std::vector<std::string> paths;
-    std::string              spec = rebaseEndpointPaths(endpoint, [&](const std::string& pth) {
-        paths.push_back(pth);
-        return resolvePath(pth);
-    });
-    auto s = g_resolver(spec, err);
+    auto s = openEndpoint(
+        g_resolver, endpoint, [this](const std::string& pth) { return resolvePath(pth); }, err,
+        &paths);
     if (!s) {
         for (const std::string& pth : paths) err += pathNote(pth);
         return false;

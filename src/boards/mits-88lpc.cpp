@@ -206,17 +206,13 @@ bool LpcBoard::applyEndpoint(const std::string& endpoint, std::string& err) {
 
     // An in:/out: PATH written in a machine file is relative to that file, and typed at
     // the prompt is relative to the shell -- the same rule every path in the sim follows.
-    // rebaseEndpointPaths() is the one place that knows the grammar; we rebase only the
-    // copy handed to the resolver and REMEMBER the original spec, so a relative path does
-    // not double-rebase when CONFIG SAVE writes it back and a reload rebases again. The
-    // lambda also collects each PATH, so a failed open can name the rule that applied.
+    // openEndpoint() rebases only the copy it opens, and the spec as written is kept below,
+    // so a relative path does not double-rebase when CONFIG SAVE writes it back and a
+    // reload rebases again. `paths` lets a failed open name the rule that applied.
     std::vector<std::string> paths;
-    std::string              spec = rebaseEndpointPaths(endpoint, [&](const std::string& p) {
-        paths.push_back(p);
-        return resolvePath(p);
-    });
-
-    auto s = g_resolver(spec, err);
+    auto s = openEndpoint(
+        g_resolver, endpoint, [this](const std::string& p) { return resolvePath(p); }, err,
+        &paths);
     if (!s) {
         for (const std::string& p : paths) err += pathNote(p);
         return false;

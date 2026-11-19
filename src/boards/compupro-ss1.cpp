@@ -559,15 +559,13 @@ bool Ss1Board::connect(const std::string& unit, const std::string& ep, std::stri
         err = "no endpoint resolver installed";
         return false;
     }
-    // A machine-file in:/out: PATH is relative to the machine file; rebase the copy the
-    // resolver opens (rebaseEndpointPaths knows the grammar). The chip echoes describe()
-    // for its `connect` property, so SHOW/CONFIG SAVE report the resolved path.
+    // A machine-file in:/out: PATH is relative to the machine file. openEndpoint() rebases
+    // the copy it opens. The chip echoes describe() for its `connect` property, and the
+    // line describes itself as typed (issue #953).
     std::vector<std::string> paths;
-    std::string spec = rebaseEndpointPaths(ep, [&](const std::string& p) {
-        paths.push_back(p);
-        return resolvePath(p);
-    });
-    auto s = g_resolver(spec, err);
+    auto s = openEndpoint(
+        g_resolver, ep, [this](const std::string& p) { return resolvePath(p); }, err,
+        &paths);
     if (!s) {
         for (const std::string& p : paths) err += pathNote(p);
         return false;

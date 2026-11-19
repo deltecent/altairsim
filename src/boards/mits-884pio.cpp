@@ -248,17 +248,13 @@ bool Pio4Board::applyEndpoint(const std::string& unit, const std::string& endpoi
         return false;
     }
 
-    // An in:/out: PATH is rebased against the config dir via rebaseEndpointPaths()
-    // (the one place that knows the grammar); the ORIGINAL spec is remembered below so
-    // a relative path does not double-rebase on CONFIG SAVE + reload, and the lambda
-    // collects each PATH so a failed open can name the rule. Same rule the C700 follows.
+    // An in:/out: PATH is rebased against the config dir by openEndpoint(); the ORIGINAL
+    // spec is remembered below so a relative path does not double-rebase on CONFIG SAVE +
+    // reload, and `paths` lets a failed open name the rule. Same rule the C700 follows.
     std::vector<std::string> paths;
-    std::string              spec = rebaseEndpointPaths(endpoint, [&](const std::string& p) {
-        paths.push_back(p);
-        return resolvePath(p);
-    });
-
-    auto s = g_resolver(spec, err);
+    auto s = openEndpoint(
+        g_resolver, endpoint, [this](const std::string& p) { return resolvePath(p); }, err,
+        &paths);
     if (!s) {
         for (const std::string& p : paths) err += pathNote(p);
         return false;

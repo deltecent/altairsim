@@ -282,15 +282,13 @@ bool Vdb8024Board::connect(const std::string& unit, const std::string& endpoint,
         err = "no endpoint resolver installed";
         return false;
     }
-    // A machine-file in:/out: PATH is relative to the machine file; rebase the copy the
-    // resolver opens (rebaseEndpointPaths knows the grammar). The `connect` unit property
+    // A machine-file in:/out: PATH is relative to the machine file; openEndpoint() rebases
+    // the copy it opens and keeps the spec as typed. The `connect` unit property
     // routes here too, so both the CONNECT command and a declarative connect are covered.
     std::vector<std::string> paths;
-    std::string              spec = rebaseEndpointPaths(endpoint, [&](const std::string& p) {
-        paths.push_back(p);
-        return resolvePath(p);
-    });
-    auto s = g_resolver(spec, err);
+    auto s = openEndpoint(
+        g_resolver, endpoint, [this](const std::string& p) { return resolvePath(p); }, err,
+        &paths);
     if (!s) {
         for (const std::string& p : paths) err += pathNote(p);
         return false;

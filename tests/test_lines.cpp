@@ -32,7 +32,7 @@ namespace {
 // ---------------------------------------------------------------------------
 class PinStream : public ByteStream {
 public:
-    std::string describe() const override { return "pins"; }
+    std::string doDescribe() const override { return "pins"; }
 
     size_t read(uint8_t* buf, size_t n) override {
         size_t k = in_.size() < n ? in_.size() : n;
