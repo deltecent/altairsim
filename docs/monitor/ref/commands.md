@@ -910,11 +910,12 @@ DISCONNECT takes the cable out again; SHOW CONSOLE says which unit holds it.
 CONSOLE [<k>=<v>...]
 ```
 A shortcut for SET CONSOLE. CONSOLE k=v is SET CONSOLE k=v, and CONSOLE alone
-is SHOW CONSOLE. The help for SET CONSOLE follows.
+is SHOW CONSOLE. CONSOLE takes more than one setting. SET CONSOLE takes one.
+The help for SET CONSOLE follows.
 
 ```
 CONSOLE                        ; the settings, and which board unit holds the console
-CONSOLE upper=on strip7out=on  ; the same as SET CONSOLE upper=on strip7out=on
+CONSOLE upper=on strip7out=on  ; two settings in one command
 ```
 
 The console is the window you started altairsim in. These settings shape how
@@ -951,7 +952,8 @@ disable it -- and that is why it must not be a key the guest needs.
 
 ```
 SET CONSOLE stop=1D                ; make it ^]  (hex: it is a byte on the wire; attn= also works)
-SET CONSOLE upper=on strip7out=on  ; two at once, the classic MITS BASIC pair
+SET CONSOLE upper=on               ; fold typed input to uppercase
+SET CONSOLE strip7out=on           ; with upper=on, the classic MITS BASIC pair
 SET CONSOLE DEBUG=dbg.log          ; the diagnostic channels print to dbg.log
 ```
 
@@ -1175,7 +1177,7 @@ SET BUS UNCLAIMED=WARN     ; warn on a cycle no board answered
 #### SET CONSOLE
 
 ```
-SET CONSOLE <k>=<v>...
+SET CONSOLE <k>=<v>
 ```
 The console is the window you started altairsim in. These settings shape how
 bytes cross it. SHOW CONSOLE lists them with their values, and which board unit
@@ -1211,7 +1213,8 @@ disable it -- and that is why it must not be a key the guest needs.
 
 ```
 SET CONSOLE stop=1D                ; make it ^]  (hex: it is a byte on the wire; attn= also works)
-SET CONSOLE upper=on strip7out=on  ; two at once, the classic MITS BASIC pair
+SET CONSOLE upper=on               ; fold typed input to uppercase
+SET CONSOLE strip7out=on           ; with upper=on, the classic MITS BASIC pair
 SET CONSOLE DEBUG=dbg.log          ; the diagnostic channels print to dbg.log
 ```
 

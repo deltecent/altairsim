@@ -1002,20 +1002,22 @@ public:
     // ---- WHERE A RELATIVE PATH IS RELATIVE TO (core/paths.h) ------------------
     //
     // A path written INSIDE a machine file is relative to that file; a path TYPED
-    // at the prompt is relative to the shell. A board cannot tell the two apart --
-    // `MOUNT` is one verb and it arrives by both roads -- so it does not try. It is
-    // TOLD which window it is in, and the window is the only thing that differs.
+    // at the prompt is relative to the machine's own folder (Machine::dir), so
+    // `MOUNT scratch.dsk` finds the disk beside the machine file. A board cannot tell
+    // the two apart -- `MOUNT` is one verb and it arrives by both roads -- so it does
+    // not try. It is TOLD which folder it is in, and the folder is the only thing
+    // that differs.
     //
-    // The TOML loader sets this while it is applying a file, and the monitor sets
-    // it while it is running that file's `startup` list. It is EMPTY the rest of
-    // the time, and empty means "the shell's working directory", which is what the
-    // operator standing at the prompt meant. So resolvePath() is the identity
-    // function for everything a human types, and that is the point of it.
+    // The TOML loader sets this while it is applying a file, the monitor sets it
+    // while it is running a command file, and the monitor stamps Machine::dir on
+    // every board before each typed command. Empty means "the shell's working
+    // directory": a machine with no file behind it.
     //
     // Boards that hold a path call resolvePath() when they OPEN one. What they
     // STORE is what the operator wrote, because that is what SHOW must print and
     // what CONFIG SAVE must write back -- a machine file that saved out a path
     // re-based against some other file's directory would not load from its own.
+    // An endpoint follows the same rule through openEndpoint() (host/endpoint.h).
     void setConfigDir(const std::string& d) { configDir_ = d; }
     const std::string& configDir() const { return configDir_; }
     std::string resolvePath(const std::string& p) const { return resolveFrom(configDir_, p); }

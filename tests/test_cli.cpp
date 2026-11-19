@@ -25,6 +25,7 @@
 #include "host/speaker.h"
 #include "host/stream.h"
 #include "host/terminal/stream.h"
+#include "platform/pty.h"
 #include "platform/socket.h"
 #include "test.h"
 
@@ -715,6 +716,143 @@ void test_cli() {
             for (const auto& u : sio->units())
                 if (u.name == "a") loop = u.state == "loopback";
         CHECK(loop, "CONNECT sio0:a LoopBack connects the loopback");
+    }
+
+    SECTION("CONNECT takes one endpoint word, quoted or not (#952)");
+    {
+        namespace fs = std::filesystem;
+        Machine mq;
+        Monitor monq(mq);
+        std::ostringstream sq;
+        monq.exec("BOARDS ADD 2sio sio0", sq);
+        Board* sio = mq.find("sio0");
+        auto unitState = [&](const std::string& unit) {
+            if (sio)
+                for (const auto& u : sio->units())
+                    if (u.name == unit) return u.state;
+            return std::string("?");
+        };
+        auto ex = [&](const std::string& cmd) {
+            std::ostringstream o;
+            monq.exec(cmd, o);
+            return o.str();
+        };
+
+        // The tokenizer keeps the opening quote of a quoted word; CONNECT must drop it.
+        CHECK(ex("CONNECT sio0:b \"loopback\"") == "sio0:b: connected to loopback\n",
+              "CONNECT sio0:b \"loopback\" connects the loopback");
+        CHECK(unitState("b") == "loopback", "and the unit says loopback, with no quote");
+
+        // A path with a space, in quotes, is one endpoint and opens that file.
+        const fs::path dir = fs::temp_directory_path() / "altairsim-952 dir";
+        fs::remove_all(dir);
+        fs::create_directories(dir);
+        const std::string path = (dir / "log file.txt").generic_string();
+        const std::string r    = ex("CONNECT sio0:b \"out:" + path + "\"");
+        CHECK(r == "sio0:b: connected to out:" + path + "\n",
+              "a quoted out: path with a space connects to that path");
+        CHECK(fs::exists(dir / "log file.txt"), "and opens the file whose name has the space");
+        CHECK(!fs::exists(dir / "log"), "and not a file named after the first word");
+        monq.exec("CONNECT sio0:b null", sq);
+
+        // An unquoted path with a space is two words: refused, and nothing is connected.
+        // (A folder with no space in its name, so the split falls where this test says.)
+        const fs::path plain = fs::temp_directory_path() / "altairsim-952";
+        fs::remove_all(plain);
+        fs::create_directories(plain);
+        monq.exec("CONNECT sio0:b loopback", sq);
+        const std::string bad = ex("CONNECT sio0:b out:" + (plain / "sp").generic_string() +
+                                   " dir/log.txt");
+        CHECK(bad.find("unexpected 'dir/log.txt'") != std::string::npos,
+              "a second word is refused and named");
+        CHECK(bad.find("goes in quotes") != std::string::npos, "and the error says to quote it");
+        CHECK(!fs::exists(plain / "sp"), "no file is opened for the first word");
+        CHECK(unitState("b") == "loopback", "and the unit keeps its old endpoint");
+        fs::remove_all(dir);
+        fs::remove_all(plain);
+    }
+
+    SECTION("a connected line reports the endpoint as typed, not the path it opened (#953)");
+    {
+        // A PATH in an endpoint opens against the machine's folder. The line was given the
+        // rebased spec, and SHOW and CONFIG SAVE printed it: `out:o.txt` came back as
+        // `out:<folder>/o.txt`, and a saved machine file was nailed to that folder.
+        namespace fs = std::filesystem;
+        const fs::path dir = fs::temp_directory_path() / "altairsim-953";
+        fs::remove_all(dir);
+        fs::create_directories(dir);
+        { std::ofstream(dir / "i.txt") << "x"; }
+        const std::string where  = dir.generic_string();
+        const std::string native = dir.string();  // with backslashes on Windows
+        auto noFolder = [&](const std::string& t) {
+            return t.find(where) == std::string::npos && t.find(native) == std::string::npos;
+        };
+
+        Machine mp;
+        Monitor monp(mp);
+        mp.dir = where;  // as a machine loaded from a file in that folder has
+        std::ostringstream sp;
+        monp.exec("BOARDS ADD 2sio sio0", sp);  // the 6850 pair: Sio2Port opens the line
+        monp.exec("BOARDS ADD sio sio1", sp);   // a serial board: SerialBoardBase opens it
+        auto state = [](Machine& mach, const std::string& id, const std::string& unit) {
+            if (Board* b = mach.find(id))
+                for (const auto& u : b->units())
+                    if (u.name == unit) return u.state;
+            return std::string("?");
+        };
+        monp.exec("CONNECT sio0:a out:o.txt", sp);
+        monp.exec("CONNECT sio0:b in:i.txt", sp);
+        monp.exec("CONNECT sio1:tty \"in:i.txt|cap.log\"", sp);
+        CHECK(fs::exists(dir / "o.txt"), "out:o.txt opens o.txt in the machine's folder");
+        CHECK(fs::exists(dir / "cap.log"), "and the tee's log goes there too");
+        CHECK(state(mp, "sio0", "a") == "out:o.txt", "the 2SIO's out: unit says out:o.txt");
+        CHECK(state(mp, "sio0", "b") == "in:i.txt", "the 2SIO's in: unit says in:i.txt");
+        CHECK(state(mp, "sio1", "tty") == "in:i.txt|cap.log",
+              "the SIO's tee says in:i.txt|cap.log");
+
+        std::ostringstream show;
+        monp.exec("SHOW sio0", show);
+        CHECK(show.str().find("out:o.txt") != std::string::npos &&
+                  noFolder(show.str()),
+              "SHOW prints the path as typed, without the folder");
+
+        const std::string saved = saveTomlText(mp);
+        CHECK(saved.find("\"out:o.txt\"") != std::string::npos &&
+                  saved.find("\"in:i.txt\"") != std::string::npos &&
+                  saved.find("\"in:i.txt|cap.log\"") != std::string::npos,
+              "CONFIG SAVE writes each endpoint as typed");
+        CHECK(noFolder(saved), "and never the machine's folder");
+
+        // The saved file loads from its own folder and opens the same files there.
+        monp.exec("CONNECT sio0:a null", sp);
+        monp.exec("CONNECT sio0:b null", sp);
+        monp.exec("CONNECT sio1:tty null", sp);
+        fs::remove(dir / "o.txt");
+        { std::ofstream(dir / "x.toml") << saved; }
+        {
+            // In a block: `ml` holds o.txt and i.txt open, and Windows cannot delete an
+            // open file, so the machine must be gone before the folder is removed.
+            Machine     ml;
+            std::string err;
+            CHECK(loadToml((dir / "x.toml").string(), ml, err), "the saved machine file loads");
+            CHECK(fs::exists(dir / "o.txt"), "and opens o.txt in its own folder again");
+            CHECK(state(ml, "sio0", "a") == "out:o.txt" &&
+                      state(ml, "sio1", "tty") == "in:i.txt|cap.log",
+                  "and the loaded lines still say what was typed");
+            CHECK(noFolder(saveTomlText(ml)), "and saving it again does not add the folder");
+        }
+
+        // pty:LINK names a path too: the link is made in the machine's folder.
+        if (platform::havePty()) {
+            std::ostringstream pr;
+            monp.exec("CONNECT sio0:a pty:con", pr);
+            CHECK(fs::is_symlink(dir / "con"), "pty:con makes the link in the machine's folder");
+            CHECK(state(mp, "sio0", "a") == "pty:con", "and the unit says pty:con");
+            monp.exec("CONNECT sio0:a null", sp);
+        }
+        std::error_code ec;
+        fs::remove_all(dir, ec);
+        CHECK(!ec, ("the test folder is removed: " + ec.message()).c_str());
     }
 
     SECTION("SHOW <id>:<unit> -- one unit, and a serial line's backlog (#934)");

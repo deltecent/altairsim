@@ -687,10 +687,11 @@ static const std::vector<CommandDef> kCommands = {
     // CPU because you asked to look at a setting is a trap.
     {"CONSOLE", true, nullptr, "CONSOLE [<k>=<v>...]",  // CONS
      "A shortcut for SET CONSOLE. CONSOLE k=v is SET CONSOLE k=v, and CONSOLE alone\n"
-     "is SHOW CONSOLE. The help for SET CONSOLE follows.\n"
+     "is SHOW CONSOLE. CONSOLE takes more than one setting. SET CONSOLE takes one.\n"
+     "The help for SET CONSOLE follows.\n"
      "\n"
      "  CONSOLE                        ; the settings, and which board unit holds the console\n"
-     "  CONSOLE upper=on strip7out=on  ; the same as SET CONSOLE upper=on strip7out=on\n"
+     "  CONSOLE upper=on strip7out=on  ; two settings in one command\n"
      "\n"
      "{topic:SET CONSOLE}"},
     // `{endpoints}` is expanded by the HELP printer from endpointHelp(), which is the
@@ -926,7 +927,7 @@ const std::vector<CommandDef>& commands() { return kCommands; }
 // the primary spelling of the console settings (SET is the one settings grammar, and
 // --set takes SET's text), so the text is here and CONSOLE's help pulls it in.
 static const std::vector<HelpTopic> kHelpTopics = {
-    {"SET", "CONSOLE", "SET CONSOLE <k>=<v>...",
+    {"SET", "CONSOLE", "SET CONSOLE <k>=<v>",
      "The console is the window you started altairsim in. These settings shape how\n"
      "bytes cross it. SHOW CONSOLE lists them with their values, and which board unit\n"
      "holds the console. CONSOLE is a shortcut for both.\n"
@@ -956,7 +957,8 @@ static const std::vector<HelpTopic> kHelpTopics = {
      "disable it -- and that is why it must not be a key the guest needs.\n"
      "\n"
      "  SET CONSOLE stop=1D                ; make it ^]  (hex: it is a byte on the wire; attn= also works)\n"
-     "  SET CONSOLE upper=on strip7out=on  ; two at once, the classic MITS BASIC pair\n"
+     "  SET CONSOLE upper=on               ; fold typed input to uppercase\n"
+     "  SET CONSOLE strip7out=on           ; with upper=on, the classic MITS BASIC pair\n"
      "  SET CONSOLE DEBUG=dbg.log          ; the diagnostic channels print to dbg.log\n"
      "\n"
      "This does NOT choose which board is the console -- CONNECT does that\n"

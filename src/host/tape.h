@@ -136,7 +136,7 @@ public:
     explicit TapeStream(TapeImage& t, Mode m = Mode::Play, uint64_t nsPerByte = 0,
                         std::function<uint64_t()> hostNs = {});
 
-    std::string describe() const override { return tape_.describe(); }
+    std::string doDescribe() const override { return tape_.describe(); }
     size_t read(uint8_t* buf, size_t n) override;
     size_t doWrite(const uint8_t* buf, size_t n) override;
 

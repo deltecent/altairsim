@@ -208,11 +208,7 @@ bool UioBoard::connect(const std::string& unit, const std::string& endpoint, std
         // The Sio2Port has no config dir; the board is the only thing that knows one, so a
         // machine-file in:/out: PATH is rebased here before the resolver opens it.
         std::vector<std::string> paths;
-        std::string              spec = rebaseEndpointPaths(endpoint, [&](const std::string& p) {
-            paths.push_back(p);
-            return resolvePath(p);
-        });
-        if (!serial_.connect(lowerAscii(unit), spec, err)) {
+        if (!serial_.connect(lowerAscii(unit), endpoint, err, &paths)) {
             for (const std::string& p : paths) err += pathNote(p);
             return false;
         }

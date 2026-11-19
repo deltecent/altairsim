@@ -195,17 +195,14 @@ std::vector<Property> Sio2Port::unitProperties(const std::string& unit) {
     return {};
 }
 
-bool Sio2Port::connect(const std::string& unit, const std::string& endpoint, std::string& err) {
+bool Sio2Port::connect(const std::string& unit, const std::string& endpoint, std::string& err,
+                       std::vector<std::string>* paths) {
     Mc6850* ch = channel(unit);
     if (!ch) {
         err = "no serial unit '" + unit + "'";
         return false;
     }
-    if (!g_resolver) {
-        err = "no endpoint resolver installed";
-        return false;
-    }
-    auto s = g_resolver(endpoint, err);
+    auto s = openEndpoint(g_resolver, endpoint, rebase_, err, paths);
     if (!s) return false;
     ch->connect(std::move(s));
     refresh();  // a new line, and it may already have something waiting on it

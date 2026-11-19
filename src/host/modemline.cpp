@@ -9,7 +9,7 @@ ModemLine::ModemLine(std::string dialHost, uint16_t dialPort, uint16_t answerPor
 // SHOW / CONFIG SAVE round-trip. Only the modes that are actually configured are
 // named, so `modem:answer=2323` and `modem:dial=bbs.example:23,answer=2323` both
 // echo exactly what the operator gave.
-std::string ModemLine::describe() const {
+std::string ModemLine::doDescribe() const {
     std::string s = "modem:";
     bool        first = true;
     if (dialConfigured()) {

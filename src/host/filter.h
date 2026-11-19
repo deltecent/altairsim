@@ -102,7 +102,7 @@ public:
 
     // The chain is transparent about what it wraps: SHOW says `console`, not
     // `filter(console)`. The filter is not a thing the operator plugged in.
-    std::string describe() const override { return inner_->describe(); }
+    std::string doDescribe() const override { return inner_->describe(); }
 
     size_t read(uint8_t* buf, size_t n) override;
     size_t doWrite(const uint8_t* buf, size_t n) override;

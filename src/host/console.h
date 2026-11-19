@@ -124,7 +124,7 @@ public:
     // through properties().
     const FilterStream& filter() const { return filter_; }
 
-    std::string describe() const override { return "console"; }
+    std::string doDescribe() const override { return "console"; }
 
     size_t read(uint8_t* buf, size_t n) override;
     size_t doWrite(const uint8_t* buf, size_t n) override;
@@ -291,7 +291,7 @@ private:
     class Raw : public ByteStream {
     public:
         explicit Raw(Console* c) : c_(c) {}
-        std::string describe() const override { return "console"; }
+        std::string doDescribe() const override { return "console"; }
         size_t      read(uint8_t* b, size_t n) override { return c_->readRaw(b, n); }
         size_t      doWrite(const uint8_t* b, size_t n) override { return c_->writeRaw(b, n); }
         bool        readable() const override { return !c_->in_.empty() || c_->pasteReady(); }
@@ -378,7 +378,7 @@ private:
 // disconnected. Unplugging a terminal does not set fire to the terminal.
 class ConsoleRef : public ByteStream {
 public:
-    std::string describe() const override { return "console"; }
+    std::string doDescribe() const override { return "console"; }
     size_t read(uint8_t* b, size_t n) override { return Console::instance().read(b, n); }
     size_t doWrite(const uint8_t* b, size_t n) override { return Console::instance().write(b, n); }
     bool   readable() const override { return Console::instance().readable(); }

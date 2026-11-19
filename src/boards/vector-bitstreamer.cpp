@@ -187,11 +187,9 @@ bool BitstreamerBoard::connect(const std::string& unit, const std::string& ep, s
         return false;
     }
     std::vector<std::string> paths;
-    std::string              spec = rebaseEndpointPaths(ep, [&](const std::string& p) {
-        paths.push_back(p);
-        return resolvePath(p);
-    });
-    auto s = g_resolver(spec, err);
+    auto s = openEndpoint(
+        g_resolver, ep, [this](const std::string& p) { return resolvePath(p); }, err,
+        &paths);
     if (!s) {
         for (const std::string& p : paths) err += pathNote(p);
         return false;

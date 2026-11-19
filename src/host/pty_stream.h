@@ -39,7 +39,7 @@ public:
     PtyStream(std::unique_ptr<platform::Pty> pty, std::string spec)
         : pty_(std::move(pty)), spec_(std::move(spec)) {}
 
-    std::string describe() const override { return spec_; }
+    std::string doDescribe() const override { return spec_; }
 
     size_t read(uint8_t* buf, size_t n) override;
     size_t doWrite(const uint8_t* buf, size_t n) override;

@@ -12,6 +12,24 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**`CONNECT` now reads an endpoint in quotes (issue #952).** Before, `CONNECT` kept the first
+`"` of a quoted endpoint as part of the name. `CONNECT sio0:a "terminal?emulation=vt100"` failed, so the
+example `cpm22-terminal.ini` never opened its terminal window. Now `CONNECT` removes the quotes,
+as `MOUNT` does. An endpoint that has a space in it goes in quotes:
+`CONNECT sio0:b "out:my dir/log.txt"`. Before, `CONNECT` used the first word and ignored the
+rest. Now a word after the endpoint is an error, and nothing is connected.
+
+**`SHOW` and `CONFIG SAVE` now give an endpoint as you typed it (issue #953).** Before, a path
+in an `in:` or `out:` endpoint was printed after altairsim found it in the folder of the machine
+file. With the machine loaded from `sub/x.toml`, `CONNECT sio0:b out:o.txt` showed
+`out:sub/o.txt`, and `CONFIG SAVE` wrote that path. Loaded with a full path, the saved file had
+the full path in it. Now `SHOW` and `CONFIG SAVE` give `out:o.txt`, as `MOUNT` already did for a
+disk. The file still opens in the folder of the machine file.
+
+**`HELP SET CONSOLE` now shows one setting in each `SET` (issue #954).** `SET` takes one
+setting. The help showed `SET CONSOLE upper=on strip7out=on`, which fails. `CONSOLE` takes more
+than one setting, and its help now says so.
+
 **At full speed, `idle` now watches every serial line, not only the console (issue #948).**
 `idle` lets the processor rest while the guest waits for a byte. Before, it watched only the
 line that held the console, and it rested only when a unit held the console. Two things went

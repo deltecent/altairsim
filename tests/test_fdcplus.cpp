@@ -82,7 +82,7 @@ class FakeServer : public ByteStream {
 public:
     explicit FakeServer(int trackLen) : len_(trackLen) {}
 
-    std::string describe() const override { return "fake-server"; }
+    std::string doDescribe() const override { return "fake-server"; }
     bool readable() const override { return released_ > 0 && !out_.empty(); }
     bool writable() const override { return true; }
 

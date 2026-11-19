@@ -15,6 +15,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace altair {
 
@@ -22,11 +23,22 @@ namespace altair {
 // is the only thing that knows its config dir). Grammar lives HERE, not in the
 // board: only `in:PATH` / `out:PATH` name a path, and each is rewritten in place --
 // `in:tape.tap?cps=300` keeps its options, `in:a,out:b` rebases both parts, and
-// console/socket/serial/null pass through untouched. `describe()` still echoes the
-// operator's ORIGINAL spec, so the board must remember that and rebase only the copy
-// it hands the resolver, or a relative path double-rebases on CONFIG SAVE + reload.
+// console/socket/serial/null pass through untouched. A board does not call this to open
+// a line: it calls openEndpoint() below, which also keeps what the operator typed.
 std::string rebaseEndpointPaths(const std::string&                              spec,
                                 const std::function<std::string(const std::string&)>& rebase);
+
+// Open an endpoint for a board: rebase its PATHs with `rebase` (the board's resolvePath;
+// null leaves them as typed), open the result with `open` (the board's injected resolver,
+// g_resolver; null is an error), and have the stream's
+// describe() give back the spec AS TYPED -- `out:o.txt`, not the `out:sub/o.txt` it opened.
+// SHOW and CONFIG SAVE print describe(), so a saved machine file keeps the relative path and
+// a reload rebases it once (issue #953). Null with `err` set on failure; `paths`, when
+// given, receives each PATH the spec named, so the board can add its pathNote() to `err`.
+std::unique_ptr<ByteStream> openEndpoint(
+    const std::function<std::unique_ptr<ByteStream>(const std::string&, std::string&)>& open,
+    const std::string& ep, const std::function<std::string(const std::string&)>& rebase,
+    std::string& err, std::vector<std::string>* paths = nullptr);
 
 // A resolver that runs every spec through rebaseEndpointPaths() before opening it, so a
 // machine-file relative in:/out: PATH is config-relative. Hand this to a serial chip's

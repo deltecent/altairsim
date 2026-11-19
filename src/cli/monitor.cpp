@@ -4343,6 +4343,19 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
             return true;
         }
 
+        // THE ENDPOINT IS ONE WORD (issue #952). A path or a printer queue with a space in it
+        // is written in quotes, as for MOUNT, and the tokenizer keeps the opening `"` as a
+        // marker -- strip it, or no endpoint matches. A second word is refused: before, the
+        // rest of the line was dropped, and `out:my dir/log.txt` wrote a file named `my`.
+        const std::string ep = unquote(a[2]);
+        if (a.size() > 3) {
+            out << "CONNECT: unexpected '" << a[3]
+                << "'. An endpoint with a space in it goes in quotes: CONNECT " << a[1]
+                << " \"out:my dir/log.txt\"\n";
+            failed_ = true;
+            return true;
+        }
+
         // EXACTLY ONE UNIT MAY HOLD THE CONSOLE (DESIGN.md 7.2, 9). Two boards
         // reading one keyboard would each get half the characters -- which is not
         // hypothetical, it is what happens the first time a machine has two 2SIOs
@@ -4354,7 +4367,7 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         // said so. Every other call site passes an uppercase keyword; this one
         // looked like an endpoint name, which is lowercase by convention, and that
         // is exactly how it slipped through.
-        if (is(a[2], "CONSOLE")) {
+        if (is(ep, "CONSOLE")) {
             const auto taken =
                 consoleTaker_ ? consoleTaker_(b, u.name)
                               : takeConsole(m_, b, u.name,
@@ -4363,11 +4376,11 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         }
 
         std::string err;
-        if (!b->connect(u.name, a[2], err)) {
+        if (!b->connect(u.name, ep, err)) {
             out << err << "\n";
             failed_ = true;
         } else {
-            out << b->id << ":" << u.name << ": connected to " << canonicalEndpoint(a[2]) << "\n";
+            out << b->id << ":" << u.name << ": connected to " << canonicalEndpoint(ep) << "\n";
             // A pseudo-terminal mirror's name is chosen at connect, and the operator
             // needs it now, not after the next RUN. Peel to the mirror, as above.
             for (ByteStream* s = b->unitStream(u.name); s;) {

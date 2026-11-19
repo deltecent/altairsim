@@ -101,16 +101,10 @@ std::vector<MapEntry> Sio2Board::ioMap() const {
 }
 
 bool Sio2Board::connect(const std::string& unit, const std::string& endpoint, std::string& err) {
-    // The Sio2Port has no config dir; the board is the only thing that knows one, so a
-    // machine-file in:/out: PATH is rebased here before the resolver opens it. (Unlike the
-    // parallel cards, the 6850 echoes stream->describe() for its `connect` property, so what
-    // SHOW/CONFIG SAVE report is the resolved path -- which reloads idempotently.)
+    // The Sio2Port rebases a machine-file in:/out: PATH with the resolvePath the constructor
+    // gave it (setRebase), and the line describes itself as typed (issue #953).
     std::vector<std::string> paths;
-    std::string              spec = rebaseEndpointPaths(endpoint, [&](const std::string& p) {
-        paths.push_back(p);
-        return resolvePath(p);
-    });
-    if (!sio_.connect(unit, spec, err)) {
+    if (!sio_.connect(unit, endpoint, err, &paths)) {
         for (const std::string& p : paths) err += pathNote(p);
         return false;
     }

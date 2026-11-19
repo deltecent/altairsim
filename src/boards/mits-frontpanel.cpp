@@ -148,11 +148,9 @@ bool FrontPanelBoard::connect(const std::string& unit, const std::string& ep,
     // pass through untouched. The `connect` unit property routes here too, so a
     // declarative connect and the CONNECT command share this one rule.
     std::vector<std::string> paths;
-    std::string              spec = rebaseEndpointPaths(ep, [&](const std::string& p) {
-        paths.push_back(p);
-        return resolvePath(p);
-    });
-    auto s = g_resolver(spec, err);
+    auto s = openEndpoint(
+        g_resolver, ep, [this](const std::string& p) { return resolvePath(p); }, err,
+        &paths);
     if (!s) {
         for (const std::string& p : paths) err += pathNote(p);
         return false;
@@ -206,9 +204,8 @@ void FrontPanelBoard::pump() {
     if (!stream_->status().carrier && now >= nextDial_) {
         if (g_resolver) {
             std::string err;
-            std::string spec = rebaseEndpointPaths(
-                endpoint_, [&](const std::string& p) { return resolvePath(p); });
-            if (auto s = g_resolver(spec, err)) {
+            if (auto s = openEndpoint(g_resolver, endpoint_,
+                                      [this](const std::string& p) { return resolvePath(p); }, err)) {
                 stream_ = std::move(s);
             } else if (!loggedDown_) {
                 // Said ONCE, here at the first failure -- not on every retry, or a bridge

@@ -87,7 +87,7 @@ public:
     // drainLog() because this object is being destroyed, so it goes to stderr.
     ~PrinterStream() override;
 
-    std::string describe() const override { return spec_; }
+    std::string doDescribe() const override { return spec_; }
 
     // A quiet line, forever: nothing reads back off a printout.
     size_t read(uint8_t*, size_t) override { return 0; }
