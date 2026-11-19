@@ -51,6 +51,23 @@ function(build)
   endif()
 endfunction()
 
+# MAKE COMPARES FILE TIMES TO THE SECOND on macOS (GNU make 3.81, the one Xcode ships). A file
+# changed in the same second as the build that read it looks unchanged -- for every rule, a .cpp
+# as much as this one. A person edits a file seconds after a build; a test does it in
+# milliseconds. So before each change, wait for the clock to reach the next second. Without the
+# wait the add case fails on the macOS CI runner, and the no-change case cannot see a list file
+# that is rewritten when it must not be.
+function(next_second)
+  string(TIMESTAMP start "%s")
+  while(TRUE)
+    string(TIMESTAMP now "%s")
+    if(NOT now STREQUAL start)
+      break()
+    endif()
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E sleep 0.05)
+  endwhile()
+endfunction()
+
 function(expect_out want why)
   file(READ "${bld}/out.txt" got)
   if(NOT got STREQUAL want)
@@ -74,11 +91,13 @@ build()
 expect_out("a.txt\nb.txt\n" "first build does not list both inputs")
 
 # 2. Delete one: the generator must run again and drop it (issue #950).
+next_second()
 file(REMOVE "${proj}/inputs/b.txt")
 build()
 expect_out("a.txt\n" "a deleted input is still in the output -- the generator did not run again")
 
 # 3. Add one: it appears.
+next_second()
 file(WRITE "${proj}/inputs/c.txt" "c\n")
 build()
 expect_out("a.txt\nc.txt\n" "an added input is not in the output")
@@ -86,6 +105,7 @@ expect_out("a.txt\nc.txt\n" "an added input is not in the output")
 # 4. Configure again with no change: the input list is not rewritten, so the generator does not
 #    run again. out.txt is replaced by a marker; if the generator runs, the marker is gone.
 file(WRITE "${bld}/out.txt" "untouched\n")
+next_second()
 execute_process(COMMAND "${CMAKE_COMMAND}" "${bld}" RESULT_VARIABLE rc OUTPUT_QUIET ERROR_QUIET)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "embed-input-list: re-configure failed (${rc})")
