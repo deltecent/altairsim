@@ -16,10 +16,10 @@
 // A TelnetStream WRAPS a TcpStream (the same decorator shape as TeeStream and
 // MirrorStream) and runs a TelnetCodec (host/telnet_codec.h) over the bytes that
 // cross it: on each new session it offers the terminal-server options, strips
-// inbound IAC, doubles a data 0xFF, and folds the client's CR LF / CR NUL to a bare
-// CR. The codec is shared with the PMMI modem's answer/dial line, so a person
-// telnetting in behaves whether the far end is a `telnet:` port or a `dial=`/`answer=`
-// modem.
+// inbound IAC, doubles a data 0xFF, folds the client's CR LF / CR NUL to a bare CR,
+// and sends a guest CR that is not followed by LF as CR NUL. The codec is shared with
+// the PMMI modem's answer/dial line, so a person telnetting in behaves whether the far
+// end is a `telnet:` port or a `dial=`/`answer=` modem.
 //
 // Everything else -- carrier, CTS backpressure, DTR-hangup, the line rate, SHOW --
 // is the wrapped TcpStream's, forwarded verbatim. describe() echoes `telnet:...`,

@@ -37,6 +37,7 @@ void TelnetCodec::reset(bool server) {
     st_        = St::Data;
     verb_      = 0;
     lastWasCR_ = false;
+    crPending_ = false;
     myState_.fill(MyUnknown);
     hisState_.fill(HisUnknown);
 
@@ -67,11 +68,24 @@ void TelnetCodec::reset(bool server) {
 }
 
 // A data 0xFF is an IAC to the far end, so it must be DOUBLED or it reads as a command
-// introducer; everything else passes through untouched (8-bit clean).
+// introducer.
+//
+// RFC 854 allows a CR only as CR LF or CR NUL, and the far end drops the NUL of a CR
+// NUL. So a guest CR that is not followed by LF gets a NUL after it: guest 0D 00 goes
+// out as 0D 00 00 and arrives as 0D 00 (issue #957: without it, an XMODEM block that
+// held 0D 00 lost the 00 on every retry). The guest writes one byte at a time, so the
+// CR goes out at once and the NUL, when it is owed, goes in front of the NEXT byte --
+// nothing is held back. Every other byte passes through untouched.
 void TelnetCodec::send(const uint8_t* buf, size_t n) {
     for (size_t i = 0; i < n; ++i) {
-        out_.push_back((char)buf[i]);
-        if (buf[i] == IAC) out_.push_back((char)IAC);
+        uint8_t b = buf[i];
+        if (crPending_) {
+            crPending_ = false;
+            if (b != '\n') out_.push_back('\0');
+        }
+        out_.push_back((char)b);
+        if (b == IAC) out_.push_back((char)IAC);
+        if (b == '\r') crPending_ = true;
     }
 }
 
