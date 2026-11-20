@@ -2219,8 +2219,17 @@ endif()
 # test makes and print `ini>` lines into what the test reads. Point HOME at a folder with
 # no such file, for every acceptance test, so a developer's machine and CI agree. (Set last,
 # so it covers every test added above.)
+#
+# NOT acceptance-embed-input-list: it launches no altairsim, so no ini file can reach it, and
+# it runs a nested build. Under the Visual Studio generator that build is MSBuild, and MSBuild
+# 18 crashes when USERPROFILE is not the user's real profile (MSB4018, IndexOutOfRangeException
+# in FileTracker.FileIsUnderNormalizedPath, from ZERO_CHECK). CI's Windows leg uses Ninja and
+# never saw it; the Windows release box uses the VS generator and failed the 1.3.7 build.
 get_property(_all_tests DIRECTORY PROPERTY TESTS)
 foreach(_t IN LISTS _all_tests)
+  if(_t STREQUAL "acceptance-embed-input-list")
+    continue()
+  endif()
   # tnfs-hw launches the binary interactively too, but is not named acceptance-*.
   if(_t MATCHES "^acceptance-" OR _t STREQUAL "tnfs-hw")
     set_property(TEST ${_t} APPEND PROPERTY ENVIRONMENT
