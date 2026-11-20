@@ -11,11 +11,13 @@
 #include "core/version.h"
 #include "host/endpoint.h"
 #include "host/stream.h"
+#include "host/telnet_codec.h"
 #include "platform/socket.h"
 #include "test.h"
 
 #include <chrono>
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <thread>
@@ -28,6 +30,17 @@ namespace {
 // Telnet bytes, named (RFC 854/857/858). Only what the assertions reference.
 constexpr uint8_t IAC = 255, DONT = 254, DO = 253, WILL = 251;
 constexpr uint8_t OPT_ECHO = 1, OPT_SGA = 3;
+
+// Bytes as a std::string, for exact compares against the codec's buffers.
+std::string bytes(std::initializer_list<uint8_t> b) {
+    return std::string(b.begin(), b.end());
+}
+
+// Feed the codec guest bytes from an initializer list.
+void guestOut(TelnetCodec& c, std::initializer_list<uint8_t> b) {
+    std::vector<uint8_t> v(b);
+    c.send(v.data(), v.size());
+}
 
 // A free port, the OS's way (test_modemline's trick): bind 0, read what it picked,
 // drop it. A tiny race remains, which is why the endpoint rebinds it immediately.
@@ -317,5 +330,67 @@ void test_telnet() {
             CHECK(got.find(bannerFor("sio0:b", port)) != std::string::npos,
                   "the caller is greeted as sio0:b, named by the machine");
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // A GUEST CR ON THE WIRE (RFC 854), issue #957. The codec itself, with no socket,
+    // so every check is exact bytes. RFC 854 allows a CR only as CR LF or CR NUL, and
+    // the far end drops the NUL of CR NUL. So a guest CR not followed by LF gets a NUL,
+    // and the far end gets the guest's bytes. Without that NUL, an XMODEM block holding
+    // 0D 00 lost the 00 on every retry.
+    // -----------------------------------------------------------------------
+    SECTION("telnet codec: NVT line -- a guest CR not followed by LF gets a NUL");
+    {
+        TelnetCodec c;
+        c.reset(true);
+        c.takeOut();  // the opening offers, pinned by the socket section above
+
+        guestOut(c, {'\r', 0x00});
+        CHECK(c.takeOut() == bytes({'\r', 0x00, 0x00}), "guest 0D 00 goes out as 0D 00 00");
+        guestOut(c, {'\r', '\n'});
+        CHECK(c.takeOut() == bytes({'\r', '\n'}), "guest 0D 0A goes out unchanged");
+        guestOut(c, {'\r', 'A'});
+        CHECK(c.takeOut() == bytes({'\r', 0x00, 'A'}), "guest 0D 41 goes out as 0D 00 41");
+        guestOut(c, {'\r', '\r', '\n'});
+        CHECK(c.takeOut() == bytes({'\r', 0x00, '\r', '\n'}),
+              "guest 0D 0D 0A: the first CR gets its NUL, the CR LF does not");
+
+        // The guest writes one byte per call: the CR goes out at once, the NUL it owes
+        // goes in front of the next byte.
+        guestOut(c, {'\r'});
+        CHECK(c.takeOut() == bytes({'\r'}), "a lone CR goes out at once, nothing held back");
+        guestOut(c, {0x00});
+        CHECK(c.takeOut() == bytes({0x00, 0x00}), "...and the next call puts the owed NUL first");
+        guestOut(c, {'\r'});
+        c.takeOut();
+        guestOut(c, {IAC});
+        CHECK(c.takeOut() == bytes({0x00, IAC, IAC}), "CR then 0xFF: NUL, then the doubled IAC");
+    }
+
+    // The round trip: what the codec sends, an RFC 854 receiver turns back into the
+    // guest's bytes. The receiver is written here from the RFC, not taken from the code
+    // under test: CR NUL is a CR, IAC IAC is 0xFF, every other byte is itself. That is
+    // what Tera Term did by hand (issue #957); this pins it as exact bytes.
+    SECTION("telnet codec: NVT line -- an RFC 854 receiver gets the guest's bytes back");
+    {
+        auto rfc854Receive = [](const std::string& wire) {
+            std::string data;
+            for (size_t i = 0; i < wire.size(); ++i) {
+                data.push_back(wire[i]);
+                bool pair = i + 1 < wire.size();
+                if (pair && wire[i] == '\r' && wire[i + 1] == '\0') ++i;  // CR NUL -> CR
+                else if (pair && (uint8_t)wire[i] == IAC && (uint8_t)wire[i + 1] == IAC)
+                    ++i;  // IAC IAC -> 0xFF
+            }
+            return data;
+        };
+        TelnetCodec c;
+        c.reset(true);
+        c.takeOut();
+        const std::string guest =
+            bytes({'\r', '\n', '\r', 0x00, '\r', 'A', IAC, '\r', '\r', '\n', '\r', 0x00, 0x00});
+        c.send((const uint8_t*)guest.data(), guest.size());
+        CHECK(rfc854Receive(c.takeOut()) == guest,
+              "CR LF, CR NUL, CR A, 0xFF and CR CR LF all arrive as the guest sent them");
     }
 }

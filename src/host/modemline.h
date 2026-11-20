@@ -96,9 +96,9 @@ private:
 
     // TELNET MODE. When telnet_ is set, a live call's bytes run through this codec:
     // inbound is decoded into rx_ (IAC stripped, CR LF folded), outbound is encoded
-    // into tx_ (0xFF doubled), and answer()/a completed dial reset it into the server
-    // or client role and queue the option offers. Off -> the line is a raw pipe and
-    // rx_/tx_ carry bytes verbatim, exactly as before.
+    // into tx_ (0xFF doubled, NUL after a bare CR), and answer()/a completed dial reset
+    // it into the server or client role and queue the option offers. Off -> the line is
+    // a raw pipe and rx_/tx_ carry bytes verbatim, exactly as before.
     bool        telnet_ = false;
     TelnetCodec codec_;
 

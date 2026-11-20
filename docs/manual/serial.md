@@ -151,13 +151,17 @@ They differ in what they send to the far end:
 
 | | `socket:` | `telnet:` |
 |---|---|---|
-| Use it for | another program or another machine | a **person** with `telnet` or `nc` |
+| Use it for | a program: another `altairsim`, a script, or a terminal program in raw mode | a **person** with a telnet client |
 | What goes on the line | the bytes of the guest, and nothing else | the bytes of the guest, and the Telnet settings for echo and single keys |
-| What the person sees | each key two times, and a whole line sent at Enter | each key one time, sent when it is pressed |
+| What a telnet client shows | each key two times, and a whole line sent at Enter | each key one time, sent when it is pressed |
 | Greeting | none, unless you add `?banner` | one line with the machine, the unit and the port |
 
-Use `telnet:` when a person types to the guest. Use `socket:` when a program is at the far end:
-one `altairsim` connected to another, a file transfer, or a tool that uses raw bytes.
+Use `telnet:` when a person connects with a telnet client. The person can also send files with
+XMODEM on the same line. Use `socket:` when a program is at the far end, or a terminal program
+in raw mode.
+
+`nc` does not use the Telnet protocol. On a `telnet:` line, `nc` shows the Telnet settings as
+stray characters.
 
 A `telnet` client on a raw `socket:` shows each key two times, because the client and the guest
 both echo it. Enter sends a whole line, with a line feed in place of the carriage return. You
@@ -216,10 +220,8 @@ banner is only for a port that listens. On a line that calls out, the program re
 
 ## A terminal in its own window
 
-A telnet client must be installed and pointed at the correct port. It changes any byte that
-looks like a telnet command, which can break cursor sequences and file transfers. A modern
-terminal also emulates a modern terminal, not the ADM-3A or VT52 that the software of the period
-expects.
+A telnet client must be installed and pointed at the correct port. A modern terminal also may
+not emulate the ADM-3A or VT52 that the software of the period expects.
 
 `terminal` is a terminal that the program draws itself, in its own window:
 

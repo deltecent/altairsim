@@ -20,7 +20,8 @@
 //                     IAC IAC delivered as one literal 0xFF. Any negotiation reply
 //                     it must send is appended to the outbound buffer.
 //   send(bytes)    -- outbound GUEST bytes -> the outbound buffer, a data 0xFF
-//                     doubled to IAC IAC so the far end reads it as data.
+//                     doubled to IAC IAC so the far end reads it as data, and a NUL
+//                     after a CR that is not followed by LF, as RFC 854 requires.
 //
 // The owner moves the two buffers with takeData() (decoded data for the guest) and
 // takeOut() (wire bytes for the socket). Negotiation is loop-free: a verb is emitted
@@ -69,6 +70,7 @@ private:
     St      st_        = St::Data;
     uint8_t verb_      = 0;      // the DO/DONT/WILL/WONT awaiting its option byte
     bool    lastWasCR_ = false;  // fold the CR's LF/NUL tail
+    bool    crPending_ = false;  // a guest CR went out; the next byte decides if a NUL is owed
 
     // What we have TOLD the far end about our options (myState_) and asked of its
     // (hisState_). Tri-state so "never mentioned" is distinct from "told WONT"; a verb

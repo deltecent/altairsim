@@ -12,6 +12,14 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**XMODEM through a `telnet:` line no longer loses a byte (issue #957).** The Telnet rules
+(RFC 854) say that a carriage return without a line feed after it must be followed by a zero
+byte. The telnet client removes that zero byte. Before, altairsim sent a carriage return from
+the guest with no zero byte after it. The client read the guest's byte pair `0D 00` as one
+carriage return, and an XMODEM block lost a byte. `PCPUT OHMS.COM` to Tera Term sent block 39
+again and again. Now altairsim puts a zero byte after such a carriage return, and the guest's
+bytes arrive unchanged. The PMMI MM-103 `telnet` line does the same.
+
 **`CONNECT` now reads an endpoint in quotes (issue #952).** Before, `CONNECT` kept the first
 `"` of a quoted endpoint as part of the name. `CONNECT sio0:a "terminal?emulation=vt100"` failed, so the
 example `cpm22-terminal.ini` never opened its terminal window. Now `CONNECT` removes the quotes,
