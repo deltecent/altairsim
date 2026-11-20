@@ -10,224 +10,97 @@ register, the bit or the command that was wrong.
 
 ---
 
-## Unreleased
+## 1.3.7
 
-**XMODEM through a `telnet:` line no longer loses a byte (issue #957).** The Telnet rules
-(RFC 854) say that a carriage return without a line feed after it must be followed by a zero
-byte. The telnet client removes that zero byte. Before, altairsim sent a carriage return from
-the guest with no zero byte after it. The client read the guest's byte pair `0D 00` as one
-carriage return, and an XMODEM block lost a byte. `PCPUT OHMS.COM` to Tera Term sent block 39
-again and again. Now altairsim puts a zero byte after such a carriage return, and the guest's
-bytes arrive unchanged. The PMMI MM-103 `telnet` line does the same.
+**1.3.7 adds copy and paste to the terminal window, `--tool-log` for an MCP session, a
+`SHOW` for one unit, and `SIMCLK`, which sets the processor's crystal from the guest. The 6850
+now waits for its master reset, as the real chip does. `idle` watches every serial line, and
+the WD17xx and µPD765A track commands keep what a format writes.**
 
-**`CONNECT` now reads an endpoint in quotes (issue #952).** Before, `CONNECT` kept the first
-`"` of a quoted endpoint as part of the name. `CONNECT sio0:a "terminal?emulation=vt100"` failed, so the
-example `cpm22-terminal.ini` never opened its terminal window. Now `CONNECT` removes the quotes,
-as `MOUNT` does. An endpoint that has a space in it goes in quotes:
-`CONNECT sio0:b "out:my dir/log.txt"`. Before, `CONNECT` used the first word and ignored the
-rest. Now a word after the endpoint is an error, and nothing is connected.
+**Terminal windows.**
 
-**`SHOW` and `CONFIG SAVE` now give an endpoint as you typed it (issue #953).** Before, a path
-in an `in:` or `out:` endpoint was printed after altairsim found it in the folder of the machine
-file. With the machine loaded from `sub/x.toml`, `CONNECT sio0:b out:o.txt` showed
-`out:sub/o.txt`, and `CONFIG SAVE` wrote that path. Loaded with a full path, the saved file had
-the full path in it. Now `SHOW` and `CONFIG SAVE` give `out:o.txt`, as `MOUNT` already did for a
-disk. The file still opens in the folder of the machine file.
+- Copy and paste (issue #665). Drag with the left mouse button to select text. Press `Cmd-C` on
+  a Mac, or `Ctrl-Shift-C` on Windows and Linux. With no selection, the copy is the full
+  screen. `Cmd-V` or `Ctrl-Shift-V` pastes the clipboard as keys. `Ctrl-C` and `Ctrl-V` alone
+  still go to the guest. trgeuy wrote this for pascal100, a simulator based on altairsim.
+- The title bar shows the unit, such as `sio0:a`, and a grey bar at the top of the window shows
+  it too (issue #940). `SET sio0:a TITLE=tty1` gives a window another name.
+  `[terminal] titlebar = false` removes the bar.
+- A key typed in a terminal window goes to the line of that window. Before, the newest window got
+  the keys of every window. The window of a video board types on the console.
 
-**`HELP SET CONSOLE` now shows one setting in each `SET` (issue #954).** `SET` takes one
-setting. The help showed `SET CONSOLE upper=on strip7out=on`, which fails. `CONSOLE` takes more
-than one setting, and its help now says so.
+**For a program that drives the machine.**
 
-**At full speed, `idle` now watches every serial line, not only the console (issue #948).**
-`idle` lets the processor rest while the guest waits for a byte. Before, it watched only the
-line that held the console, and it rested only when a unit held the console. Two things went
-wrong:
+- `--tool-log` shows each MCP tool call and its result (issue #672). It writes to a file, a
+  pseudo-terminal, a TCP socket or a serial port, as `--mirror` does.
+- `SHOW <id>:<unit>` shows one unit (issue #934). For a serial unit, `rx waiting` and
+  `tx waiting` give the bytes that the guest and the host have not read. It works while the
+  guest runs.
+- `-x` and `-s` stop at the first command that fails. They print
+  `Stopped: that command failed. The commands after it did not run.` and exit with status 1.
+- Under `--mcp`, the `monitor` tool refuses a `!` command. Before, the shell command wrote its
+  output between the JSON-RPC messages, and this broke the client.
+- A caller on a `socket:` or `telnet:` line gets the first bytes of a run. Before, a guest that
+  printed `SEND` as it started reached the caller as `ND`.
+- *Driving altairsim with an AI* has a section for a host program on a serial socket
+  (issue #933).
 
-- Port A of a 2SIO was on the console. An XMODEM program on port B waited for an ACK, and read
-  the console for a `Ctrl-X`. That looked like a prompt, so the processor rested. The timeout
-  loop of the program took about 2 seconds. With port A on a serial port, it took almost no time.
-- With the console line on a serial port, a socket or a terminal window, the processor never
-  rested. CP/M at the
-  `A>` prompt kept one core of your computer busy.
+**`SIMCLK` sets the processor's crystal from the guest.** The `hostbridge` board has two new
+commands: `0AH` sets the rate and `0BH` returns it. `SIMCLK.COM` sends them under CP/M.
+`SIMCLK 0` runs at full speed, and `SIMCLK 2000000` sets 2 MHz. A `SUBMIT` file can now run
+`ASM` at full speed and go back to 2 MHz after it. A monitor `RUN` and the MCP `run` tool follow
+a rate that changes during the run. `SIMCLK.COM` is on the CP/M disks in `examples/cpm` and
+`examples/ai-mcp`.
 
-Now the processor rests when the guest reads the status of an empty line, on any port. The
-console line can connect to any endpoint. The processor does not rest while a byte goes out or comes in on
-any line, so a transfer is not slowed. When the console reads from a pipe or a file, the
-processor never rests, as before. A tape or a `file:` reader at 300 baud now lets the processor
-rest between bytes, and the load time does not change. If a guest runs slower with this change,
+**The host bridge utilities.** `R` and `W` refuse a name of more than 64 characters
+(issue #929). Before, a long name overflowed a 20-byte buffer in `R`, and `R` saved the file
+under a name that the user did not type. `R`, `W`, `HDIR` and `SIMCLK` now print
+`R: no hostbridge board at port B0H.` when they find no board. The disks in `examples` have
+`R` 1.3, `W` 1.4 and `HDIR` 1.2.
+
+**A 6850 does nothing until the program resets it (issue #938).** Before, a 6850 on the 88-2SIO,
+the 88-UIO or the Turnkey Module was ready at power-on. Its status read `02` and it sent a
+character. A real 6850 is held in reset until the program writes a master reset (`03`). IMDW
+printed in altairsim and printed nothing on a real 88-2SIO. Now the status reads `00` and RTS is
+off until the master reset. `SET 6850 DEBUG=reset` reports a program that uses a 6850 before its
+reset. The `HELLO` debugger example now resets the 2SIO.
+
+**`idle` watches every serial line, not only the console (issue #948).** Before, with the console
+on port A of a 2SIO, an XMODEM program on port B looked like a prompt, and its 2-second timeout
+loop ran slowly. With the console on a serial port, a socket or a terminal window, CP/M at the
+`A>` prompt kept one host core busy. Now the processor rests when the guest reads the status of
+an empty line on any port, and never while a byte goes out or comes in. If a guest runs slower,
 type `SET cpu0 idle=off`.
 
-**New: a terminal window shows the name of its unit (issue #940).** Before, every terminal window
-had the name of its connect string, such as `terminal:vt100`, so two windows had the same name.
-Now the title bar of the window shows the unit, such as `sio0:a`. A grey bar at the top of the
-window shows the same name in the font of the terminal. The guest does not see the bar. Set
-`title` on a serial unit to give it a different name: `SET sio0:a TITLE=tty1`. Set
-`[terminal] titlebar = false` to remove the bar.
+**XMODEM through a `telnet:` line no longer loses a byte (issue #957).** Telnet (RFC 854) puts a
+zero byte after a carriage return that has no line feed after it, and the client removes it.
+Before, altairsim sent no zero byte, so the guest's bytes `0D 00` arrived as one carriage return.
+`PCPUT OHMS.COM` to Tera Term sent block 39 again and again. Now altairsim sends the zero byte. The
+PMMI MM-103 `telnet` line does the same.
 
-**New: `--tool-log` shows each tool call and its result (issue #672).** Give it with `--mcp`. A
-person can see what the assistant does to the machine, such as a `monitor` command, a `reset` or
-a breakpoint, and not only what the guest prints. The output is a text file that you follow with
-`tail -f`, or a pseudo-terminal, a TCP socket or a serial port, as for `--mirror`. On Windows,
-use a file or a socket. Each call shows the time, the tool and its arguments, then the result
-text, cut at 24 lines.
+**Floppy track commands.**
 
-**New: `SHOW <id>:<unit>` shows one unit (issue #934).** It shows what the unit holds and its
-settings. For a serial unit, it also shows `rx waiting`, the bytes from the host that the guest
-has not read, and `tx waiting`, the bytes from the guest that the host has not taken. To know
-that the guest has read all the bytes, a program that writes to a `socket:` line sends
-`SHOW sio0:b` until `rx waiting` is 0. Over `--mcp`, send the command with the `monitor` tool. It
-works while the guest runs.
+- WD17xx Read Track (`E4`) returns one revolution on a raw `.DSK`, with ID fields, data marks,
+  good CRCs and IBM standard gaps (issue #937). Before, it returned no bytes.
+- WD17xx Write Track records each sector under the number in its own ID field (issue #931).
+  Before, a CDOS track streamed as sectors 2 … 16, 1 was recorded as sectors 2-17. A field with
+  a deleted data mark is now a sector. The µPD765A Format a Track command uses the same rules.
+- A format keeps its interleave, its ID bytes and its deleted marks until the disk is unmounted.
+  Before, Read Address and Verify saw IDs in order from 1.
+- A double-density Read Address returns a CRC that includes the three `A1` sync bytes.
+- The µPD765A Write Deleted Data command (`09`) writes a deleted mark.
 
-**A 6850 now does nothing until the program resets it (issue #938).** Before, a 6850 on the
-88-2SIO, the 88-UIO or the Turnkey Module was ready at power-on. Its status read `02` (TDRE set),
-a character written to the data port was sent, and RTS was on. A real 6850 is held in reset
-until the program writes a master reset (`03`) to the control port. IMDW wrote to a 2SIO
-channel that nothing had reset. It printed in altairsim and printed nothing on a real 88-2SIO.
-Now the status reads `00`, a character written to the data port is not sent, and RTS is off
-until the master reset. A control word that is not a master reset does not release the chip.
-A 2SIO that you add with `BOARDS ADD` to a running machine starts held too. After a master
-reset, the chip also sends nothing until the next control word, as the real chip does.
+**The monitor.**
 
-During the hold the receiver is off. A byte from a real serial port (`serial:`) is lost, as on
-the real board. A key that you type, or a byte from a pipe, a file or a socket, waits until the
-program resets the chip.
-
-**New: `SET 6850 DEBUG=reset`.** It reports the first time a program reads or writes each 6850
-before its master reset, with the chip and the port:
-`6850: a port 10: status read before a master reset (held since power-on)`.
-
-**The `HELLO` debugger example now resets the 2SIO.** `examples/debugger/HELLO.ASM` printed
-without a master reset, so it would print nothing on a real 88-2SIO. It now writes `03` and
-`15` to port `10` first. The program is now 54 bytes, and its walkthrough shows the new
-addresses.
-
-**New: copy from a terminal window and paste into it (issue #665).** Drag with the left mouse
-button to select text, then press `Cmd-C` on a Mac or `Ctrl-Shift-C` on Windows and Linux. With
-no selection, the copy is the full screen. `Cmd-V` or `Ctrl-Shift-V` pastes the clipboard into
-the window as keys. Each line end becomes a CR. `Ctrl-C` and `Ctrl-V` alone still go to the
-guest. trgeuy wrote this for pascal100, a simulator based on altairsim, and we took it from
-there.
-
-**A key typed in a terminal window goes to the line of that window.** Before, the newest
-terminal window got the keys of every window. In a machine with two terminal windows, a key
-typed in the first window went down the line of the second. A key typed in the window of a
-VDM-1 also went to the terminal window and not to the console of the guest. Now each terminal window
-types on its own line. The window of a video board types on the console, as it does in a
-machine with no terminal window.
-
-**Read Track returns the track on every WD17xx board (issue #937).** Before, the Read Track
-command (`E4`) on a raw `.DSK` returned no bytes, because the image has no gaps or address
-marks. A guest that decodes a track, such as the `RTRACK` routine of IMDW, had nothing to read.
-Now the command returns one revolution: the ID fields, the data marks, the sector data, good
-CRCs and the IBM standard gap lengths. The gap lengths are the only bytes that are made up. A
-guest that formatted with other gap lengths gets the standard lengths back.
-
-**A format keeps its interleave, its ID bytes and its deleted marks for the session.** Before,
-Write Track and the µPD765A Format a Track command kept only the geometry. Read Address,
-Verify and the sector commands then saw made-up IDs. The sectors were in order from 1, C was
-the physical track, H was the selected side, and no mark was deleted. Now the drive keeps the ID fields as written until the disk is unmounted. It
-does not keep them across `SAVE` and `RESTORE`. A track not formatted in this session reads as
-before.
-
-**A double-density Read Address returns the CRC that the disk holds.** Before, the WD17xx Read
-Address command computed the ID CRC over `FE C H R N` at both densities. In MFM the CRC also
-covers the three `A1` sync bytes, so a guest that checked the CRC of a double-density ID found
-it bad. Now the CRC includes the `A1` bytes in MFM. Single density is unchanged.
-
-**The µPD765A Write Deleted Data command writes a deleted mark.** Before, Write Deleted Data
-(`09`) passed on the mark that the sector already had. A sector written with it read back as
-normal. Now the command writes the deleted mark, and Write Data
-(`05`) writes the normal mark.
-
-**A caller on a `socket:` or `telnet:` line gets the first bytes of a run.** Before, a line
-that listens answered its caller only after the first slice of `RUN`, or of the MCP `run` and
-`start`. A caller who connected before the run lost what the guest sent in that slice. For
-example, a guest that printed `SEND` as it started reached the caller as `ND`. Now the line
-answers the caller before the guest runs, so the caller gets everything from the first byte.
-
-**DRIVING-WITH-AI has a section for a host program on a serial socket (issue #933).** It shows
-how a host program talks to a guest on a `socket:PORT` unit while the guest runs under
-`start`. It gives the rules: connect first, wait for a breakpoint and not for the host write,
-and put the breakpoint after the output.
-
-**Write Track records each sector under the number in its own ID field (issue #931).** Before,
-the WD17xx Write Track command numbered a track from the sector number of the first ID field.
-It stored the data fields in the order they came. A CDOS track streamed as sectors 2 … 16, 1
-was recorded as sectors 2-17. A later Write Sector or Read Sector of sector 1
-then got Record Not Found. On an interleaved track, the data of each field went to the wrong
-sector. Write Track also accepted only `FB` as a data mark. A field with a deleted data mark
-(`F8`-`FA`) was not a sector, and the sectors after it moved down by one. Now the track starts
-at its lowest sector number, and the data of each field goes to the sector that its ID names.
-A field with a deleted data mark is a sector. The image cannot keep the deleted mark. A track
-with mixed sector sizes, a gap in the numbers, or one number two times gets WRITE FAULT. The
-µPD765A Format a Track command uses the same rules.
-
-**`R` and `W` refuse a name of more than 64 characters (issue #929).** Before, `R` copied each
-word of the command line with no limit. The buffer for the CP/M name held 20 bytes. A longer
-CP/M name wrote past the buffer into the stack of `R`. `R` then saved the file under a name
-that the user did not type. For example, `R A.TXT` followed by 119 `B` characters saved
-`BBBBBBBB.SRM`. `W` stopped at its limit, but the rest of the name became the next word. `W`
-then read that word as the `B` or `T` switch, or gave an error about the switch. Now `R` and
-`W` take a name of 64 characters or fewer, and stop with `a name is too long.` for a longer
-name. `R` still cuts a CP/M name of 64 characters or fewer to 8.3. The disk images that have
-the utilities have the new `R.COM` and `W.COM`.
-
-**`HELP REGION` lists every key, and each key table says where its keys work.** Before,
-`HELP REGION` did not list `relocate`. `SHOW <id>` labelled the keys of `[[board.region]]`
-`(in a machine file)`, but `REGION ADD` takes the same keys. Now `HELP REGION` lists every key
-from the memory board's own list of keys, with the help for each key. `SHOW BOARD memory UNITS`
-labels the region keys `(in a machine file, or REGION ADD)`. `SHOW <id>` now prints one line in
-place of the key table, and the line names `SHOW BOARD <type> UNITS`. The keys are the same for
-every board of a type.
-
-**`SHOW BOARD` and the board reference list a true/false property as `true | false`.** Before,
-they listed `on | off`, but the `default:` line of the same property printed `true`. `SHOW <id>`,
-`CONFIG SAVE` and the error for a wrong value all use `true` and `false`. The monitor still
-accepts `on`, `off`, `yes` and `no`.
-
-**`SHOW` tables line up, and a property that you cannot set is marked `(show-only)`.** Before,
-each column of a `SHOW` table had a fixed width. A longer entry moved the next column to the
-right, and the text of the next column then looked like part of the entry. For example,
-`SHOW hb0` printed `hostdir_root     /home/you/altair/xfer (read-only)`, and the mark looked like
-a fact about the folder. Now each column is as wide as its widest entry, in `SHOW <id>`,
-`SHOW SYMBOLS` and `SHOW BUS`. In `SHOW <id>`, a value longer than 32 characters puts its legal
-text on the next line. A line of dashes under each header separates the header from the rows. A value longer than about 220 characters was also cut off, and now
-prints in full. The mark `(read-only)` is now `(show-only)` in `SHOW`, in `HELP`, in the refusal
-from `SET` and in the reference. `SHOW` prints the value, and `SET` cannot change it. A ROM or a
-disk that is mounted read-only keeps the word `read-only`.
-
-**The `hostbridge` board has two new commands that set and show the processor's crystal from
-the guest.** Before, only the monitor could change `clock_hz`. Any guest program can send the
-commands to the board's command port, `B0` by default. Command `0AH` sets the rate. Send the
-rate in Hz as decimal digits and a NUL. `0` is full speed. Command `0BH` returns the rate in
-force. The processor board checks the rate, as for `SET cpu0 clock_hz=N`. `hostbridge/HB.INC`
-lists the commands as `CSETCK` and `CGETCK`, with the status bits. A monitor `RUN` and the MCP
-`run` tool now follow a rate that changes during the run.
-
-**`SIMCLK.COM` is a new CP/M program that sets the processor's crystal.** It runs only under
-CP/M. It sends the two new `hostbridge` clock commands. `SIMCLK 0` runs the processor at full
-speed, and `SIMCLK 2000000` sets 2 MHz. `SIMCLK` with no number shows the rate. A `SUBMIT` file
-can now run `ASM` at full speed and go back to 2 MHz after it. `SIMCLK.COM` is in `hostbridge/`
-and on the CP/M disks in `examples/cpm` and `examples/ai-mcp`.
-
-**`R`, `W`, `HDIR` and `SIMCLK` say what to do when they find no `hostbridge` board.** Before,
-they printed ``This machine has no `hostbridge` card in it, or it is at another port.`` The
-backticks printed on the CP/M console, and "it" could mean the machine or the board. Now they
-print `R: no hostbridge board at port B0H.` and then
-`Add a hostbridge board to the machine, or set its port to B0.` The disks in `examples` have
-`R` 1.3, `W` 1.4 and `HDIR` 1.2. `R` and `W` show the version in their help.
-
-**`-x` and `-s` stop at the first command that fails.** Before, the program ran every command,
-and only the exit status showed the failure. For example, `-x "SET fdc0 baud=115200"` printed an
-error and left the rate at 403200. The next `-x` commands then ran at 403200, and their output
-did not show the cause. Now the program prints the error and the line `Stopped: that command
-failed. The commands after it did not run.`, and exits with status 1. A `DO` file, a `startup`
-list and commands that you type still run every line.
-
-**Under `--mcp`, the `monitor` tool refuses a `!` command.** Before, `!` ran the command in the
-host shell. The command wrote its output on the server's standard output, between the JSON-RPC
-messages, and this broke the client. The tool also returned `(ok)`. Now the tool runs nothing.
-It returns an error with the text `! -- the host shell is not available under --mcp.`
+- `CONNECT` reads an endpoint in quotes (issue #952). Before,
+  `CONNECT sio0:a "terminal?emulation=vt100"` failed, and the example `cpm22-terminal.ini` opened
+  no terminal window. A word after the endpoint is now an error.
+- `SHOW` and `CONFIG SAVE` give an `in:` or `out:` endpoint as you typed it (issue #953).
+- `SHOW` tables line up. Each column is as wide as its widest entry. A property that you cannot
+  set is marked `(show-only)`, not `(read-only)`.
+- `SHOW BOARD` and the board reference list a true/false property as `true | false`.
+- `HELP REGION` lists every key, `relocate` too. `HELP SET CONSOLE` shows one setting in each
+  `SET` (issue #954).
 
 ## 1.3.6
 
