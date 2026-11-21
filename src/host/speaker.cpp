@@ -34,7 +34,7 @@ bool Speaker::driven(const Clock& clock) const {
 }
 
 bool Speaker::playing(const Clock& clock, bool wired) const {
-    return g_audio && g_audio->available() && wired && !clock.free() && driven(clock);
+    return voiceCanPlay(clock, wired) && driven(clock);
 }
 
 void Speaker::resync(uint64_t now, int8_t level) {
@@ -78,14 +78,14 @@ void Speaker::couple(size_t from, int rate) {
 // ---------------------------------------------------------------------------
 // One slice of emulated time becomes the same length of sound, or nothing.
 //
-// A device plays rate() samples each REAL second and this renders rate() samples each
+// A device plays rate() samples each REAL second and a voice renders rate() samples each
 // EMULATED second, so the two must run at the same speed for the sound to be right.
 // Each rule below is one way they do not:
 //
 //   flat out        no crystal: emulated time has no fixed relation to real time, and
 //                   the slice is dropped. Nothing is played, at any pitch.
-//   not driven      a level that does not move is silence. Nothing is pushed, so a guest
-//                   that never touches the speaker never opens a sound device.
+//   not driven      a voice the guest is not driving is silence. Nothing is pushed, so a
+//                   guest that never touches it never opens a sound device.
 //   no device       the host's device failed to open. The slice is dropped, and the run
 //                   is not held to the crystal for a sound nobody can hear.
 //   queue empty     the device has caught up (or has not started). A short cushion goes
@@ -94,47 +94,59 @@ void Speaker::couple(size_t from, int rate) {
 //   queue deep      the machine is ahead of the device -- a run that nothing paces, with
 //                   a crystal set. The slice is dropped, so the delay cannot grow.
 // ---------------------------------------------------------------------------
-void Speaker::pump(const Clock& clock, bool wired) {
+bool voiceCanPlay(const Clock& clock, bool wired) {
+    return g_audio && g_audio->available() && wired && !clock.free();
+}
+
+VoiceSlice planSlice(const Clock& clock, uint64_t from, bool playing, const void* owner) {
     const uint64_t now = clock.now();
     const uint64_t hz  = (uint64_t)clock.hz();
 
     // More than a second since the last render is not a slice: the clock was moved under
     // the board. Never render it -- it could be hours of samples.
-    const uint64_t from  = pcm_.renderedTo();
-    const bool     moved = now < from || now - from > hz;
+    const bool moved = now < from || now - from > hz;
+    if (moved || !playing) return {VoiceSlice::Act::Skip, 0};
 
-    if (moved || !playing(clock, wired)) {
-        skip(now);
-        return;
-    }
     // No time has gone by: the machine is stopped at the prompt, and a stopped machine
     // makes no sound. (Without this, an empty queue would get a cushion at every call.)
-    if (now == from) return;
+    if (now == from) return {VoiceSlice::Act::Wait, 0};
 
     const size_t rate   = (size_t)g_audio->rate();
-    const size_t queued = g_audio->queued(this);
-    if (queued > rate / 4) {  // a quarter second waiting to play
-        skip(now);
-        return;
-    }
-
-    buf_.clear();
-    if (queued == 0) {        // 50 ms at the level the slice starts from
-        const double rest = cornerHz_ > 0 ? out_ : (double)pcm_.held() * LevelPcm::kGain;
-        buf_.assign(rate / 20, (int16_t)rest);
-    }
-    const size_t first = buf_.size();
-    pcm_.render(now, (long long)hz, (int)rate, buf_);
-    if (cornerHz_ > 0) couple(first, (int)rate);
-    if (!buf_.empty()) g_audio->push(this, buf_);
+    const size_t queued = g_audio->queued(owner);
+    if (queued > rate / 4) return {VoiceSlice::Act::Skip, 0};  // a quarter second waiting
+    return {VoiceSlice::Act::Render, queued == 0 ? rate / 20 : 0};  // 50 ms of rest
 }
 
-std::string Speaker::status(const Clock* clock) const {
+std::string voiceStatus(const Clock* clock, bool driven) {
     if (!g_audio) return "-> (no audio service in this build)";
     if (!g_audio->available()) return "-> no sound device";
     if (clock && clock->free())
         return "-> silent: the machine has no crystal (clock_hz = 0)";
-    return clock && driven(*clock) ? "-> playing" : "-> silent";
+    return driven ? "-> playing" : "-> silent";
+}
+
+void Speaker::pump(const Clock& clock, bool wired) {
+    const uint64_t     now   = clock.now();
+    const VoiceSlice   slice = planSlice(clock, pcm_.renderedTo(), playing(clock, wired), this);
+    if (slice.act == VoiceSlice::Act::Skip) {
+        skip(now);
+        return;
+    }
+    if (slice.act == VoiceSlice::Act::Wait) return;
+
+    buf_.clear();
+    if (slice.cushion) {      // at the level the slice starts from
+        const double rest = cornerHz_ > 0 ? out_ : (double)pcm_.held() * LevelPcm::kGain;
+        buf_.assign(slice.cushion, (int16_t)rest);
+    }
+    const size_t first = buf_.size();
+    pcm_.render(now, clock.hz(), g_audio->rate(), buf_);
+    if (cornerHz_ > 0) couple(first, g_audio->rate());
+    if (!buf_.empty()) g_audio->push(this, buf_);
+}
+
+std::string Speaker::status(const Clock* clock) const {
+    return voiceStatus(clock, clock && driven(*clock));
 }
 
 } // namespace altair

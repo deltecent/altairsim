@@ -24,6 +24,7 @@
 
 #include "host/level_pcm.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -32,6 +33,33 @@ namespace altair {
 
 class Audio;
 class Clock;
+
+// ---------------------------------------------------------------------------
+// THE RULES FOR ONE VOICE'S HOST TURN, shared by every board that plays sound: a Speaker
+// below, and a voice that is not a held level (the PAiA SS-100's SC-01). The board keeps
+// its own sound; these say what a slice of emulated time becomes. The reasons are with
+// planSlice() in speaker.cpp.
+// ---------------------------------------------------------------------------
+struct VoiceSlice {
+    enum class Act {
+        Skip,     // leave the time up to now unplayed
+        Wait,     // no time has gone by: do nothing
+        Render,   // make the samples up to now and push them
+    };
+    Act    act     = Act::Skip;
+    size_t cushion = 0;   // Render: samples of rest to push first (the device ran dry)
+};
+
+// Could a voice play now? A sound service with a device that has not failed, the voice
+// `wired`, and a crystal. The guest driving it is the board's own question.
+bool voiceCanPlay(const Clock& clock, bool wired);
+
+// One slice for the voice `owner`, which has rendered up to T-state `from`. `playing` is
+// voiceCanPlay() and the guest driving the voice.
+VoiceSlice planSlice(const Clock& clock, uint64_t from, bool playing, const void* owner);
+
+// For SHOW: "-> playing", "-> silent", or the reason nothing can play.
+std::string voiceStatus(const Clock* clock, bool driven);
 
 class Speaker {
 public:

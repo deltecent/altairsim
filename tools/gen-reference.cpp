@@ -215,7 +215,8 @@ const char* boardCategory(const std::string& n) {
         return "Video";
     if (n == "sol") return "Systems";  // a whole machine's I/O on one card -- more will come
     if (n == "pb1") return "PROM programmer";
-    if (n == "fp" || n == "virtc" || n == "hostbridge" || n == "ss1" || n == "rtc100")
+    if (n == "fp" || n == "virtc" || n == "hostbridge" || n == "ss1" || n == "rtc100" ||
+        n == "ss100")
         return "Other";
     return nullptr;
 }

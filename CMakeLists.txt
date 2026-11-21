@@ -467,6 +467,8 @@ add_library(altair_core STATIC
   # The OKI MSM5832 -- a BCD real-time clock/calendar reading the host's wall clock.
   # The CompuPro System Support 1 carries one (src/chips/msm5832.h).
   src/chips/msm5832.cpp
+  # The Votrax SC-01-A speech chip. The PAiA SS-100 carries one (src/chips/votrax-sc01.h).
+  src/chips/votrax-sc01.cpp
   src/chips/sig2651.cpp
   # The Intel 8253 -- a three-channel programmable interval timer, counts computed from
   # the clock rather than stepped. The CompuPro System Support 1 carries one.
@@ -634,6 +636,9 @@ add_library(altair_core STATIC
   # The Newtech Model 6 Music Board: one write-only port into a 6-bit D/A, an amplifier
   # and a speaker. Plays through the same Speaker as the D+7A. See newtech-music.h.
   src/boards/newtech-music.cpp
+  # The PAiA SS-100: two write-only ports around a Votrax SC-01-A (src/chips/votrax-sc01.h),
+  # an interrupt on A/R, and its sound through the shared voice rules. See paia-ss100.h.
+  src/boards/paia-ss100.cpp
   # The Processor Technology Sol-PC's integrated I/O as one composite card (serial,
   # keyboard, parallel, CUTS tape) -- reuses the vdm1 card for video. See proctech-sol.h.
   src/boards/pmmi-mm103.cpp
@@ -901,6 +906,8 @@ add_executable(altair_tests
   tests/test_d7a.cpp
   tests/test_music6.cpp
   tests/test_level_pcm.cpp
+  tests/test_votrax_sc01.cpp
+  tests/test_paia_ss100.cpp
   tests/test_sol.cpp
   tests/test_tapemount.cpp
   tests/test_lines.cpp

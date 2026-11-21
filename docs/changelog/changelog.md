@@ -10,6 +10,17 @@ register, the bit or the command that was wrong.
 
 ---
 
+## Unreleased
+
+**The PAiA SS-100 speech synthesizer board, `ss100` (issue #420).** The board has a Votrax
+SC-01-A chip. The guest writes phoneme codes to port `30` and the control word to port `31`.
+The board requests an interrupt when the chip is ready for the next phoneme. The
+`interrupt` setting is the jumper of the board: `vi0` to `vi7`, or `int`. The chip model
+uses the phoneme ROM of a real SC-01-A. The control word
+sets the volume, the speech or sound-effects mode, and the master clock, which changes the
+pitch and the speed. The `r21` setting is the board's clock trim pot, to match a real board. You hear the speech on the sound output of your computer when the
+machine has a crystal (`clock_hz`). The *User Manual* has a short program that says "hello".
+
 ## 1.3.7
 
 **1.3.7 adds copy and paste to the terminal window, `--tool-log` for an MCP session, a

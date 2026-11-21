@@ -192,6 +192,7 @@ The boards are in groups, in the same order as the sections below.
 | `4pio` | MITS 88-4PIO: up to four programmable parallel ports |
 | `d7a` | Cromemco D+7A: analog and parallel I/O. Reads joysticks and plays their speakers |
 | `music6` | Newtech Model 6 Music Board: a 6-bit D/A converter and a speaker |
+| `ss100` | PAiA SS-100: a Votrax SC-01-A speech synthesizer. Says phonemes, with an interrupt for each |
 
 **Floppy and disk controllers**
 
@@ -1334,6 +1335,84 @@ tells you the state:
 
 The amplifier and the volume control of the real board are not modeled. Set the volume on your
 computer.
+
+### `ss100`: PAiA SS-100 speech synthesizer
+
+A **speech board** with a Votrax SC-01-A chip. The guest writes one phoneme at a time, such as
+`H`, `EH1` or `L`. The chip says the phoneme, then asks for the next one with an interrupt. You
+hear the speech on the sound output of your computer.
+
+The board has two output ports. The default base is `30`:
+
+| Port | What a write does |
+|---|---|
+| `30` | Bits 0-5 are the phoneme code. Bits 6 and 7 are the inflection, which sets the pitch. The write starts the phoneme. |
+| `31` | The control word. Bit 7 enables the interrupt. Bits 6-5 set the volume: `00` full, `01` medium, `10` low, `11` off. Bit 4 is the mode: 0 speech, 1 sound effects. Bits 3-0 set the master clock: `8` is the standard 720 kHz, `0` is faster and `F` is slower. |
+
+The board has no input port. The `port` setting is the base, a multiple of `10` from `00` to
+`F0`. The board decodes four ports from the base and uses the first two.
+
+**The interrupt.** When the chip is ready for the next phoneme, and bit 7 of the control word is
+1, the board requests an interrupt. The request stays until the guest writes the next phoneme or
+clears bit 7. The `interrupt` setting is the jumper of the real board: `vi0` to `vi7`, or `int`
+for the processor's interrupt line. The default is `vi0`, which PAiA's software uses. A `vi`
+line needs a board that answers for it, such as the `virtc`. With `int` and no such board, the
+bus reads `FF` when the processor takes the interrupt, and the 8080 does `RST 7`.
+
+**The clock trim.** The real board has a trim pot, R21, that sets the master clock. PAiA's
+booklet says to set it for 720 kHz with the control word `08`. The `r21` setting is the pot, in
+ohms, from `0` to `1000`. The default is `500`, which gives 720 kHz at `08`. A higher value
+gives a lower clock: a lower pitch and slower speech. R21 has an effect only in speech mode.
+For example, `r21=690` gives about 700 kHz with the control word `20`:
+
+```
+altairsim> SET ss0 r21=690
+```
+
+At power-on, the control word is `00`, so the board requests no interrupt. The `RESET` switch
+does not change the board.
+
+**Sound needs a crystal.** At full speed (`clock_hz = 0`, the default), the guest does not keep
+real time, and the board plays nothing. The interrupts still come at the right time. Set the
+speed of the processor:
+
+```
+altairsim> SET cpu0 clock_hz=2000000
+```
+
+This short program says "hello" again and again. It enables the board at full volume and
+720 kHz, then writes the next phoneme on each `RST 7`. The phonemes are at `0060`: `PA1`, `H`,
+`EH1`, `L`, `O1`, `U1`, `PA1`, `PA1`, and `FF` to start again.
+
+```
+altairsim> BOARDS ADD ss100 ss0
+altairsim> SET ss0 interrupt=int
+altairsim> SET cpu0 clock_hz=2000000
+altairsim> DEPOSIT 0000 31 00 10 21 60 00 3E 88 D3 31 FB 76 C3 0A 00
+altairsim> DEPOSIT 0038 7E FE FF C2 42 00 21 60 00 7E D3 30 23 C9
+altairsim> DEPOSIT 0060 3E 1B 02 18 35 37 3E 3E FF
+altairsim> RUN 0000
+```
+
+`SHOW <id>` gives the last phoneme, the control word with the clock in kHz, and the sound:
+
+```
+  phoneme   18 L     inflection 0   A/R low (speaking)
+  control   88  interrupt enabled, volume full, speech mode, XF8 = 720.0 kHz
+  sound     -> playing
+```
+
+The end of the `sound` line tells you the state:
+
+| The line ends with | Meaning |
+|---|---|
+| `-> playing` | The chip spoke in the last half second of machine time. |
+| `-> silent` | The guest does not drive the board now. |
+| `-> silent: the machine has no crystal (clock_hz = 0)` | The machine runs at full speed. Set `clock_hz`. |
+| `-> no sound device` | The program cannot open a sound output on your computer, or this build has no sound. |
+
+The clock in sound-effects mode is an estimate. It depends on a trim pot of the real board,
+which the documentation does not give.
 
 ## Floppy and disk controllers
 
