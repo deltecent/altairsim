@@ -136,6 +136,8 @@ void test_framedump();
 void test_d7a();
 void test_music6();
 void test_level_pcm();
+void test_votrax_sc01();
+void test_paia_ss100();
 void test_sol();
 void test_turnkey();
 void test_virtc();

@@ -14,6 +14,7 @@ cheatsheet.md            the same reference as plain text, for an AI assistant t
 LICENSE                  the MIT license of altairsim.
 LICENSE-SDL3             the license of SDL3, which is built into the program.
 LICENSE-MAME-HD63484     the notice for the source of the HD63484 model's structure (MAME).
+LICENSE-MAME-VOTRAX      the notice for the source of the Votrax SC-01 data (MAME).
 examples/                machines that boot, with their media.
 hostbridge/              the host bridge utilities: source, HEX and COM.
 tools/                   scripts that show a mirror, and scripts that open LBR files.
@@ -42,7 +43,9 @@ a fault from that prompt. Each document tells you at the top where to start.
 to open the window for the video boards. SDL3 is built into the program, so its license is in
 the package as `LICENSE-SDL3`. `LICENSE-MAME-HD63484` is in the package for a similar reason. The
 model of the HD63484 video controller uses the structure of the MAME model, and the MAME license
-tells you to keep its notice with that code.
+tells you to keep its notice with that code. `LICENSE-MAME-VOTRAX` is there because the Votrax SC-01
+speech chip uses data from the MAME model: the contents of the chip's ROM and the values that
+only the chip's die shows.
 
 The **Developer Guide** is not in the package. It is with the source, at the address in
 [What is not in the package: the source](#what-is-not-in-the-package-the-source). You need it

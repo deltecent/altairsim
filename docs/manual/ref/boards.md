@@ -122,6 +122,7 @@ and within a group the boards are in **alphabetical order**.
 | [`hostbridge`](#hostbridge) | Host Bridge: file transfer to the host (not a period board) |
 | [`rtc100`](#rtc100) | SciTronics RTC-100: battery-backed clock/calendar |
 | [`ss1`](#ss1) | CompuPro System Support 1: interrupts, timer, clock, serial |
+| [`ss100`](#ss100) | PAiA SS-100: Votrax SC-01-A speech synthesizer |
 | [`virtc`](#virtc) | MITS 88-VI/RTC: vectored interrupts + real-time clock |
 
 
@@ -1724,6 +1725,19 @@ CompuPro System Support 1: multifunction S-100 board. Dual 8259A interrupt contr
 | `interrupt` | enum | `none` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where this port's IRQ is jumpered: none \| int \| vi0..vi7. The chip raises it on RxRDY; the standard board routes it through the 8259A instead *(interrupt strap)* |
 | `connect` | string | `null` | text | The endpoint on the other end of the line (CONNECT sets this) |
 | `title` | string |  | text | Name of a terminal window on this unit. Empty means the unit's address |
+
+
+### `ss100`
+
+PAiA SS-100: a Votrax SC-01-A phoneme speech synthesizer. Two write-only ports from BASE (default 30): data (phoneme b0-5, inflection b6-7) and control (enable, volume, mode, master clock). A/R raises an interrupt when enabled (interrupt=none|int|vi0..vi7, default vi0). Needs a crystal (clock_hz) to play
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0x30` | `0x0` .. `0xF0` | Base of the 4-port block (S1-S4 set A7-A4): data at BASE, control at BASE+1. A multiple of 10; default 30 |
+| `r21` | int | `500` | `0` .. `1000` | The R21 trim pot, in ohms (0-1000): it sets the master clock in speech mode. Default 500, mid-travel: 720 kHz at XF8, as the booklet calibrates it |
+| `interrupt` | enum | `vi0` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the A/R request goes (the jumper): vi0-vi7, or int for PINT. Default vi0, RST 7 as PAiA's software expects *(interrupt strap)* |
 
 
 ### `virtc`

@@ -160,6 +160,7 @@ FILE  cheatsheet.md        <=  docs/manual/ref/cheatsheet.md
 FILE  LICENSE              <=  LICENSE
 FILE  LICENSE-SDL3         <=  LICENSE-SDL3
 FILE  LICENSE-MAME-HD63484 <=  LICENSE-MAME-HD63484
+FILE  LICENSE-MAME-VOTRAX  <=  LICENSE-MAME-VOTRAX
 
 # The cheatsheet ALSO ships as a rendered PDF, altairsim-cheatsheet.pdf -- the same content a
 # person can open in a file manager. It is NOT a FILE line: like altairsim-manual.pdf and
@@ -176,6 +177,10 @@ FILE  LICENSE-MAME-HD63484 <=  LICENSE-MAME-HD63484
 # LICENSE-MAME-HD63484 is the BSD-3-Clause notice MAME's hd63484.cpp carries. The ACRTC
 # model in src/chips/hd63484.cpp took that file's structure (docs/sources.md records the
 # terms), and BSD-3 asks that the notice travel with any redistribution -- so it ships.
+#
+# LICENSE-MAME-VOTRAX is the same notice from MAME's votrax.cpp. The SC-01-A model in
+# src/chips/votrax-sc01.cpp read that file for die facts and copied no code, and its ROM table
+# is the decap image MAME distributes (docs/sources.md) -- so it ships too.
 
 # ---------------------------------------------------------------------------
 # TOKENS -- a machine/media reference, no longer written into prose.

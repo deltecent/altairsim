@@ -8,6 +8,7 @@
 #include "boards/cromemco-64fdc.h"
 #include "boards/cromemco-d7a.h"
 #include "boards/newtech-music.h"
+#include "boards/paia-ss100.h"
 #include "boards/cromemco-dazzler.h"
 #include "boards/cromemco-dazzler2.h"
 #include "boards/cadzilla.h"
@@ -121,6 +122,7 @@ std::vector<BoardType> boardTypes() {
         {"cadzilla", "CADzilla: HD63484 ACRTC graphics board with a Bt453 RAMDAC", "CADzilla: an HD63484 ACRTC graphics board with a Bt453 RAMDAC and 2 MB of fixed frame memory, on a fixed VESA monitor (mode: 640x480, 800x600, 1024x768 (default)). One 8-port I/O block at BASE (default 70): ACRTC RS=0 at +0, MODE register at +1 (write-only: HSPOL/VSPOL/AMODE/OLEN), ACRTC RS=1 at +2, Bt453 at +4..+7. Draws by command through the ACRTC FIFO; wired for 8 bpp, GAI +8, single or interleaved access set by MODE AMODE. Interrupts (SW1-8) optional (interrupt=none|int|vi0..vi7). Needs a Display"},
         {"d7a", "Cromemco D+7A: analog + parallel I/O, joysticks", "Cromemco D+7A: analog + parallel I/O. Eight ports from BASE (default 18): one parallel port + seven two's-complement A/D-in/D/A-out channels. Reads 1-2 JS-1 joysticks from the host"},
         {"music6", "Newtech Model 6 Music Board: 6-bit D/A and speaker", "Newtech Model 6 Music Board: one write-only port into a 6-bit D/A, an amplifier and a speaker. Answers at four addresses from BASE (default 24); DO7..DO2 are latched. A program makes the sound by writing the port in a timed loop. Needs a crystal (clock_hz) to play"},
+        {"ss100", "PAiA SS-100: Votrax SC-01-A speech synthesizer", "PAiA SS-100: a Votrax SC-01-A phoneme speech synthesizer. Two write-only ports from BASE (default 30): data (phoneme b0-5, inflection b6-7) and control (enable, volume, mode, master clock). A/R raises an interrupt when enabled (interrupt=none|int|vi0..vi7, default vi0). Needs a crystal (clock_hz) to play"},
         {"sol", "Processor Technology Sol-PC I/O: serial, keyboard, tape", "Processor Technology Sol-PC I/O: serial, keyboard, parallel, CUTS tape as one board. Seven ports F8..FE. Units serial/printer/keyboard (CONNECT) and tape1/tape2 (MOUNT). Brings the WIND/REWIND/EXTRACT verbs and a tape counter"},
         // Not a toggle: the SENSE switches a guest reads at IN 0FFH are a CONFIGURED byte
         // (SET fp0 sense=, or TOML) -- there is no switch on this board to flip. No OUT.
@@ -185,6 +187,7 @@ std::unique_ptr<Board> makeBoard(const std::string& typeName) {
     if (type == "cadzilla") return std::make_unique<CadzillaBoard>();
     if (type == "d7a") return std::make_unique<D7aBoard>();
     if (type == "music6") return std::make_unique<NewtechMusicBoard>();
+    if (type == "ss100") return std::make_unique<PaiaSs100>();
     if (type == "sol") return std::make_unique<SolBoard>();
     if (type == "fp") return std::make_unique<FrontPanelBoard>();
     if (type == "turnkey") return std::make_unique<TurnkeyBoard>();

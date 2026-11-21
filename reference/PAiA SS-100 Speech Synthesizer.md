@@ -13,6 +13,28 @@ turns each into continuous, unlimited-vocabulary speech. This is a distilled emu
 reference: the host-visible I/O model (two ports, one interrupt), the control word, the phoneme
 table, and enough of the SC-01 chip contract to model it.
 
+The three program listings are copied in full in
+[PAiA SS-100 Software Listings](PAiA%20SS-100%20Software%20Listings.md). The datasheet's word
+list is in [PAiA SS-100 Phoneme Word List](PAiA%20SS-100%20Phoneme%20Word%20List.md).
+
+## What is in the scan
+
+The scan has 42 pages and no text layer. PDF page N is printed page N+2 in the booklet. The
+Votrax datasheet at the end has its own page numbers.
+
+| PDF pp | Printed | Content |
+|---|---|---|
+| 1 | 1 | Cover and contents |
+| 2–7 | 2–8 | "This Is Your Computer Speaking" (*Popular Electronics*), with the schematic (Figs. 2–4), the parts list and Fig. 5 |
+| 8 | 9 | Table I, the phoneme chart |
+| 9–18 | 11–20 | SC-01 Vocabulary Development System listing |
+| 19–24 | 21–26 | Speech Development System listing (CP/M) |
+| 25 | 27 | Simple Speech Output Driver listing |
+| 26 | — | The board's foil pattern and parts placement (rotated) |
+| 27–34 | — | Votrax SC-01 datasheet |
+| 35–40 | — | The word list: English words spelled in SC-01 phonemes |
+| 41–42 | — | A notes page and the Votrax back cover |
+
 ## Host interface — two I/O ports
 
 The board decodes a block of S-100 I/O addresses set by a 4-position DIP switch (`S1`–`S4`).
@@ -77,9 +99,9 @@ one of the S-100 vectored-interrupt lines `VI0`–`VI7` by an on-board jumper.
 ## Calibration
 
 Output `xxx01000` to the parameter port (`n1`, address selected by `S1`–`S4`), connect a
-frequency counter to SC-01 pin 15, and adjust `R21` (10 kΩ pot) for a **720 kHz** clock — the
+frequency counter to SC-01 pin 15, and adjust `R21` (1 kΩ pot, parts list p. 6) for a **720 kHz** clock — the
 SC-01's nominal frequency for standard phoneme timing. The frequency is not sacred; the user is
-encouraged to experiment.
+encouraged to experiment. With the boxed fixed-clock circuit of Fig. 4, a 10 kΩ pot is adjusted instead. `R30` (10 kΩ pot) is the volume control.
 
 ---
 
@@ -172,6 +194,9 @@ Phoneme duration is clock-dependent (values above at 720 kHz).
 
 64 phonemes, 6-bit code (hex), with symbol, duration at 720 kHz (ms), and example word.
 
+The datasheet's word list spells English words in these symbols: [PAiA SS-100 Phoneme
+Word List](PAiA%20SS-100%20Phoneme%20Word%20List.md).
+
 | Code | Symbol | ms | Example | | Code | Symbol | ms | Example |
 |:--:|---|:--:|---|---|:--:|---|:--:|---|
 | 00 | EH3 | 59 | jack**e**t | | 20 | A | 185 | d**a**y |
@@ -233,7 +258,11 @@ Vowels formed as two phonemes in sequence, heard as one sound:
 
 # SS-100 software (three listings in the booklet)
 
-All three are 8080 assembly by Randy Carlstrom (CP/M port by John Simonton). The phoneme
+The listings are copied in full in
+[PAiA SS-100 Software Listings](PAiA%20SS-100%20Software%20Listings.md). All three are 8080
+assembly. The Vocabulary Development System is by Randy Carlstrom. The Speech Development System
+(CP/M) is his program, with the CP/M interface by John Simonton (p. 21). The Simple Speech Output
+Driver (p. 27) is by John Simonton. The phoneme
 translation tables map ASCII phoneme symbols → the codes above; the programs parse typed symbol
 strings, look them up, and stream the codes to the data port under interrupt control.
 
@@ -241,8 +270,8 @@ strings, look them up, and stream the codes to the data port under interrupt con
 
 | Command | Action |
 |---|---|
-| `XA0`–`XA3` | Set amplitude (output power). `XFn` maps to volume field. |
-| `XF1`–`XF16` | Set master clock frequency (16 steps). |
+| `XA0`–`XA3` | Set amplitude (output power). The VOLUME field gets `3−n`: `XA0` = `11` (no power), `XA2` = `01` (medium), `XA3` = `00` (full). The program's own table (p. 18) sets this. |
+| `XF1`–`XF16` | Set master clock frequency (16 steps). The XF field gets `16−n`: `XF1` = `1111` (lowest), `XF8` = `1000` (the 720 kHz calibration), `XF16` = `0000` (highest). The program's own table (pp. 18–19) sets this. |
 | `XI1`–`XI4` | Set inflection (pitch). |
 | `XE` | Sound-effects mode. |
 | `XS` | Speech mode. |
@@ -287,7 +316,32 @@ verification and application use — pass a phrase pointer in HL and the paramet
   field of the last parameter write), raise the interrupt request (A/R low→high) if enabled.
 - The base I/O address is set by a 4-bit DIP field (`n`); the booklet's software assumes `n=3`
   (`30H`/`31H`), which is the natural default.
-- Audio is out of scope for a text/console-driven sim unless a Display/audio seam is used; the
-  emulation value is the **timing/interrupt behavior** a guest program observes, not the sound.
+- **Emulated by the `ss100` board** (`docs/boards/paia-ss100.md`). The SC-01 is a chip model
+  (`src/chips/votrax-sc01.*`) that renders the sound through the host Audio service; the A/R
+  timing is exact whether or not the sound plays.
 - Interrupt vectors default to **RST 7 / 0038H** (VI0 on a bus-floats-high system, or via
   `PINT`); the CP/M variant uses **VI6 / 30H**.
+
+## Schematic facts (Figs. 2-4, parts list p. 6)
+
+Read from the page images for the `ss100` board (PDF page 4 = printed p. 5).
+
+| Part | What it does |
+|---|---|
+| IC6 ('244) | Data b0-b5 straight to the SC-01's P0-P5. |
+| IC8 | Latches data b6 → I1 and b7 → I2 (two inversions, true sense at the chip). Cleared by POC. |
+| IC10 ('273) | The control word. Cleared by POC. RESET does not reach the board. |
+| Q1-Q4 of IC10 → D3-D6 + R16 82K, R17 39K, R18 20K, R19 10K | XF b0-b3. A LOW bit pulls more current from Q1's emitter: lower XF = faster clock. |
+| Q5 of IC10 (MODE, b4) | Two jobs: through D7 + R21 (1K trim pot) + R20 620 Ω it is in the clock current source too; through IC11C it drives Q3, which puts C7 .047 µF to ground behind R25 1K (the speech low-pass, about 3.45 kHz). |
+| Q1 / Q2 current source | Q1 base on R15 1K (to +5 V) / R14 3.3K (to ground); emitter R24 3.3K plus the switched branches. Q1's collector crosses R22 1K; Q2 mirrors through R23 2.7K into C5 and the SC-01 clock pin. |
+| Q6 (b5) → IC9B → R29 10K; Q7 (b6) → IC9A → R28 1.5K | Volume shunts on the R26 47K / R30 10K divider ahead of the LM386: `01` ×0.548, `10` ×0.154. |
+| b5 AND b6 → IC11B → Q4 | Volume `11` shuts the amplifier down. |
+| Q8 (b7, ENABLE) → IC11A with A/R | The interrupt request, to the VI0-VI7 / PINT jumper. |
+| Address decode | S1-S4 = A7-A4; A3 and A2 must be 0, so the base is a multiple of 10H. Four output and four input strobes are decoded; nothing drives the bus on an input. |
+
+⚠ **R21's setting is not given.** The booklet calibrates it with control `08` to 720 kHz. That
+fixes the speech-mode curve closely, but the effects-mode clock (MODE high removes the
+D7/R20/R21 branch) depends on where R21 ended up. The `ss100` model takes it at mid-travel by
+default, and its `r21` property sets it. A recording of a real board (2026), made with a
+text-to-speech program that writes control `20`, has the pitch of about 700 kHz. The model
+gives that with R21 at about 690 Ω, so that board was not trimmed to 720 kHz at `08`.

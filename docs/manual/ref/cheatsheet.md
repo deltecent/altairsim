@@ -230,6 +230,7 @@ Type the part before the bracket.
 | `hostbridge` | Host Bridge: file transfer to the host (not a period board) |
 | `rtc100` | SciTronics RTC-100: battery-backed clock/calendar |
 | `ss1` | CompuPro System Support 1: interrupts, timer, clock, serial |
+| `ss100` | PAiA SS-100: Votrax SC-01-A speech synthesizer |
 | `virtc` | MITS 88-VI/RTC: vectored interrupts + real-time clock |
 
 ## Machines
