@@ -193,6 +193,22 @@ void test_votrax_sc01() {
         CHECK(after < loud / 100, "and the pauses after it fall silent");
     }
 
+    SECTION("SC-01: the voice amplitude moves on the slow (208 Hz) clock");
+    {
+        // From power-up, AH is strobed and left to run. VA steps 1/8 of the way to its
+        // target every 3456 master clocks, as on the die. At 625 Hz it would be audible
+        // from about 61 ms; at 208 Hz it is still silent until about 74 ms.
+        VotraxSc01 c;
+        c.setClocks(0, kCpu, VotraxSc01::kStandardClockHz);
+        std::vector<int16_t> p;
+        c.strobe(0, 0x24);
+        c.render(kCpu / 2, kRate, p);
+        const double steady = rms(p, p.size() / 2, p.size());
+        const double onset  = rms(p, size_t(kRate) * 60 / 1000, size_t(kRate) * 72 / 1000);
+        CHECK(steady > 1000, "AH makes sound");
+        CHECK(onset < steady / 20, "and the voice is still rising slowly at 60-72 ms");
+    }
+
     SECTION("SC-01: voice and noise reach the output");
     {
         VotraxSc01 c;
