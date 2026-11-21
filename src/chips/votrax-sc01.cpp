@@ -362,14 +362,15 @@ void VotraxSc01::tick() {
         approach(curF2q_, romF2q_);
         approach(curF3_, romF3_);
     }
-    // The amplitudes move on the fast clock, each after its delay (patent Fig. 7: CLD
-    // holds FA, VD holds VA). FC goes with FA: it routes the noise.
-    if (fast) {
-        if (ticks_ >= romCld_) {
-            approach(curFa_, romFa_);
-            approach(curFc_, romFc_);
-        }
-        if (ticks_ >= romVd_) approach(curVa_, romVa_);
+    // The voice amplitude moves on the slow clock too, after its delay (patent Fig. 7: VD).
+    // On the die only the FA and FC slots of the parameter RAM are written on the fast
+    // clock. VA is not frozen by a pause, so the voice still dies away.
+    if (slow && ticks_ >= romVd_) approach(curVa_, romVa_);
+    // The noise amplitude moves on the fast clock, after its delay (patent Fig. 7: CLD).
+    // FC goes with FA: it routes the noise.
+    if (fast && ticks_ >= romCld_) {
+        approach(curFa_, romFa_);
+        approach(curFc_, romFc_);
     }
 
     // The closure: when CL is set, or when there is nothing to hear, the output is ramped

@@ -32,6 +32,7 @@ The parts that matter to a program:
 | PAiA *SS-100 Speech Synthesizer Software* booklet (1982), with the *Popular Electronics* article and the Votrax datasheet | `reference/PAiA SS-100 Speech Synthesizer.md` | The ports, the control word (Fig. 5), the interrupt jumper, POC, the schematic (Figs. 2-4) and the parts list, the calibration step, the phoneme chart and lengths (Table 1), the A/R timing (Table 3). |
 | Votrax SC-01 patent US 4,433,210 | `reference/Votrax SC-01 patent US4433210.md` | The chip's design: the ROM fields, the transitions, the pitch counter, the noise gate, the filters. Used by the chip model (`src/chips/votrax-sc01.*`). |
 | MAME `votrax.cpp` (BSD-3, Olivier Galibert), as a reference only | `LICENSE-MAME-VOTRAX` | What only the die shows: the ROM image `sc01a.bin` and its bit order, the capacitor sizes, the glottal levels, the clock dividers and the noise register. No MAME code is copied. Each value taken from it is marked where it is used. See `docs/sources.md`. |
+| vsim (Olivier Galibert), a gate-level simulation of the SC-01-A die, run as a reference only | none | Which transition clock moves each parameter. F1, F2, F2Q, F3 and VA move on the slow clock (master / 3456). FA and FC move on the fast clock (master / 1152). No vsim code is copied. |
 
 **Where the sources disagree.**
 
