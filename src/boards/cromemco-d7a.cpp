@@ -283,6 +283,9 @@ std::vector<Property> D7aBoard::properties() {
     };
     p.push_back(spkProp("speaker1", "1", "1", spk1_));
     p.push_back(spkProp("speaker2", "2", "3", spk2_));
+    // One volume for the board: speaker 1 holds it, and speaker 2 is given the same.
+    p.push_back(volumeProperty(spk1_.spk.volume(),
+                               [this] { spk2_.spk.volume().set(spk1_.spk.volume().db()); }));
     return p;
 }
 

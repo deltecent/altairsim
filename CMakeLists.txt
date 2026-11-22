@@ -433,6 +433,9 @@ add_library(altair_core STATIC
   # One voice: a LevelPcm and the rules for when a slice of emulated time becomes sound.
   # Every board with a D/A-driven speaker holds one (the D+7A, the Newtech Model 6).
   src/host/speaker.cpp
+  # The last step of every voice before the Audio service: the user's `volume` and a soft
+  # limiter, so a peak past full scale is rounded off and not clipped.
+  src/host/volume.cpp
   # ...and the seam that joins them to a mount. A decorator over MediaFile, so a WAV
   # decodes ONCE at MOUNT and everything above it -- TapeImage, TapeStream, the UART --
   # sees the bytes a .TAP would have given it (host/tapecodec.h).
@@ -906,6 +909,7 @@ add_executable(altair_tests
   tests/test_d7a.cpp
   tests/test_music6.cpp
   tests/test_level_pcm.cpp
+  tests/test_volume.cpp
   tests/test_votrax_sc01.cpp
   tests/test_paia_ss100.cpp
   tests/test_sol.cpp

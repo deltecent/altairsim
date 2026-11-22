@@ -34,6 +34,7 @@
 #include "chips/votrax-sc01.h"
 #include "core/board.h"
 #include "core/clock.h"
+#include "host/volume.h"
 
 #include <cstdint>
 #include <string>
@@ -126,6 +127,7 @@ private:
     bool     spoke_       = false;        // a phoneme since power-on or restore
     double   lowpass_     = 0;            // the R25/C7 filter's output
     std::vector<int16_t> buf_;
+    Volume   vol_;                            // how loud on the host (a host setting)
 };
 
 } // namespace altair

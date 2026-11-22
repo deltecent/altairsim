@@ -241,7 +241,7 @@ void PaiaSs100::renderTo(uint64_t t, uint8_t ctl) {
     for (size_t i = first; i < buf_.size(); ++i) {
         const double x = buf_[i];
         lowpass_ = (ctl & kMode) ? x : lowpass_ + a * (x - lowpass_);
-        buf_[i]  = (int16_t)std::clamp(std::lround(lowpass_ * gain), -32767L, 32767L);
+        buf_[i]  = vol_(lowpass_ * gain);   // the user's volume, then the limiter
     }
 }
 
@@ -322,6 +322,7 @@ std::vector<Property> PaiaSs100::properties() {
         "Where the A/R request goes (the jumper): vi0-vi7, or int for PINT. Default vi0, "
         "RST 7 as PAiA's software expects",
         irq_));
+    p.push_back(volumeProperty(vol_));
     return p;
 }
 

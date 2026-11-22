@@ -183,9 +183,11 @@ plays at the pitch a real board gives. With `clock_hz = 0` the divisor is 2 MHz,
 - **Sound needs a crystal.** With the default flat-out clock (`clock_hz = 0`) the speakers
   are silent, and `SHOW` says so. Nothing throttles the machine to make sound possible;
   set `clock_hz` (4 MHz is the speed of a Cromemco Z-1).
-- **No volume control and no device choice.** The gain is fixed at about a quarter of full
-  scale for a full-swing square wave, and the sound goes to the host's default playback
-  device. The host's own volume control serves.
+- **No device choice.** The sound goes to the host's default playback device. A full-swing
+  square wave uses the whole 16-bit range at the default `volume` of 0 dB. The `volume`
+  property (−40 to +24 dB) is one setting for both speakers. It is a host setting, and the
+  guest cannot see it. A soft limiter (`src/host/volume.h`) rounds off a peak that is too
+  loud.
 - **The sound is late by the queue.** On the development Mac the device takes about 110 ms
   to start, and the queue then holds 135–200 ms. The 250 ms cap bounds it.
 - **Dazzle Doodle draws only to half deflection.** Its listing draws for readings in

@@ -21,6 +21,15 @@ sets the volume, the speech or sound-effects mode, and the master clock, which c
 pitch and the speed. The `r21` setting is the board's clock trim pot, to match a real board. You hear the speech on the sound output of your computer when the
 machine has a crystal (`clock_hz`). The *User Manual* has a short program that says "hello".
 
+**A `volume` setting for each sound board (issue #964).** The `d7a`, `music6` and `ss100`
+boards have a `volume` setting, in dB from `-40` to `24`. The default is `0`. The setting
+changes the sound on your computer only, and the guest cannot see it. altairsim rounds off
+a peak that is too loud. Because of this, you can make the speech of the PAiA SS-100 louder
+with little distortion, for example `SET ss0 volume=6`.
+
+**The D+7A and the Newtech Model 6 are 12 dB louder.** A full-swing level now uses the full
+range of the sound output. Before, it used a quarter of it. Set `volume=-12` for the old level.
+
 **Breaking: some built-in machines are removed.** They are `bankmem`, `cdbl`, `compupro`,
 `cuter`, `dazzler`, `disk1`, `disk1a`, `dualide`, `dualidesd`, `dualsd`, `jadedd`,
 `lineprinter`, `lineprinter-lpc`, `parallel`, `sbc200v`, `vdm1`, `vg3vipt` and `vgmz`. The long

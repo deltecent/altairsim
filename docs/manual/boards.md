@@ -1317,6 +1317,17 @@ altairsim> SET cpu0 clock_hz=4000000
 | `-> no sound device` | The program cannot open a sound output on your computer, or this build has no sound. |
 | `-> unwired` | The setting is `none`. |
 
+**The volume.** The `volume` setting sets how loud the board is on your computer, in dB, from
+`-40` to `24`. The default is `0`. One setting is for both speakers. The guest cannot see the
+setting, and the board does not change. For example, to make the sound half as loud:
+
+```
+altairsim> SET d7a0 volume=-6
+```
+
+When a sound is louder than the sound output of your computer can play, altairsim rounds off
+its peaks. A peak that is much too loud stays at full scale for its length.
+
 The timing of the board is not complete. A real D+7A holds the processor for a short time on
 each analog read and write, and the simulated board does not. A guest that makes a tone with a
 tight loop plays it at a higher pitch than on a real board.
@@ -1378,8 +1389,9 @@ tells you the state:
 | `-> silent: the machine has no crystal (clock_hz = 0)` | The machine runs at full speed. Set `clock_hz`. |
 | `-> no sound device` | The program cannot open a sound output on your computer, or this build has no sound. |
 
-The amplifier and the volume control of the real board are not modeled. Set the volume on your
-computer.
+The amplifier and the volume control of the real board are not modeled. The `volume` setting
+sets how loud the board is on your computer, in dB, from `-40` to `24`. The default is `0`. The
+guest cannot see the setting.
 
 ### `ss100`: PAiA SS-100 speech synthesizer
 
@@ -1455,6 +1467,19 @@ The end of the `sound` line tells you the state:
 | `-> silent` | The guest does not drive the board now. |
 | `-> silent: the machine has no crystal (clock_hz = 0)` | The machine runs at full speed. Set `clock_hz`. |
 | `-> no sound device` | The program cannot open a sound output on your computer, or this build has no sound. |
+
+**The volume.** Bits 6-5 of the control word are the volume of the real board, and the guest
+sets them. The `volume` setting is different. It sets how loud the speech is on your computer,
+in dB, from `-40` to `24`. The default is `0`, and the guest cannot see it. Speech is quieter
+than most music at the same level, because most of a word is quieter than its peaks. To make
+the speech louder:
+
+```
+altairsim> SET ss0 volume=6
+```
+
+altairsim rounds off a peak that is too loud. At `6`, almost no peak reaches full scale. At
+`10`, about one sample in fifty stays at full scale.
 
 The clock in sound-effects mode is an estimate. It depends on a trim pot of the real board,
 which the documentation does not give.

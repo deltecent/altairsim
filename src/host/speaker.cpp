@@ -4,6 +4,7 @@
 #include "host/audio.h"
 
 #include <cmath>
+#include <span>
 
 namespace altair {
 namespace {
@@ -68,10 +69,7 @@ void Speaker::couple(size_t from, int rate) {
         const double x = (double)buf_[i];
         out_ = a * (out_ + x - in_);
         in_  = x;
-        double y = std::round(out_);
-        if (y > 32767) y = 32767;
-        if (y < -32768) y = -32768;
-        buf_[i] = (int16_t)y;
+        buf_[i] = vol_(out_);   // the first edge can overshoot: rounded off, not clipped
     }
 }
 
@@ -137,11 +135,12 @@ void Speaker::pump(const Clock& clock, bool wired) {
     buf_.clear();
     if (slice.cushion) {      // at the level the slice starts from
         const double rest = cornerHz_ > 0 ? out_ : (double)pcm_.held() * LevelPcm::kGain;
-        buf_.assign(slice.cushion, (int16_t)rest);
+        buf_.assign(slice.cushion, vol_(rest));
     }
     const size_t first = buf_.size();
     pcm_.render(now, clock.hz(), g_audio->rate(), buf_);
     if (cornerHz_ > 0) couple(first, g_audio->rate());
+    else vol_.apply(std::span<int16_t>(buf_).subspan(first));
     if (!buf_.empty()) g_audio->push(this, buf_);
 }
 
