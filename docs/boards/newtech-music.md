@@ -94,9 +94,13 @@ the write.
 - **The D/A is ideal.** 1% resistors and the CD4050 output resistance are not modeled. No
   software can see them.
 - **The amplifier is not modeled.** The LM380's gain, its clipping, the R16/C10 output
-  filter and the 220 µF output capacitor are left out. The level goes to the host's sound
-  device at a fixed gain; set the loudness on your computer.
-- **No volume control** (R15) and **no JPR1/JPR2**: there is one speaker, and it is the
+  filter and the 220 µF output capacitor are left out. A full-swing level uses the whole
+  16-bit range at the default `volume` of 0 dB.
+- **No R15 volume control.** The `volume` property (−40 to +24 dB) is a host setting in its
+  place, and the guest cannot see it. A soft limiter (`src/host/volume.h`) follows it. The
+  first edge after silence is about twice full scale until C7 settles, for about 0.2 s. The
+  limiter holds that part of the wave at full scale.
+- **No JPR1/JPR2**: there is one speaker, and it is the
   host's sound device.
 - **The speaker's own response is not modeled.** A 2-inch speaker plays little below a few
   hundred hertz; the host plays all of it.

@@ -1367,6 +1367,7 @@ Cromemco D+7A: analog + parallel I/O. Eight ports from BASE (default 18): one pa
 | `joystick2` | string | `auto` | text | Which host controller drives JS-1 console 2: 'none', 'auto' (the matching gamepad -- console 1->pad 0, console 2->pad 1 -- or the keyboard), 'keyboard', or a device index like 0 |
 | `speaker1` | string | `1` | text | The analog output that JS-1 console 1's speaker is on: 'none', or a channel 1 to 7 (channel n is port BASE+n). Default 1 |
 | `speaker2` | string | `3` | text | The analog output that JS-1 console 2's speaker is on: 'none', or a channel 1 to 7 (channel n is port BASE+n). Default 3 |
+| `volume` | int | `0` | `-40` .. `24` | How loud the board's sound is on this computer, in dB: -40 to +24. A host setting; the board does not change. A peak that would pass full scale is rounded off. Default 0 |
 
 
 ### `lpc`
@@ -1398,6 +1399,7 @@ Newtech Model 6 Music Board: one write-only port into a 6-bit D/A, an amplifier 
 | Key | Kind | Default | Legal | Meaning |
 |---|---|---|---|---|
 | `port` | int | `0x24` | `0x0` .. `0xF4` | The output port (jumpers J1..J8 set A7..A4): 04, 14, 24 ... F4. The board answers at this address and the next three. Default 24 |
+| `volume` | int | `0` | `-40` .. `24` | How loud the board's sound is on this computer, in dB: -40 to +24. A host setting; the board does not change. A peak that would pass full scale is rounded off. Default 0 |
 
 
 ### `pio`
@@ -1738,6 +1740,7 @@ PAiA SS-100: a Votrax SC-01-A phoneme speech synthesizer. Two write-only ports f
 | `port` | int | `0x30` | `0x0` .. `0xF0` | Base of the 4-port block (S1-S4 set A7-A4): data at BASE, control at BASE+1. A multiple of 10; default 30 |
 | `r21` | int | `500` | `0` .. `1000` | The R21 trim pot, in ohms (0-1000): it sets the master clock in speech mode. Default 500, mid-travel: 720 kHz at XF8, as the booklet calibrates it |
 | `interrupt` | enum | `vi0` | `none` \| `int` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | Where the A/R request goes (the jumper): vi0-vi7, or int for PINT. Default vi0, RST 7 as PAiA's software expects *(interrupt strap)* |
+| `volume` | int | `0` | `-40` .. `24` | How loud the board's sound is on this computer, in dB: -40 to +24. A host setting; the board does not change. A peak that would pass full scale is rounded off. Default 0 |
 
 
 ### `virtc`

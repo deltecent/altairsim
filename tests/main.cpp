@@ -174,6 +174,7 @@ const struct {
     {"d7a", test_d7a},
     {"music6", test_music6},
     {"levelpcm", test_level_pcm},
+    {"volume", test_volume},
     {"sc01", test_votrax_sc01},
     {"ss100", test_paia_ss100},
     {"sol", test_sol},

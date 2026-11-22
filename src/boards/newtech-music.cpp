@@ -87,6 +87,7 @@ std::vector<Property> NewtechMusicBoard::properties() {
         return true;
     };
     p.push_back(std::move(x));
+    p.push_back(volumeProperty(spk_.volume()));
     return p;
 }
 

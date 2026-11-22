@@ -140,7 +140,10 @@ the restored T-state.
   gain.
 - **The amplifier is a gain.** The LM386 and the speaker are not modeled. The volume settings
   are the ratios of the R26/R28/R29/R30 divider. R30 is the board's volume pot, and it is
-  taken at its full 10K. Set the volume on your computer.
+  taken at its full 10K. The `volume` property (−40 to +24 dB, default 0) sets how loud the
+  board is on the host. It is a host setting, and the guest cannot see it. A soft limiter
+  (`src/host/volume.h`) follows it, so a peak that is too loud is rounded off. At +6 dB almost
+  no sample of a phrase reaches full scale. At +10 dB about one sample in fifty does.
 - **The chip's output low-pass is at about 4 kHz.** The die's capacitors put it near 150 Hz,
   and recordings of the chip do not agree with that. The 4 kHz value follows MAME's fit to
   recordings.

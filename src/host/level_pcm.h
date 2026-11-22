@@ -26,9 +26,11 @@ namespace altair {
 
 class LevelPcm {
 public:
-    // One step of the 8-bit level in the 16-bit sample. +127 -> 8128, about a quarter of
-    // full scale: a square wave at full swing is loud, and two voices can sum.
-    static constexpr int kGain = 64;
+    // One step of the 8-bit level in the 16-bit sample. +127 -> 32512 and -128 -> -32768:
+    // the D/A's full swing is the whole 16-bit range, as loud as other sound on the host.
+    // The user's `volume` (host/volume.h) comes after this, and its limiter rounds off
+    // anything past full scale.
+    static constexpr int kGain = 256;
 
     // The level changes to `level` at T-state `t`. Edges arrive in time order (the clock
     // only runs forward); one earlier than the rendered point takes effect at that point.

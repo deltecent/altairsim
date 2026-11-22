@@ -333,4 +333,35 @@ void test_paia_ss100() {
         const std::vector<int16_t> a = run(20000), b = run(9999);
         CHECK(!a.empty() && a == b, "the change lands on the same sample either way");
     }
+
+    SECTION("SS-100 -- the host volume makes speech louder");
+    {
+        const std::vector<uint8_t> hello = {0x1B, 0x02, 0x18, 0x35, 0x37, 0x3E, 0x3F};
+        auto say = [&hello](const char* db) {
+            Rig g;
+            std::string err;
+            CHECK(setProperty(*g.ss, "volume", db, err), "the volume is taken");
+            g.m.clock.setHz(2000000);
+            g.out(0x31, 0x88);                     // the board's own volume at full
+            g.speak(hello, 20000);
+            return g.aud.only();
+        };
+        const std::vector<int16_t> at0 = say("0"), at6 = say("6");
+        auto rms = [](const std::vector<int16_t>& v) {
+            double s = 0;
+            for (int16_t x : v) s += (double)x * x;
+            return v.empty() ? 0.0 : std::sqrt(s / (double)v.size());
+        };
+        const double ratio = rms(at6) / rms(at0);
+        CHECK(at0.size() == at6.size(), "the same length of sound");
+        CHECK(ratio > 1.9 && ratio < 2.0, "+6 dB is about twice as loud");
+        size_t atLimit = 0;
+        for (int16_t v : at6) atLimit += (v >= 32767 || v <= -32767);
+        CHECK(atLimit == 0, "and no sample is pressed flat against full scale");
+
+        Rig g;
+        std::string err;
+        CHECK(!setProperty(*g.ss, "volume", "25", err), "+25 dB is refused");
+        CHECK(setProperty(*g.ss, "volume", "-40", err), "-40 dB is taken");
+    }
 }

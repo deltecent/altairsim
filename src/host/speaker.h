@@ -23,6 +23,7 @@
 // is the sound wherever the machine is started from.
 
 #include "host/level_pcm.h"
+#include "host/volume.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -102,6 +103,10 @@ public:
     // between a value and zero starts and stops with no step.
     void setAcCoupled(double cornerHz) { cornerHz_ = cornerHz; }
 
+    // How loud it is on the host (host/volume.h): the last step before the device.
+    Volume&       volume() { return vol_; }
+    const Volume& volume() const { return vol_; }
+
     // For SHOW: "-> playing", "-> silent", or the reason nothing can play.
     std::string status(const Clock* clock) const;
 
@@ -124,6 +129,8 @@ private:
     double cornerHz_ = 0;
     double in_       = 0;
     double out_      = 0;
+
+    Volume vol_;                    // the user's gain and the limiter
 };
 
 } // namespace altair

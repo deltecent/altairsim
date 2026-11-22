@@ -13,6 +13,7 @@
 #include <SDL3/SDL.h>
 #endif
 
+#include <cmath>
 #include <cstdint>
 #include <map>
 #include <string>
@@ -610,6 +611,25 @@ void test_d7a() {
         CHECK(pcm.size() == 200, "two hundred samples");
         CHECK(pcm.size() == 200 && pcm[99] == 0x40 * LevelPcm::kGain, "the level, up to the reset");
         CHECK(pcm.size() == 200 && pcm[100] == 0 && pcm[199] == 0, "and 0 V after it");
+    }
+
+    SECTION("D+7A -- one volume for the board, on both speakers");
+    {
+        Rig g;
+        std::string err;
+        CHECK(setProperty(*g.d7a, "volume", "-6", err), "-6 dB is taken");
+        g.m.clock.setHz(441000);               // ten T-states to the sample
+        g.out(0x19, 0x40);                     // speaker 1, channel 1
+        g.out(0x1B, 0x40);                     // speaker 2, channel 3
+        g.m.clock.advance(1000);
+        g.d7a->pump();
+        CHECK(g.aud.voices.size() == 2, "two speakers, two voices");
+        const int half = (int)std::lround(0x40 * LevelPcm::kGain * std::pow(10.0, -6 / 20.0));
+        bool both = g.aud.voices.size() == 2;
+        for (const auto& [owner, pcm] : g.aud.voices)
+            both = both && !pcm.empty() && std::abs(pcm.back() - half) <= 1;
+        CHECK(both, "each is about half the level the guest wrote, times the gain");
+        CHECK(!setProperty(*g.d7a, "volume", "-41", err), "-41 dB is refused");
     }
 
     SECTION("D+7A -- power-on and RESTORE do not play the time the clock jumped");

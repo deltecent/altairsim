@@ -257,9 +257,29 @@ void test_music6() {
             hi = v > hi ? v : hi;
         }
         // From rest at +5 V the wave goes DOWN by the whole swing: 63 steps of 4, times
-        // the gain. With no capacitor it would sit between -8192 and +7936.
-        CHECK(lo < -15500 && lo >= -16128, "the first half wave is the full swing below rest");
-        CHECK(hi < 500, "and the top of it is the rest level");
+        // the gain -- 252 * 256 = 64512, twice full scale. The volume's limiter rounds it
+        // off; a hard clip would give -32768. With no capacitor it would sit between
+        // -32768 and +31744.
+        CHECK(lo >= -32767 && lo < -29490,
+              "the first half wave is rounded off past the knee, not clipped");
+        CHECK(hi < 8 * LevelPcm::kGain, "and the top of it is the rest level");
+    }
+
+    SECTION("music6 -- once the capacitor settles, a full-swing wave fills the range");
+    {
+        Rig g;
+        g.m.clock.setHz(2000000);
+        g.tone(0x24, 4000000, 1000, 0x00, 0xFC);   // two seconds of 0 V / +5 V
+        const auto& pcm = g.aud.only();
+        CHECK(pcm.size() > 44100, "two seconds of sound");
+        int16_t lo = 0, hi = 0;
+        for (size_t i = pcm.size() - 4410; i < pcm.size(); ++i) {   // the last 0.1 s
+            lo = pcm[i] < lo ? pcm[i] : lo;
+            hi = pcm[i] > hi ? pcm[i] : hi;
+        }
+        // About +-126 steps around 0 V, times the gain: +-32256, near full scale.
+        CHECK(hi > 29490 && hi <= 32767, "the top is near full scale");
+        CHECK(lo < -29490 && lo >= -32767, "and so is the bottom");
     }
 
     SECTION("music6 -- a Model 6 and a D+7A speaker are two voices");
