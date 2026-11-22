@@ -38,7 +38,7 @@ with no output, has nothing to check.
 ## 2. Find the machine and the state
 
 - **The machine.** Use the machine that the text names: "on the `altmon` machine", "the
-  default machine's DBL PROM". A Z80 sample needs a Z80 machine, such as `bankmem`. If the
+  default machine's DBL PROM". A Z80 sample needs a Z80 machine, such as `z80`. If the
   text names no machine, use `default`.
 - **Earlier commands.** A block often continues from an earlier block in the same section. For
   example, a bare `DISASM` continues from the last `DISASM`, and `STEP 20` follows a `BREAK`
@@ -59,7 +59,7 @@ with no output, has nothing to check.
 S=.claude/skills/check-doc-samples/check-block.sh
 $S docs/debugger/debugging.md 147 default
 $S docs/debugger/debugging.md 857 altmon "BREAK FBA5" "RUN F800" DISASM
-$S docs/debugger/debugging.md 389 bankmem "DEPOSIT 100 ED B0 CB 27 18 FE 10 FC DD 7E 05"
+$S docs/debugger/debugging.md 426 z80 "DEPOSIT 100 ED B0 CB 27 18 FE 10 FC DD 7E 05"
 DIR=roms/ALTMON $S docs/debugger/debugging.md 437 altmon
 ```
 

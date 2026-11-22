@@ -395,10 +395,24 @@ the addresses of each plane on `vector`. The default is `0000` to `FFFF`. The re
 its last address at `DFFF`, which leaves room for a ROM and a video board.
 
 The package has no operating system that uses banks. The quickest way to see the board work is
-from the monitor:
+from the monitor. Save this machine file as `bankmem.toml`. It starts from the `z80` machine and
+puts a `bankmem` board in place of its memory board:
+
+```toml
+[machine]
+name = "bankmem"
+base = "z80"
+
+[[board]]
+type  = "bankmem"
+id    = "mem0"
+card  = "vector"
+banks = 8
+```
+
+Start it with `altairsim bankmem.toml`, and write the select port:
 
 ```
-$ altairsim bankmem
 altairsim> OUT 40 01
 port 40 <- 01
 altairsim> DEPOSIT 1000 A0
@@ -461,10 +475,10 @@ III with `config = "cpm"`. Both boards write the page number to port `FF`, and b
 under 16K of common RAM at `C000`.
 
 The ExpandoRAM III manual prints some cells of its page map incorrectly. `bankmem` corrects them.
-The corrections change what the guest sees only when a bank is off.
+The corrections change what the guest sees only when a bank is off. Start the machine with
+`altairsim bankmem.toml --set "mem0 card=expandoram3"`:
 
 ```
-$ altairsim bankmem --set "mem0 card=expandoram3"
 set> SET mem0 card=expandoram3
 mem0: card=expandoram3
 altairsim> OUT FF 01
@@ -508,7 +522,7 @@ read in its window gets the EEPROM, not the RAM.
 
 There is no `BOOT` command. **The monitor boots the machine.** `startup = ["RUN F000"]` starts
 the monitor. At its `->` prompt, the **`I` command** boots CP/M 3 from a Dual SD card (below).
-The `dualsd` machine uses this board.
+The machine file in the `dualsd` section uses this board.
 
 ## The processor boards
 
@@ -1157,9 +1171,22 @@ The `interrupt` strap selects the line: pin 73 (`int`, the default), a vectored 
 (`vi0` to `vi7`), or `none`. `interrupt_after` is switch SW2 #4 of the board. It sets whether
 the interrupt comes after every character, or only after a CR or LF.
 
-The **`lineprinter`** machine is `default` with one of these boards added. Its output starts on
-`null`. To capture it, type `CONNECT lpt0:prn out:printout.txt`. To see it, connect it to
-`console`, which takes the console from the terminal.
+This machine file is the `default` machine with one of these boards added at `02`:
+
+```toml
+[machine]
+name = "lineprinter"
+base = "default"
+
+[[board]]
+type    = "c700"
+id      = "lpt0"
+port    = 02
+connect = "null"
+```
+
+The output starts on `null`. To capture it, type `CONNECT lpt0:prn out:printout.txt`. To see
+it, connect it to `console`, which takes the console from the terminal.
 
 ### `lpc`: MITS 88-LPC
 
@@ -1175,8 +1202,8 @@ commands. For this reason, the output is the printed *page*: the codes changed t
 one text line for each printed line. On this board, the line breaks are commands, not data.
 
 `CONNECT` its `prn` line to an `out:` file, the `console`, a `socket:` or a real `printer:`
-queue. The **`lineprinter-lpc`** machine has one at `02`, with its output on `null` until you
-`CONNECT` it. The board is polled. The interrupt of the real board is not modeled.
+queue. To add one at `02`, use the machine file of the `c700` above with `type = "lpc"`. The
+board is polled. The interrupt of the real board is not modeled.
 
 ## Parallel and analog I/O
 
@@ -1198,8 +1225,28 @@ and **the guest sets the direction of each port in software**. Each port is a se
 `jb` and so on), and each section is a line that you can connect. It uses sixteen ports from a
 default base of `20`. It is polled, like the `pio`.
 
-The `pio` has a fixed eight bits each way. The `4pio` can be set up as the software needs. The
-**`parallel`** machine has both boards, and the `pio` sends its output to a file.
+The `pio` has a fixed eight bits each way. The `4pio` can be set up as the software needs. This
+machine file adds both boards to the `default` machine, and the `pio` sends its output to a file:
+
+```toml
+[machine]
+name = "parallel"
+base = "default"
+
+[[board]]
+type = "pio"
+id   = "pio0"
+port = 04
+
+  [board.unit.out]
+  connect = "out:parallel-out.txt"
+
+[[board]]
+type  = "4pio"
+id    = "pio1"
+port  = 20
+ports = 1
+```
 
 ### `d7a`: Cromemco D+7A
 
@@ -1259,8 +1306,6 @@ sound:
 ```
 altairsim> SET cpu0 clock_hz=4000000
 ```
-
-The `dazzler` machine sets 4 MHz already.
 
 `SHOW <id>` has one line for each speaker. The end of the line tells you the state:
 
@@ -1466,10 +1511,10 @@ The units are `drive0` to `drive3`. A disk image holds 275-byte slots, 16 on a t
 header. A file of 677600 bytes has two sides, and a file of 338800 bytes has one side. A file of
 any other size mounts with two sides and grows when a program writes to it.
 
-The `vg3vipt` machine has this board, with all the drives empty. Monitor 4.3 boots from `drive1`.
-To boot a disk:
+The `vg3vipt.toml` machine file in the `vgfwii` section has this board, with all the drives
+empty. Monitor 4.3 boots from `drive1`. To boot a disk:
 
-1. Start the machine with `altairsim vg3vipt`.
+1. Start the machine with `altairsim vg3vipt.toml`.
 2. Press `Ctrl-E` to go to the monitor.
 3. Type `MOUNT dm0:drive1 mydisk.vgi`.
 4. Type `RUN`. Monitor 4.3 continues at its `Mon>` prompt.
@@ -1813,7 +1858,48 @@ it at address `0000`. Routine 0, the default, reads track 0 of drive 0 into memo
 It then switches the EPROM off and starts the loader that it read. The `boot` switch turns the
 EPROM off, for a machine that boots in a different way.
 
-The `disk1a` machine has this board, a Z80 processor, 64K of RAM and a **System Support 1**.
+This machine file has this board, a Z80 processor, 64K of RAM and a **System Support 1**.
+Save it as `disk1a.toml`, and start it with `altairsim disk1a.toml`:
+
+```toml
+[machine]
+name    = "disk1a"
+startup = ["RUN 0"]
+
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 0
+
+[[board]]
+type = "ss1"
+id   = "ss1"
+base = 50
+
+  [board.unit.serial]
+  connect = "console"
+
+[console]
+strip7out = true
+bsdel     = "bs"
+
+[[board]]
+type = "disk1a"
+id   = "fd0"
+port = C0
+
+[[board]]
+type           = "memory"
+id             = "mem0"
+fill           = "random"
+honors_phantom = "read"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"
+```
+
 The console is the serial port of the System Support 1. The machine starts the EPROM at once.
 With no disk in drive 0, routine 0 tries again and again. To boot a CompuPro CP/M disk:
 
@@ -1889,8 +1975,61 @@ passes a different console code to the loaded system:
 
 Routines 0–3 are for the 8086 and do not run here.
 
-The `disk1` machine has this board, a Z80 processor, 64K of RAM, a **System Support 1** and an
-Interfacer I console. The console is the first serial port of the Interfacer I, at ports `00`
+This machine file has this board, a Z80 processor, 64K of RAM, a **System Support 1** and an
+Interfacer I console. Save it as `disk1.toml`, and start it with `altairsim disk1.toml`:
+
+```toml
+[machine]
+name    = "disk1"
+startup = ["RUN 0"]
+
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 0
+
+[[board]]
+type = "gsio"
+id   = "if1"
+
+  [board.unit.a]
+  profile = "compupro-if2"
+  connect = "console"
+
+  [board.unit.b]
+  data_port     = 02
+  status_port   = 03
+  dav           = 1
+  tbmt          = 0
+  inverter_gate = false
+
+[console]
+strip7out = true
+bsdel     = "bs"
+
+[[board]]
+type = "ss1"
+id   = "ss1"
+base = 50
+
+[[board]]
+type = "disk1"
+id   = "fd0"
+port = C0
+
+[[board]]
+type           = "memory"
+id             = "mem0"
+fill           = "random"
+honors_phantom = "read"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"
+```
+
+The console is the first serial port of the Interfacer I, at ports `00`
 and `01`, as the CompuPro CP/M 2.2N BIOS expects. To boot a CompuPro CP/M 2.2N disk:
 
 1. Press `Ctrl-E` to get the monitor.
@@ -2137,7 +2276,68 @@ The board has up to four drives. It recognizes a disk by the size of the image:
 The board refuses an image of any other size. The board checks the density. A read at the wrong
 density gives **Record Not Found**, as on the hardware.
 
-The `jadedd` machine boots Jade CP/M 2.2. It has an 8080 processor, 56K of RAM, an 88-2SIO, this
+This machine file boots Jade CP/M 2.2. Save it as `jadedd.toml`:
+
+```toml
+[machine]
+name    = "jadedd"
+startup = ["RUN F000"]
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0
+
+[[board]]
+type = "2sio"
+id   = "sio0"
+port = 10
+
+  [board.unit.a]
+  connect = "console"
+  baud    = 9600
+
+  [board.unit.b]
+  connect = "null"
+  baud    = 9600
+
+[[board]]
+type = "fp"
+id   = "fp0"
+
+[[board]]
+type   = "jadedd"
+id     = "fd0"
+port   = 43
+window = E000
+size   = "8"
+
+[[board]]
+type    = "hostbridge"
+id      = "hb0"
+port    = B0
+hostdir = ""
+
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "56K"
+
+  [[board.region]]
+  type  = "rom"
+  at    = F000
+  mount = "builtin:ddboot-2sio"
+
+[console]
+bsdel = "bs"
+```
+
+The machine has an 8080 processor, 56K of RAM, an 88-2SIO, this
 board, and a boot PROM, **DDBOOT-2SIO** (`builtin:ddboot-2sio`), at `F000`. The PROM is in the
 host's memory, not on the board. It starts the board's Z80, which reads CP/M from drive 0. The CP/M BIOS on Jade's
 disks uses the PROM's console routines, so the PROM stays in memory while CP/M runs.
@@ -2147,7 +2347,7 @@ console at ports `00` and `01`. Jade marked those ports as the places to change 
 console board. `builtin:ddboot-2sio` is Jade's PROM, changed at those places for the 88-2SIO. No
 other byte of the PROM is different. To boot CP/M:
 
-1. Type `altairsim jadedd`. With no disk in drive 0, the PROM prints `INSERT SYSTEM DISKETTE` and
+1. Type `altairsim jadedd.toml`. With no disk in drive 0, the PROM prints `INSERT SYSTEM DISKETTE` and
    waits.
 2. Press `Ctrl-E` to go to the monitor.
 3. Type `MOUNT fd0:drive0 JADE20K.DSK`, with the name of your Jade system disk.
@@ -2198,10 +2398,60 @@ two ports (default `80`–`81`), and a microcontroller on the board does the car
 card is one CP/M drive. The **socket** of the card gives the drive letter: socket 1 is A:, and
 socket 2 is B:.
 
-**It has no boot PROM.** The monitor on the processor board boots it. For this reason, the
-`dualsd` machine has three boards: a `z80` for the processor, the `v2z80rom` monitor EEPROM,
-whose `I` command reads CP/M 3 from the card, and this controller. Start the machine, type `I`
-at the `->` monitor prompt, and CP/M 3 starts at `A>`.
+**It has no boot PROM.** The monitor on the processor board boots it. For this reason, this
+machine file has three main boards: a `z80` for the processor, the `v2z80rom` monitor EEPROM,
+whose `I` command reads CP/M 3 from the card, and this controller. Save it as `dualsd.toml`:
+
+```toml
+[machine]
+name    = "dualsd"
+startup = ["RUN F000"]
+
+[console]
+bsdel = "bs"
+
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 0
+
+[[board]]
+type = "v2z80rom"
+id   = "rom0"
+
+[[board]]
+type    = "propio"
+id      = "con0"
+connect = "console"
+
+[[board]]
+type = "dualsd"
+id   = "sd0"
+port = 80
+
+[[board]]
+type = "fp"
+id   = "fp0"
+
+[[board]]
+type    = "hostbridge"
+id      = "hb0"
+port    = B0
+hostdir = ""
+
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"
+```
+
+Start it with `altairsim dualsd.toml`, type `I` at the `->` monitor prompt, and CP/M 3 starts
+at `A>`.
 
 **Mount a card in both sockets.** The CP/M 3 boot ROM checks that each socket has a card before
 it starts. With a card in socket 1 only, the loader boots and then stops. Put the bootable
@@ -2222,15 +2472,65 @@ to the IDE bus of a CF card (default ports `30`–`34`). Its two cards are CP/M 
 and it boots the same **CP/M 3**. It stores data on a card in the same layout as the SD part, so
 **a card image works on both boards**.
 
-**It has no boot PROM** either. The `dualide` machine has the `z80`, the `v2z80rom` monitor
-EEPROM and this controller. At the `->` monitor prompt, the **`P` command** (not the `I` of the
-Dual SD) reads CP/M 3 from CompactFlash drive 0, and CP/M starts at `A>`.
+**It has no boot PROM** either. This machine file has the `z80`, the `v2z80rom` monitor EEPROM
+and this controller:
+
+```toml
+[machine]
+name    = "dualide"
+startup = ["RUN F000"]
+
+[console]
+bsdel = "bs"
+
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 0
+
+[[board]]
+type = "v2z80rom"
+id   = "rom0"
+
+[[board]]
+type    = "propio"
+id      = "con0"
+connect = "console"
+
+[[board]]
+type = "dualide"
+id   = "ide0"
+port = 30
+
+[[board]]
+type = "fp"
+id   = "fp0"
+
+[[board]]
+type    = "hostbridge"
+id      = "hb0"
+port    = B0
+hostdir = ""
+
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"
+```
+
+At the `->` monitor prompt, the **`P` command** (not the `I` of the Dual SD) reads CP/M 3 from
+CompactFlash drive 0, and CP/M starts at `A>`.
 
 The cards are the same as on the Dual SD board: a raw **`.img` with a `.geo` file beside it**.
 The image can stop after the live file system, with `FF` after its end. `MOUNT … CREATE` makes a
-blank data card, and a bootable card must come from a real image. The **`dualidesd`** machine
-has the **whole board** at once: CompactFlash as A: and B:, and microSD as C: and D:, with one
-CP/M 3 system on all four drives.
+blank data card, and a bootable card must come from a real image. For the **whole board** at
+once, add the `dualsd` board of the Dual SD machine file to this one. CompactFlash is then A: and
+B:, and microSD is C: and D:, with one CP/M 3 system on all four drives.
 
 ## Video and display
 
@@ -2274,8 +2574,6 @@ results:
 - **The cursor does not blink** while the machine is stopped. To see it blink, use `sol20`,
   where SOLOS runs in a loop and does not halt.
 
-The `vdm1` demo halts after it draws its banner, so its window belongs to a stopped machine.
-
 ### `vdm1`: Processor Technology VDM-1
 
 **Memory-mapped video.** A 1K screen of **16 rows by 64 columns** is in the machine's own
@@ -2290,10 +2588,7 @@ port gives two timing bits. The software uses them to avoid writing while the be
 Bit 7 of each byte is the **cursor and blink** flag, not part of the character. For this reason,
 the board draws 128 characters from a real character ROM, not 256.
 
-Two machines use it:
-
-- **`vdm1`**: an Altair with a VDM-1, and a demo that draws on it
-- **`cuter`**: the period CUTER monitor, with its own VDM-1 driver
+The `sol20` machine uses it, with the SOLOS monitor as its driver.
 
 ### `dazzler`: Cromemco Dazzler
 
@@ -2308,8 +2603,8 @@ where the frame buffer is. The second sets the format: the resolution, the size 
 This gives four modes: **32×32 or 64×64** elements in color or grey, and **64×64 or 128×128**
 on/off elements, in **16 colors** or 16 greys.
 
-The `dazzler` machine is the plain board, for you to build on. A 64×64 picture is very small, so
-the board's `width` property (above) makes the window about the size of a VDM-1 window.
+A 64×64 picture is very small, so the board's `width` property (above) makes the window about the
+size of a VDM-1 window.
 
 ### `dazzler2`: Cromemco Dazzler II
 
@@ -2447,14 +2742,62 @@ interrupt to a vectored interrupt line, for the SBC-200's CTC. The SD video CBIO
 
 It runs **`sdmonv21`**, the video version of the SD monitor. It is the same monitor as in the
 serial `sbc200` machine, with the same commands and the same `.` prompt. You **do not press
-Return first**, because the VDB has no serial speed to measure. The prompt is on the screen as
-soon as the machine starts:
+Return first**, because the VDB has no serial speed to measure. Save this machine file as
+`sbc200v.toml`. It is an SBC-200 with the video monitor in its PROM socket and a VDB-8024 as the
+console:
 
-```
-$ altairsim sbc200v
+```toml
+[machine]
+name    = "sbc200v"
+startup = ["RUN"]
+
+[display]
+focus    = true
+keyboard = "console"
+
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+[[board]]
+type      = "vdb8024"
+id        = "vdb0"
+port      = 00
+interrupt = "vi2"
+
+  [board.unit.keyboard]
+  connect = "console"
+
+[[board]]
+type    = "sbc"
+id      = "sbc0"
+variant = "sbc200"
+port    = 7C
+start   = E000
+
+  [[board.socket]]
+  at    = E000
+  mount = "builtin:sdmonv21"
+
+  [[board.socket]]
+  at    = F000
+  mount = "builtin:ddb200"
+
+[[board]]
+type           = "memory"
+id             = "mem0"
+fill           = "random"
+honors_phantom = "read"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"
 ```
 
-This gives the monitor's `.` prompt **in the video window**.
+Start it with `altairsim sbc200v.toml`. The prompt is on the screen as soon as the machine
+starts. This gives the monitor's `.` prompt **in the video window**.
 
 Like a Sol-20, **the window is the console.** The machine sets `focus=on`, so the window keeps
 the keyboard while the guest runs. Keys typed in the window and at the terminal go to the
@@ -2495,15 +2838,50 @@ default is `random`.
 The board does not make a program wait for the picture, as the real board did. The status bit 5
 is a 60 Hz clock. With `clock_hz` set, it follows emulated time. At `clock_hz=0`, it follows host time.
 
-The `vg3vipt` machine has this board and Monitor 4.3 in ROM at `E000`:
+This machine file has this board and Monitor 4.3 in ROM at `E000`. Save it as `vg3vipt.toml`:
 
-```
-$ altairsim vg3vipt
+```toml
+[machine]
+name    = "vg3vipt"
+startup = ["RUN"]
+
+[display]
+focus    = true
+keyboard = "console"
+
+[[board]]
+type     = "vgzcb"
+id       = "cpu0"
+clock_hz = 4000000
+
+  [[board.socket]]
+  at    = E000
+  mount = "builtin:vgmon43"
+
+[[board]]
+type = "vgfwii"
+id   = "fw0"
+
+  [board.unit.keyboard]
+  connect = "console"
+
+[[board]]
+type = "vgdmdc"
+id   = "dm0"
+
+[[board]]
+type      = "bankmem"
+id        = "ram0"
+card      = "vector"
+window_lo = 0000
+window_hi = DFFF
+banks     = 1
+fill      = "random"
 ```
 
-The Monitor prints `VECTOR GRAPHIC` and its `Mon>` prompt **in the video window**. Press `R` for
-the registers. Type `DE000E03F` and Return to dump the Monitor's first bytes. The window is the
-console, so the keys go to the Monitor. The drives are empty, so `B` prints `BOOT FLOPPY` and
+Start it with `altairsim vg3vipt.toml`. The Monitor prints `VECTOR GRAPHIC` and its `Mon>`
+prompt **in the video window**. Press `R` for the registers. Type `DE000E03F` and Return to dump
+the Monitor's first bytes. The window is the console, so the keys go to the Monitor. The drives are empty, so `B` prints `BOOT FLOPPY` and
 returns to the prompt. See `vgdmdc` for how to boot a disk.
 
 Without SDL3 the machine runs the same and shows no window. The command `DUMP F000-F77F` shows
@@ -2716,8 +3094,8 @@ id   = "ss1"
 math = "9511a"
 ```
 
-The `compupro` machine has one: a stock Altair with the System Support 1 added, and its console
-still on the 2SIO. The clock is at `5A` (command) and `5B` (data). The board reference gives the
+Put that table in a machine file with `base = "default"` to add the board to a stock Altair. The
+console stays on the 2SIO. The clock is at `5A` (command) and `5B` (data). The board reference gives the
 digit map, the read and set sequences and the register layouts.
 
 ### `rtc100`: SciTronics RTC-100

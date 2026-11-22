@@ -57,7 +57,7 @@ patch points for the user's own console board.
 The PROM sets up no UART: `INIT` is all `NOP`s. These ports and bits are the port map of the
 SD Systems VDB-8024, a video board with fixed ports `00`/`01` that needs no set-up.
 
-The `jadedd` machine uses [`ddboot-2sio`](../DDBOOT-2SIO/README.md) instead. That PROM is
+The Jade Double D machine file in the *User Manual* uses [`ddboot-2sio`](../DDBOOT-2SIO/README.md) instead. That PROM is
 this one with the console patched for an 88-2SIO at ports `10`/`11`.
 
 ## Use it

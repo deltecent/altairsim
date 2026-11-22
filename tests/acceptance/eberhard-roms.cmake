@@ -1,4 +1,4 @@
-# THE EBERHARD ROM MACHINES START -- `amon`, `acuter` and `cdbl`.
+# THE EBERHARD ROM MACHINES START -- `amon`, `acuter` and `cdbl` (tests/acceptance/machines/cdbl.toml).
 #
 # tests/test_machines.cpp already proves every built-in LOADS and round-trips through
 # CONFIG SAVE. That is a different claim from this one, and the gap between them is
@@ -77,8 +77,9 @@ expect("${out}" ">" "acuter")
 # banner. It does, reliably, with /dev/null. The CRs are consumed at the `A>` prompt
 # AFTER the banner, which is the point: they are what keeps the machine alive through the
 # boot, and they cannot mangle anything because CP/M is not being told to do anything.
-run_machine(out KEYS eberhard-cdbl.keys ARGS cdbl
-            -x "MOUNT dsk0:drive0 tests/media/cpm/cpm22b23-56k.dsk" -x "RUN FF00")
+# The MOUNT path is relative to the machine file's folder, tests/acceptance/machines/.
+run_machine(out KEYS eberhard-cdbl.keys ARGS tests/acceptance/machines/cdbl.toml
+            -x "MOUNT dsk0:drive0 ../../media/cpm/cpm22b23-56k.dsk" -x "RUN FF00")
 expect("${out}" "56K CP/M 2.2b" "cdbl")
 expect("${out}" "For Altair 8\" Floppy" "cdbl")
 

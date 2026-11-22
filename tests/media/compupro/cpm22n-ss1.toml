@@ -8,7 +8,7 @@
 
 [machine]
 name = "disk1-cpm22n-ss1"
-base = "disk1"
+base = "disk1.toml"
 
 [[board]]
 id = "if1"

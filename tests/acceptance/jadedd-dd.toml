@@ -5,7 +5,7 @@
 
 [machine]
 name = "jadedd-dd-acceptance"
-base = "jadedd"
+base = "machines/jadedd.toml"
 
 [[board]]
 id = "fd0"

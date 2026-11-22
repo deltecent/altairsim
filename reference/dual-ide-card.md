@@ -152,6 +152,6 @@ geometry (512-byte sectors, 15616 sectors ≈ 7.99 MB); `format=dualsd` is the s
 | **1**  | A:, B: (CF) | CP/M 3 (non-banked) | CompactFlash |
 | **14** | A:, B: (CF) + C:, D: (SD) | CP/M 3 (non-banked) | CF + SD |
 
-**Image-1** is the boot target for the `dualide` machine (CF only); **Image-14** for
+**Image-1** is the boot target for the IDE-AB board alone (CF only); **Image-14** for
 `dualidesd` (CF + SD). System tracks come from a real image; a bootable card cannot be
 blank-created.

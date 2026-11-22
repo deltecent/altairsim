@@ -2,7 +2,7 @@
 
 **Status:** built (`disk1`). The board boots CompuPro CP/M 2.2N from an 8″ disk through routine
 4 of `builtin:DISK1`, a dump of a factory EPROM. `tests/test_disk1.cpp` tests the board, and
-`acceptance-disk1` boots the tracked disk through the `disk1` machine. The serial line on port 3
+`acceptance-disk1` boots the tracked disk through the test machine `tests/media/compupro/disk1.toml`. The serial line on port 3
 is built and tested with a guest program in the unit test. No period program that uses the line
 has run on it (see *Limitations*).
 
@@ -33,7 +33,7 @@ The console is usually on a separate board, an Interfacer or a System Support 1.
 | A factory Disk 1 EPROM, `CompuPro_Disk1_80_86.BIN` | `roms/DISK1/README.md` | `builtin:DISK1`. |
 | CompuPro *CP/M 2.2 Technical Manual* (1983 and 1984) | `reference/CompuPro CPM-22 Technical Manual.md` | The floppy formats, the system-disk layout and the CompuPro port map. |
 | NEC µPD765A data sheet (1982) | `reference/NEC uPD765A FDC.md` | The chip. |
-| `COMPUPRO.LIB`, `ACTIVE.LIB` (CP/M 2.2N, 1983) | not tracked | The console ports of the `disk1` machine. |
+| `COMPUPRO.LIB`, `ACTIVE.LIB` (CP/M 2.2N, 1983) | not tracked | The console ports of the Disk 1 machine file in the *User Manual*. |
 
 `docs/sources.md` has the provenance of each one.
 
@@ -116,7 +116,7 @@ loaded system picks its console from it. CP/M 2.2N, as on the tracked disk, does
 
 | Routine | C | Console of CP/M 2.2N |
 |---|---|---|
-| 4 | 0 | Interfacer at `00`/`01` (the `disk1` machine's console) |
+| 4 | 0 | Interfacer at `00`/`01` (the console of the Disk 1 machine file) |
 | 5 | 1 | An Interfacer at `10`/`11`. The machine has none, so nothing prints |
 | 6 | 2 | System Support 1 serial channel. Connect `ss1:serial` to see it |
 | 7 | 3 | Interfacer 3 or 4 at `10`. The machine has none, so nothing prints |

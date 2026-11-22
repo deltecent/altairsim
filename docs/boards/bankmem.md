@@ -7,7 +7,8 @@ class with five decoders**, one per real card, chosen by the `card` property.
 
 - Source code: `src/boards/bankmem.{h,cpp}`
 - Tests: `tests/test_bankmem.cpp`
-- Runnable machine: `machines/bankmem.toml` (`altairsim bankmem`)
+- Runnable machine: the `bankmem.toml` machine file in the *User Manual* (`docs/manual/boards.md`,
+  `bankmem`): the `z80` machine with this board in place of its memory board
 - Period references: `reference/Vector Graphic 64K Dynamic RAM.md`,
   `reference/Cromemco 64KZ RAM.md`, `reference/North Star HRAM.md`,
   `reference/SD Systems ExpandoRAM II.md`, `reference/SD Systems ExpandoRAM III.md`
@@ -227,7 +228,7 @@ The select port is also write-only and the guest owns it, but the monitor's `OUT
 you can watch a plane swap by hand with no guest software:
 
 ```
-altairsim bankmem
+altairsim bankmem.toml     ; the machine file from the User Manual
 OUT 40 01            ; Vector: select bank 0
 DEPOSIT 1000 A0
 OUT 40 08            ; select bank 3 (one-hot 0x08, NOT bank 8)

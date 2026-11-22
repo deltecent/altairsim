@@ -1,6 +1,6 @@
 # A Vector 3 VIP with Tandon drives: ZCB processor, 56K of RAM, Flashwriter II, Dual-Mode controller.
 #
-#     altairsim vg3vipt
+#     altairsim tests/acceptance/machines/vg3vipt.toml
 #     Mon>                       <- the Monitor prompt, ON THE VIDEO SCREEN
 #
 # Press B to boot. Monitor 4.3 boots unit 1, so first mount a disk at the altairsim> monitor:

@@ -127,7 +127,7 @@ the `src/host/*_sdl.cpp` files (display, joystick, audio) and the composition ro
 `#include` no SDL and compile in every configuration. Then:
 
 ```sh
-altairsim vdm1               # a VDM-1 with a banner-drawing demo (roms/VDM1DEMO)
+altairsim sol20              # a Sol-20: SOLOS draws its screen on the VDM-1
 ```
 
 ## What actually got built

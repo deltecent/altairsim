@@ -182,7 +182,7 @@ plays at the pitch a real board gives. With `clock_hz = 0` the divisor is 2 MHz,
 
 - **Sound needs a crystal.** With the default flat-out clock (`clock_hz = 0`) the speakers
   are silent, and `SHOW` says so. Nothing throttles the machine to make sound possible;
-  set `clock_hz` (the `dazzler` machine sets 4 MHz).
+  set `clock_hz` (4 MHz is the speed of a Cromemco Z-1).
 - **No volume control and no device choice.** The gain is fixed at about a quarter of full
   scale for a full-swing square wave, and the sound goes to the host's default playback
   device. The host's own volume control serves.
@@ -236,8 +236,8 @@ plays at the pitch a real board gives. With `clock_hz = 0` the divisor is 2 MHz,
 - **Smoke test:** a Dazzler machine with a D+7A boots; a program that does `IN 19` /
   `IN 18` runs, exercising the real `SdlJoystick` runtime path (SDL gamepad subsystem
   init on first pump, with or without a controller plugged in).
-- **By ear** (the real `SdlAudio` path; no test can hear). In the `dazzler` machine
-  (4 MHz):
+- **By ear** (the real `SdlAudio` path; no test can hear). In a Dazzler machine
+  at 4 MHz:
 
   ```
   BOARDS ADD d7a d7a0

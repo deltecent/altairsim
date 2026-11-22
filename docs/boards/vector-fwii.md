@@ -120,6 +120,7 @@ The maintainer also ran Monitor 4.3 on this board in a real window with SDL3. Th
 ## References
 
 - `reference/Flashwriter II Manual.md`, the distilled emulation reference.
-- `machines/vg3vip.toml`, `machines/vg3vipt.toml` and `machines/vg3sb.toml`, the machines.
+- `machines/vg3vip.toml` and `machines/vg3sb.toml`, the machines, and
+  `tests/acceptance/machines/vg3vipt.toml`, the Monitor 4.3 machine that the test uses.
 - `roms/VGMON43/README.md`, the Monitor.
 - `docs/boards/proctech-vdm1.md` and `docs/boards/sd-vdb8024.md`, the other video boards.

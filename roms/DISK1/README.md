@@ -52,8 +52,8 @@ routine of the same design. It sends Specify `03 6F 24` and reads all 26 sectors
 
 ## Use it
 
-The `disk1` board loads this EPROM itself. It is not a ROM that you mount. `altairsim disk1`
-starts it with `RUN 0`.
+The `disk1` board loads this EPROM itself. It is not a ROM that you mount. The Disk 1 machine file
+in the *User Manual* (boards chapter, `disk1`) starts it with `RUN 0`.
 The board reference is [`docs/boards/compupro-disk1.md`](../../docs/boards/compupro-disk1.md).
 
 ## Files here

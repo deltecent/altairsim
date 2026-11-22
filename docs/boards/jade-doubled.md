@@ -3,7 +3,7 @@
 **Status:** built (`jadedd`). The board runs its own Z80 against its own RAM, local ports and
 FD1791, and the host talks to it through one port and a 1 K memory window, as on the real board.
 `tests/test_jadedd.cpp` runs small Z80 programs on the board that read, write and step the way
-Jade's DCM2 does. The `jadedd` machine boots Jade CP/M 2.2 Release 2 through the DDBOOT PROM,
+Jade's DCM2 does. The test machine `tests/acceptance/machines/jadedd.toml` boots Jade CP/M 2.2 Release 2 through the DDBOOT PROM,
 patched for an 88-2SIO console (`builtin:ddboot-2sio`). Two acceptance tests boot it to `A>`,
 and a third makes new disks with Jade's FORMAT.
 
@@ -152,14 +152,14 @@ The status byte of a strobe read is the one from before the strobes act (see *Li
 ## Limitations and deliberate departures
 
 - **The boot PROM is in host memory, not on the board.** The board has no PROM of its own.
-  DDBOOT is a 590-byte PROM that the host runs at F000. The `jadedd` machine puts it in a ROM
+  DDBOOT is a 590-byte PROM that the host runs at F000. The machine file in the *User Manual* puts it in a ROM
   region of its memory board. The CP/M BIOS on Jade's disks calls the PROM's console routines,
   so the PROM stays mapped while CP/M runs.
 - **The console is an 88-2SIO at port 10, with a patched PROM.** Jade's DDBOOT
   (`builtin:ddboot`, `roms/DDBOOT/`) reads a console at 00 (status) and 01 (data). Input ready
   is bit 1 and output ready is bit 2, both active high. These ports and bits are the port map of
   the SD Systems VDB-8024, a video board. Jade marked them as patch points for the owner's
-  console board. The `jadedd` machine uses `builtin:ddboot-2sio` (`roms/DDBOOT-2SIO/`), which is
+  console board. That machine file uses `builtin:ddboot-2sio` (`roms/DDBOOT-2SIO/`), which is
   DDBOOT patched at those points for an 88-2SIO at 10/11. No address in the PROM moves.
 - **The EIA port is not connected.** A write to `SERO` does nothing, and `SERI` reads 1 (an idle,
   marking line). DCM2's list command bit-bangs a character out through `SERO`, and its list
@@ -204,7 +204,7 @@ board, loaded through the window:
 - a snapshot taken in the middle of a sector read, which finishes after the restore.
 
 The acceptance tests `acceptance-jadedd` and `acceptance-jadedd-dd` (`tests/acceptance/jadedd.exp`)
-boot the `jadedd` machine through `builtin:ddboot-2sio`, wait for the sign-on and `A>`, and type
+boot `tests/acceptance/machines/jadedd.toml` through `builtin:ddboot-2sio`, wait for the sign-on and `A>`, and type
 `DIR`:
 
 - Jade's 20K master, serial number 2-187-01961 (`tests/media/jade/JADEDD-CPM22-MASTER-SSSD.DSK`):
@@ -217,7 +217,7 @@ Over `--mcp`, a PIP copy of a 22K file on the double-density disk, a `Ctrl-C` wa
 `STAT` of the copy also worked. A `SAVE` to the write-protected master gives `Bdos Err On A: Bad
 Sector`.
 
-`acceptance-jadedd-format` (`tests/acceptance/jadedd-format.cmake`) drives the `jadedd` machine
+`acceptance-jadedd-format` (`tests/acceptance/jadedd-format.cmake`) drives the same machine
 over `--mcp` with Jade's FORMAT.COM, Release 2A, from the 56K disk. It works on copies of the
 tracked image:
 

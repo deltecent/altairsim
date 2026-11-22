@@ -3,7 +3,7 @@
 # THE EBERHARD MONITORS, TYPED AT -- `amon` and `acuter`.
 #
 # The .cmake test beside this one proves each machine STARTS: AMON's banner and the RAM
-# page it measured, and CP/M coming up under `cdbl`. That is everything those machines
+# page it measured, and CP/M coming up under `cdbl.toml`. That is everything those machines
 # say on their own. This one is the other half -- the machines ANSWERING -- and it is a
 # separate file for a reason that cost a red CI leg to learn.
 #

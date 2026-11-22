@@ -2,8 +2,8 @@
 
 **Status:** done — for the one part of the board it models: the onboard 8K monitor EEPROM, its
 two 4K pages in the `F000`–`FFFF` window, and the `D3H` latch that switches pages and turns the
-EEPROM off. Board type `v2z80rom`. It carries the MASTER V6.6 monitor in the `dualsd`, `dualide`
-and `dualidesd` machines.
+EEPROM off. Board type `v2z80rom`. It carries the MASTER V6.6 monitor in the Dual SD and
+IDE-AB machine files in the *User Manual*.
 
 **Not modelled, on purpose:** the rest of the physical board. The Z80 is a separate board here,
 the Power-On-Jump is replaced by `RUN F000`, and the memory manager behind `D2H`/`D3H` is left

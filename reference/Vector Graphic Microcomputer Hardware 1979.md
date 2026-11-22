@@ -6,7 +6,8 @@ Vector Graphic product brochure, 1979, 6 PDF pages, no text layer. The pages wer
 Only the machine and board entries that affect emulation are kept. The brochure gives no port and
 no address.
 
-**Emulated** as the `vgmz` machine, with a generic Z-80 and a stand-in memory board.
+**Emulated** with the Vector Graphic boards, a generic Z-80 and a stand-in memory board. The `vgmz`
+machine that put them together is no longer built in.
 
 ---
 

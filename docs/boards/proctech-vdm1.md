@@ -129,11 +129,12 @@ after the scroll, as the beam scans. A blanked cell still shows its cursor block
   palette swap, property validation (1 KB / 4-port alignment), control codes drawn
   by default, each `blanking` setting (CR/VT in display order, cursor blocks under
   `all`), and the `fill`/`seed` power-on screen.
-- End-to-end: `altairsim vdm1` runs `roms/VDM1DEMO`, which writes a banner into
-  `0xCC00`; `DUMP CC00` shows it, and with SDL3 the banner appears in a window.
+- End-to-end: `roms/VDM1DEMO/README.md` gives a machine file that runs the demo ROM, which
+  writes a banner into `0xCC00`; `DUMP CC00` shows it, and with SDL3 the banner appears in a
+  window. The `sol20` machine draws SOLOS's screen on the same board.
 
 ## References
 
 - `reference/Processor Technology VDM-1.md` — the distilled manual.
 - `src/boards/proctech-vdm1.{h,cpp}`, `src/boards/proctech-vdm1-font.h`,
-  `src/host/display.h`, `src/host/display_sdl.{h,cpp}`, `machines/vdm1.toml`.
+  `src/host/display.h`, `src/host/display_sdl.{h,cpp}`, `roms/VDM1DEMO/README.md` (a machine file).
