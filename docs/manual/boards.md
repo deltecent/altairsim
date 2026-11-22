@@ -410,10 +410,9 @@ card  = "vector"
 banks = 8
 ```
 
-Start it and write the select port:
+Start it with `altairsim bankmem.toml`, and write the select port:
 
 ```
-$ altairsim bankmem.toml
 altairsim> OUT 40 01
 port 40 <- 01
 altairsim> DEPOSIT 1000 A0
@@ -476,10 +475,10 @@ III with `config = "cpm"`. Both boards write the page number to port `FF`, and b
 under 16K of common RAM at `C000`.
 
 The ExpandoRAM III manual prints some cells of its page map incorrectly. `bankmem` corrects them.
-The corrections change what the guest sees only when a bank is off.
+The corrections change what the guest sees only when a bank is off. Start the machine with
+`altairsim bankmem.toml --set "mem0 card=expandoram3"`:
 
 ```
-$ altairsim bankmem.toml --set "mem0 card=expandoram3"
 set> SET mem0 card=expandoram3
 mem0: card=expandoram3
 altairsim> OUT FF 01
@@ -2797,13 +2796,8 @@ honors_phantom = "read"
   size = "64K"
 ```
 
-The prompt is on the screen as soon as the machine starts:
-
-```
-$ altairsim sbc200v.toml
-```
-
-This gives the monitor's `.` prompt **in the video window**.
+Start it with `altairsim sbc200v.toml`. The prompt is on the screen as soon as the machine
+starts. This gives the monitor's `.` prompt **in the video window**.
 
 Like a Sol-20, **the window is the console.** The machine sets `focus=on`, so the window keeps
 the keyboard while the guest runs. Keys typed in the window and at the terminal go to the
@@ -2885,13 +2879,9 @@ banks     = 1
 fill      = "random"
 ```
 
-```
-$ altairsim vg3vipt.toml
-```
-
-The Monitor prints `VECTOR GRAPHIC` and its `Mon>` prompt **in the video window**. Press `R` for
-the registers. Type `DE000E03F` and Return to dump the Monitor's first bytes. The window is the
-console, so the keys go to the Monitor. The drives are empty, so `B` prints `BOOT FLOPPY` and
+Start it with `altairsim vg3vipt.toml`. The Monitor prints `VECTOR GRAPHIC` and its `Mon>`
+prompt **in the video window**. Press `R` for the registers. Type `DE000E03F` and Return to dump
+the Monitor's first bytes. The window is the console, so the keys go to the Monitor. The drives are empty, so `B` prints `BOOT FLOPPY` and
 returns to the prompt. See `vgdmdc` for how to boot a disk.
 
 Without SDL3 the machine runs the same and shows no window. The command `DUMP F000-F77F` shows
