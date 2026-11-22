@@ -185,8 +185,8 @@ jump to an absolute address in the PROM, which puts PC there. Its next instructi
   SBC-200 + DDBIOS + VersaFloppy: the SBC auto-bauds off the typed boot character, and the
   VersaFloppy chapter (`docs/boards/sd-versafloppy.md`) covers the disk side.
 - **`machines/sbc200.toml`** cold-starts MSMONR21 to its `.` prompt on the on-card 8251;
-  **`machines/sbc200v.toml`** drives the same card from a VDB-8024 video console over VI2.
-  Both have their PROMs in sockets and `start = E000`, and start with a plain `RUN`.
+  the `sbc200v.toml` machine file in the *User Manual* drives the same card from a VDB-8024
+  video console over VI2. Both have their PROMs in sockets and `start = E000`, and start with a plain `RUN`.
 - **`tests/test_sbc.cpp`** has the decode jumpers, the onboard RAM, and auto-start: the
   release, both resets, the snapshot, a PROM in a low bank, and a Z80 that runs the monitor
   PROM from `0000`.

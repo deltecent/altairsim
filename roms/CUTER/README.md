@@ -28,12 +28,54 @@ console. Bits 0–1 choose the default **output** pseudo-port, bits 2–3 the
 | Tape | CUTS cassette | status `FAh`, data `FBh` |
 
 So **sense = 0** ⇒ console is VDM out + keyboard in. That is how
-[`machines/cuter.toml`](../../machines/cuter.toml) is wired.
+the machine file below is wired.
 
 ## Use it
 
-```
-altairsim cuter
+Save this machine file as `cuter.toml`, then run `altairsim cuter.toml`:
+
+```toml
+[machine]
+name    = "cuter"
+startup = ["RUN C000"]
+
+[[board]]
+type  = "fp"
+id    = "fp0"
+sense = 0x00
+
+[[board]]
+type     = "8080"
+id       = "cpu0"
+clock_hz = 0
+
+[[board]]
+type   = "vdm1"
+id     = "vdm0"
+base   = 0xCC00
+port   = 0xC8
+video  = "normal"
+cursor = "blink"
+
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "48K"
+
+  [[board.region]]
+  type  = "rom"
+  at    = C000
+  mount = "builtin:cuter"
+
+  [[board.region]]
+  type = "ram"
+  at   = C800
+  size = "1K"
 ```
 
 CUTER cold-starts, clears the VDM-1, and prints its `>` prompt on the screen

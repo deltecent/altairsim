@@ -142,13 +142,12 @@ in the monitor prints this list with a one-line description of each (`SHOW BOARD
 | `ss1` | CompuPro System Support 1 — a multifunction card: MSM5832 clock/calendar, a 2651 UART, an 8253 interval timer, dual 8259A interrupt controllers in a master/slave cascade, and a socket for an AMD 9511A or 9512 math chip. |
 | `hostbridge` | Guest ↔ host file transfer, sandboxed. **Ours, not a period card** — `R`/`W`/`HDIR`. |
 
-**More than thirty ready-built machines** are compiled into the binary; `altairsim --list`
+**Ready-built machines** are compiled into the binary; `altairsim --list`
 names them all. The Altairs proper — `default`, `original` (as it left Albuquerque),
-`altmon`, `amon`, `acuter`, `cuter`, `turnkey`, `rombasic`. The BASIC and PS2 benches —
+`altmon`, `amon`, `acuter`, `turnkey`, `rombasic`. The BASIC and PS2 benches —
 `basic4k`, `basic8k`, `ps2`, `ps2int`. The disk machines — `minidisk`, `tarbell`,
 `tarbelldd`, `icom`, `northstar`, `northstardd`, `disk1`, `disk1a`. Other CPUs and other makers — `z80`, `8085`, `sbc200`,
-`sbc200v`, `dualsd`, `dualide`, `dualidesd`. And the peripheral demos — `vdm1`, `dazzler`,
-`cadzilla`, `sol20`, `vg3vip`, `vg3vipt`, `vg3sb`, `vgmz`, `lineprinter`, `parallel`, `bankmem`, `compupro`.
+`dualsd`, `dualidesd`. And the video machines — `cadzilla`, `sol20`, `vg3vip`, `vg3vipt`, `vg3sb`.
 
 **All three Intel cores are exerciser-validated.** The 8080 passes TST8080, 8080PRE, CPUTEST and 8080EXM — all 25 CRC groups of the exerciser; the 8085 passes its own 8085EXM; the Z80 passes ZEXDOC and ZEXALL. Each core passed its gate *before* a single board was built on top of it. They are `ctest` targets, and they run in CI.
 

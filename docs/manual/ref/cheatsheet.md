@@ -241,43 +241,32 @@ Type the part before the bracket.
 | `acuter` | ACUTER at F000 -- CUTER on a plain Altair, with a terminal instead of a VDM. |
 | `altmon` | An Altair with a monitor in ROM and a terminal on it. |
 | `amon` | AMON 3.1 in a 4K EPROM at F000 -- Martin Eberhard's full-featured Altair monitor. |
-| `bankmem` | A bank-switched RAM machine: a Z80, a console, and a Vector Graphic 64K bankmem. |
 | `basic4k` | The machine Altair 4K BASIC was sold to run on: an 88-SIO Teletype, a cassette in the ACR. |
 | `basic8k` | The machine Altair 8K BASIC was sold to run on: an 88-2SIO terminal, a cassette in the ACR. |
 | `cadzilla` | An HD63484 ACRTC graphics board with a Bt453 RAMDAC in an Altair -- the bench for CADzilla. |
 | `cdbl` | The `default` machine with the Combo Disk Boot Loader in the PROM socket. |
-| `compupro` | A stock Altair with a CompuPro System Support 1 board for its clock/calendar. |
-| `cuter` | CUTER 1.3 driving a Processor Technology VDM-1 -- the real Sol/CUTS monitor. |
-| `dazzler` | A Cromemco Dazzler in an Altair -- the bench for the S-100's first color graphics card. |
 | `default` | The machine you get when you name none: 56K, and the DBL boot PROM at FF00. |
 | `disk1` | CompuPro Disk 1 floppy: the controller at C0, its boot EPROM and an Interfacer I console. You supply the disk. |
 | `disk1a` | CompuPro Disk 1A floppy: the controller at C0, its boot EPROM and a System Support 1 console. You supply the disk. |
-| `dualide` | S100Computers "IDE-AB CF" machine -- a V2 Z80 CPU board booting CP/M 3 off a CompactFlash card. |
 | `dualidesd` | S100Computers "IDE-AB CF+ESP32" machine -- both boards, CP/M 3 on CF drives A:/B: and SD drives C:/D:. |
 | `dualsd` | S100Computers "Dual SD" machine -- a V2 Z80 CPU board booting CP/M 3 off a microSD card. |
 | `icom` | iCOM FD3712 8" floppy machine -- boots CP/M 2.2 off a single-density iCOM disk. |
 | `jadedd` | Jade Double D machine -- boots Jade CP/M 2.2 (Release 2) off an 8" Jade disk. |
-| `lineprinter-lpc` | The `default` machine with an 88-LPC line printer at port 02; CONNECT `lpt0:prn` to a file or the console. |
-| `lineprinter` | The `default` machine with an 88-C700 line printer at port 02; CONNECT `lpt0:prn` to a file or the console. |
 | `minidisk` | The Altair Minidisk: an 88-MDS at 08 and the MDBL boot PROM. You supply the 5.25" disk. |
 | `northstar` | North Star MDS-A single-density floppy: the controller at E800 and its boot PROM. You supply the disk. |
 | `northstardd` | North Star MDS-A-D double-density floppy: the controller at E800 and its boot PROM. You supply the disk. |
 | `original` | The Altair as it actually left Albuquerque. |
-| `parallel` | The `default` machine with two MITS parallel boards: an 88-PIO and an 88-4PIO. |
 | `ps2` | The machine MITS Programming System II ran on: basic8k's cards, but not basic8k's bootstrap. |
 | `ps2int` | MITS Programming System II, WITH INTERRUPTS. `ps2` with A9 down and an 88-VI/RTC in it. |
 | `rombasic` | MITS Extended ROM BASIC 16K -- Extended BASIC that runs directly out of ROM. |
 | `sbc200` | SD Systems SBC-200 -- a 4 MHz Z80 single-board computer running the MSMONR21 monitor. |
-| `sbc200v` | The SD Systems SBC-200 with a VDB-8024 VIDEO console: SDMONV21 on an 80x24 screen. |
 | `sol20` | The Processor Technology Sol-20 -- an integrated 8080 machine, running SOLOS. |
 | `tarbell` | Tarbell #1011 single-density floppy machine -- boots CP/M 2.2 the moment a disk is in it. |
 | `tarbelldd` | Tarbell #2022 double-density floppy machine -- boots CP/M 2.2 the moment a disk is in it. |
 | `turnkey` | The MITS 8800bt -- an Altair with a Turnkey Module where the front panel used to be. |
-| `vdm1` | A Processor Technology VDM-1 in an Altair, and a demo that draws on it. |
 | `vg3sb` | A Vector System B: Z-80, 56K of RAM, Flashwriter II, Bitstreamer II, two Micropolis drives. |
 | `vg3vip` | A Vector 3 VIP: ZCB processor, 56K of RAM, Flashwriter II console and one Micropolis drive. |
 | `vg3vipt` | A Vector 3 VIP with Tandon drives: ZCB processor, 56K of RAM, Flashwriter II, Dual-Mode controller. |
-| `vgmz` | A Vector Graphic MZ: Z-80, 48K of RAM, two Micropolis drives and a serial console. |
 | `z80` | A minimal Z80 machine: a `z80` CPU, 64K of RAM, and a 2SIO console. |
 
 ## A machine file, in one look

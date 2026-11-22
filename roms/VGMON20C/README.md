@@ -1,6 +1,6 @@
 # Vector Graphic Monitor 2.0C (`builtin:vgmon20c`)
 
-The Vector 1 Monitor for a serial terminal, set up for the `vgmz` machine. It is 8080 code at
+The Vector 1 Monitor for a serial terminal, set up for a Vector 1 machine. It is 8080 code at
 `C000h`. Its console is the serial port of a Bit Streamer at port `02`: `03h` is status and `02h` is
 data. Its stack is at `CFD0h`, so 1K of RAM must be at `CC00h`.
 

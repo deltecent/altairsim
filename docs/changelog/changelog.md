@@ -21,6 +21,14 @@ sets the volume, the speech or sound-effects mode, and the master clock, which c
 pitch and the speed. The `r21` setting is the board's clock trim pot, to match a real board. You hear the speech on the sound output of your computer when the
 machine has a crystal (`clock_hz`). The *User Manual* has a short program that says "hello".
 
+**Breaking: some built-in machines are removed.** They are `bankmem`, `compupro`, `cuter`,
+`dazzler`, `dualide`, `lineprinter`, `lineprinter-lpc`, `parallel`, `sbc200v`, `vdm1` and
+`vgmz`. The long list of built-ins made it hard to find the machine you need. Every board is
+still in the program. To get a removed machine back, write a machine file. Most of the removed
+machines were a built-in with one more board. For example, a `[[board]]` table with `type = "c700"` on
+`base = "default"` gives the old `lineprinter`. The *User Manual* chapter on boards shows the
+machine file for `bankmem`, `dualide`, `lineprinter`, `parallel` and `sbc200v`.
+
 ## 1.3.7
 
 **1.3.7 adds copy and paste to the terminal window, `--tool-log` for an MCP session, a

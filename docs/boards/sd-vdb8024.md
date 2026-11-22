@@ -102,7 +102,7 @@ are invisible. So `Vdb8024Board` models the **host-visible terminal**, not the 5
 `tests/test_vdb8024.cpp`. Unit tests drive the terminal state machine (printable placement,
 CR/LF/new-line, wrap, backspace/tab/home/clear, `ESC =` positioning, `ESC T`/`Y` erase, bottom-row
 scroll) and the port protocol (D1/D2 polarity, keyboard latch and clear). An acceptance test
-builds the `sbc200v` machine by hand, boots the real **`sdmonv21`** ROM, and asserts its `.`
+builds an SBC-200 with a VDB-8024 by hand, boots the real **`sdmonv21`** ROM, and asserts its `.`
 prompt lands on the VDB grid — then types `H 100 200` at the video console and reads the monitor's
 answer (`FF00`) back off the screen, proving the keyboard→guest→display loop end to end.
 
@@ -111,4 +111,4 @@ answer (`FF00`) back off the screen, proving the keyboard→guest→display loop
 - `reference/SD Systems VDB-8024.md` — the distilled emulation reference.
 - `reference/SD Systems Monitor.md` — `sdmonv21` vs `msmonr21`, and the console ports.
 - `VDB16.Z80` — the v1.6 onboard firmware, the control-code map's source.
-- `machines/sbc200v.toml` — the machine.
+- `docs/manual/boards.md` — the `sbc200v.toml` machine file.

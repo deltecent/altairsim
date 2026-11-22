@@ -77,14 +77,12 @@ The `video` row says SDL3 is compiled in; it does not say a window reached a scr
 assistant cannot do this part** — it cannot click a window or see pixels. Give this table to a
 person, per platform, and record their yes/no for each row.
 
-`vdm1` halts after drawing, and the window only redraws while a program runs — so anything
-needing live pixels uses `sol20`, whose SOLOS loops.
+The window only redraws while a program runs, so these checks use `sol20`, whose SOLOS loops.
 
 | | do this | pass is |
 |---|---|---|
 | **H0** | macOS: download the archive from the release page **with Safari**, open it in Finder, and in Terminal run `./altairsim --version` in the folder | the version prints, and macOS shows **no** *"altairsim" Not Opened* dialog. A dialog means the package is not notarized |
-| **H1** | `altairsim vdm1` | a window shows `PROCESSOR TECHNOLOGY VDM-1 READY` in a blocky font, **sharp-edged** (blurred means the scaler is wrong) |
-| **H2** | `altairsim sol20`; wait for the SOLOS `>` in the window | a cursor blinking about once a second, steadily |
+| **H2** | `altairsim sol20`; wait for the SOLOS `>` in the window | a cursor blinking about once a second, steadily, in a blocky font, **sharp-edged** (blurred means the scaler is wrong) |
 | **H3** | `altairsim sol20`; at the `>` in the window, click it and type `HELLO` | the characters appear **in the window** — the only proof the window gets the keyboard |
 | **H5** | with `sol20` running: `^E`, `SET vdm0 video=reverse`, `R`; then `^E`, `SET vdm0 video=normal`, `R` | the window flips dark-on-light and back (the value is `reverse`; `R` matters — a stopped machine does not redraw) |
 | **H6** | with `sol20` running, click the window's close button | the monitor prints `window closed -- the machine is still at <PC>. RUN resumes; QUIT exits.` and the window **stays open**. That is the design: closing the window stops the guest, it does not quit |

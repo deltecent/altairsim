@@ -211,7 +211,7 @@ void test_vdb8024() {
     // ---- ACCEPTANCE: the SD monitor boots onto the VDB console ----
     SECTION("VDB-8024 -- SDMONV21 boots and prints its prompt on the video screen");
     {
-        // The real machine (machines/sbc200v.toml), built here by hand: a 4 MHz Z80, the
+        // The real machine (an SBC-200 with a VDB-8024 console), built here by hand: a 4 MHz Z80, the
         // SD build of the monitor at E000 (the VDM-console build), the DDBIOS at F000,
         // RAM elsewhere, and the VDB-8024 as the console. No CPU-visible output goes to a
         // serial line -- the monitor's '.' lands on the VDB's 80x24 grid, which the test
@@ -278,7 +278,7 @@ void test_vdb8024() {
         // VDB-8024's keyboard strobe (strapped to VI2) drives the SBC-200's CTC channel 1,
         // which vectors to the CBIOS keyboard ISR (vector 0x02). Miss that path and the
         // monitor still works but a booted OS never sees a key. This is the whole machine
-        // (machines/sbc200v.toml + the VersaFloppy): boot SDOS off the disk, then type a
+        // (the SBC-200 with a VDB-8024 console, + the VersaFloppy): boot SDOS off the disk, then type a
         // command through the interrupt and watch it echo onto the same screen.
         Machine m;
         NullDisplay disp;

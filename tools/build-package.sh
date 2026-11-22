@@ -194,7 +194,7 @@ rm -rf "$out"/altairsim-*-"$target" \
 # THIS IS THE CHECK v0.2.0 DID NOT HAVE. All three archives shipped headless: no CI leg had
 # SDL3, find_package failed, display_sdl.cpp compiled nowhere, and the video window the manual
 # documents at length could not be opened from anything released. Nothing caught it, because a
-# headless binary runs `altairsim vdm1` perfectly happily and draws nothing. DISTRIBUTION.md
+# headless binary runs `altairsim sol20` perfectly happily and draws nothing. DISTRIBUTION.md
 # 4.2 step 2 puts a STOP on the configure line -- but that is a line a person has to read, and
 # not reading it is exactly how this shipped. This one cannot be not-read.
 #

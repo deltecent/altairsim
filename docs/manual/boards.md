@@ -395,10 +395,25 @@ the addresses of each plane on `vector`. The default is `0000` to `FFFF`. The re
 its last address at `DFFF`, which leaves room for a ROM and a video board.
 
 The package has no operating system that uses banks. The quickest way to see the board work is
-from the monitor:
+from the monitor. Save this machine file as `bankmem.toml`. It starts from the `z80` machine and
+puts a `bankmem` board in place of its memory board:
+
+```toml
+[machine]
+name = "bankmem"
+base = "z80"
+
+[[board]]
+type  = "bankmem"
+id    = "mem0"
+card  = "vector"
+banks = 8
+```
+
+Start it and write the select port:
 
 ```
-$ altairsim bankmem
+$ altairsim bankmem.toml
 altairsim> OUT 40 01
 port 40 <- 01
 altairsim> DEPOSIT 1000 A0
@@ -464,7 +479,7 @@ The ExpandoRAM III manual prints some cells of its page map incorrectly. `bankme
 The corrections change what the guest sees only when a bank is off.
 
 ```
-$ altairsim bankmem --set "mem0 card=expandoram3"
+$ altairsim bankmem.toml --set "mem0 card=expandoram3"
 set> SET mem0 card=expandoram3
 mem0: card=expandoram3
 altairsim> OUT FF 01
@@ -1157,9 +1172,22 @@ The `interrupt` strap selects the line: pin 73 (`int`, the default), a vectored 
 (`vi0` to `vi7`), or `none`. `interrupt_after` is switch SW2 #4 of the board. It sets whether
 the interrupt comes after every character, or only after a CR or LF.
 
-The **`lineprinter`** machine is `default` with one of these boards added. Its output starts on
-`null`. To capture it, type `CONNECT lpt0:prn out:printout.txt`. To see it, connect it to
-`console`, which takes the console from the terminal.
+This machine file is the `default` machine with one of these boards added at `02`:
+
+```toml
+[machine]
+name = "lineprinter"
+base = "default"
+
+[[board]]
+type    = "c700"
+id      = "lpt0"
+port    = 02
+connect = "null"
+```
+
+The output starts on `null`. To capture it, type `CONNECT lpt0:prn out:printout.txt`. To see
+it, connect it to `console`, which takes the console from the terminal.
 
 ### `lpc`: MITS 88-LPC
 
@@ -1175,8 +1203,8 @@ commands. For this reason, the output is the printed *page*: the codes changed t
 one text line for each printed line. On this board, the line breaks are commands, not data.
 
 `CONNECT` its `prn` line to an `out:` file, the `console`, a `socket:` or a real `printer:`
-queue. The **`lineprinter-lpc`** machine has one at `02`, with its output on `null` until you
-`CONNECT` it. The board is polled. The interrupt of the real board is not modeled.
+queue. To add one at `02`, use the machine file of the `c700` above with `type = "lpc"`. The
+board is polled. The interrupt of the real board is not modeled.
 
 ## Parallel and analog I/O
 
@@ -1198,8 +1226,28 @@ and **the guest sets the direction of each port in software**. Each port is a se
 `jb` and so on), and each section is a line that you can connect. It uses sixteen ports from a
 default base of `20`. It is polled, like the `pio`.
 
-The `pio` has a fixed eight bits each way. The `4pio` can be set up as the software needs. The
-**`parallel`** machine has both boards, and the `pio` sends its output to a file.
+The `pio` has a fixed eight bits each way. The `4pio` can be set up as the software needs. This
+machine file adds both boards to the `default` machine, and the `pio` sends its output to a file:
+
+```toml
+[machine]
+name = "parallel"
+base = "default"
+
+[[board]]
+type = "pio"
+id   = "pio0"
+port = 04
+
+  [board.unit.out]
+  connect = "out:parallel-out.txt"
+
+[[board]]
+type  = "4pio"
+id    = "pio1"
+port  = 20
+ports = 1
+```
 
 ### `d7a`: Cromemco D+7A
 
@@ -1259,8 +1307,6 @@ sound:
 ```
 altairsim> SET cpu0 clock_hz=4000000
 ```
-
-The `dazzler` machine sets 4 MHz already.
 
 `SHOW <id>` has one line for each speaker. The end of the line tells you the state:
 
@@ -2222,15 +2268,26 @@ to the IDE bus of a CF card (default ports `30`–`34`). Its two cards are CP/M 
 and it boots the same **CP/M 3**. It stores data on a card in the same layout as the SD part, so
 **a card image works on both boards**.
 
-**It has no boot PROM** either. The `dualide` machine has the `z80`, the `v2z80rom` monitor
+**It has no boot PROM** either. The **`dualidesd`** machine has the `z80`, the `v2z80rom` monitor
 EEPROM and this controller. At the `->` monitor prompt, the **`P` command** (not the `I` of the
-Dual SD) reads CP/M 3 from CompactFlash drive 0, and CP/M starts at `A>`.
+Dual SD) reads CP/M 3 from CompactFlash drive 0, and CP/M starts at `A>`. For the IDE-AB part
+alone, remove the Dual SD part in a machine file:
+
+```toml
+[machine]
+name = "dualide"
+base = "dualidesd"
+
+[[board]]
+id     = "sd0"
+remove = true
+```
 
 The cards are the same as on the Dual SD board: a raw **`.img` with a `.geo` file beside it**.
 The image can stop after the live file system, with `FF` after its end. `MOUNT … CREATE` makes a
-blank data card, and a bootable card must come from a real image. The **`dualidesd`** machine
-has the **whole board** at once: CompactFlash as A: and B:, and microSD as C: and D:, with one
-CP/M 3 system on all four drives.
+blank data card, and a bootable card must come from a real image. The `dualidesd` machine has
+the **whole board** at once: CompactFlash as A: and B:, and microSD as C: and D:, with one CP/M 3
+system on all four drives.
 
 ## Video and display
 
@@ -2274,8 +2331,6 @@ results:
 - **The cursor does not blink** while the machine is stopped. To see it blink, use `sol20`,
   where SOLOS runs in a loop and does not halt.
 
-The `vdm1` demo halts after it draws its banner, so its window belongs to a stopped machine.
-
 ### `vdm1`: Processor Technology VDM-1
 
 **Memory-mapped video.** A 1K screen of **16 rows by 64 columns** is in the machine's own
@@ -2290,10 +2345,7 @@ port gives two timing bits. The software uses them to avoid writing while the be
 Bit 7 of each byte is the **cursor and blink** flag, not part of the character. For this reason,
 the board draws 128 characters from a real character ROM, not 256.
 
-Two machines use it:
-
-- **`vdm1`**: an Altair with a VDM-1, and a demo that draws on it
-- **`cuter`**: the period CUTER monitor, with its own VDM-1 driver
+The `sol20` machine uses it, with the SOLOS monitor as its driver.
 
 ### `dazzler`: Cromemco Dazzler
 
@@ -2308,8 +2360,8 @@ where the frame buffer is. The second sets the format: the resolution, the size 
 This gives four modes: **32×32 or 64×64** elements in color or grey, and **64×64 or 128×128**
 on/off elements, in **16 colors** or 16 greys.
 
-The `dazzler` machine is the plain board, for you to build on. A 64×64 picture is very small, so
-the board's `width` property (above) makes the window about the size of a VDM-1 window.
+A 64×64 picture is very small, so the board's `width` property (above) makes the window about the
+size of a VDM-1 window.
 
 ### `dazzler2`: Cromemco Dazzler II
 
@@ -2447,11 +2499,64 @@ interrupt to a vectored interrupt line, for the SBC-200's CTC. The SD video CBIO
 
 It runs **`sdmonv21`**, the video version of the SD monitor. It is the same monitor as in the
 serial `sbc200` machine, with the same commands and the same `.` prompt. You **do not press
-Return first**, because the VDB has no serial speed to measure. The prompt is on the screen as
-soon as the machine starts:
+Return first**, because the VDB has no serial speed to measure. Save this machine file as
+`sbc200v.toml`. It is an SBC-200 with the video monitor in its PROM socket and a VDB-8024 as the
+console:
+
+```toml
+[machine]
+name    = "sbc200v"
+startup = ["RUN"]
+
+[display]
+focus    = true
+keyboard = "console"
+
+[[board]]
+type     = "z80"
+id       = "cpu0"
+clock_hz = 4000000
+
+[[board]]
+type      = "vdb8024"
+id        = "vdb0"
+port      = 00
+interrupt = "vi2"
+
+  [board.unit.keyboard]
+  connect = "console"
+
+[[board]]
+type    = "sbc"
+id      = "sbc0"
+variant = "sbc200"
+port    = 7C
+start   = E000
+
+  [[board.socket]]
+  at    = E000
+  mount = "builtin:sdmonv21"
+
+  [[board.socket]]
+  at    = F000
+  mount = "builtin:ddb200"
+
+[[board]]
+type           = "memory"
+id             = "mem0"
+fill           = "random"
+honors_phantom = "read"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "64K"
+```
+
+The prompt is on the screen as soon as the machine starts:
 
 ```
-$ altairsim sbc200v
+$ altairsim sbc200v.toml
 ```
 
 This gives the monitor's `.` prompt **in the video window**.
@@ -2716,8 +2821,8 @@ id   = "ss1"
 math = "9511a"
 ```
 
-The `compupro` machine has one: a stock Altair with the System Support 1 added, and its console
-still on the 2SIO. The clock is at `5A` (command) and `5B` (data). The board reference gives the
+Put that table in a machine file with `base = "default"` to add the board to a stock Altair. The
+console stays on the 2SIO. The clock is at `5A` (command) and `5B` (data). The board reference gives the
 digit map, the read and set sequences and the register layouts.
 
 ### `rtc100`: SciTronics RTC-100

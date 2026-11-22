@@ -145,7 +145,8 @@ Synthesizing those states would invent a hardware event the transport does not h
 6. **Disconnect** leaves a dead line (not a dangling pointer) and names the one real unit;
    **`connect` round-trips** the endpoint spec through the property (for `CONFIG SAVE`).
 
-End-to-end: `machines/lineprinter-lpc.toml` loads the card at port 02; `CONNECT lpt0:prn
+End-to-end: a machine file of `base = "default"` plus an `lpc` board at port 02 (the
+*User Manual* shows it); `CONNECT lpt0:prn
 out:printout.txt`, then `OUT 3 <code>` to buffer characters and `OUT 2 01` to print, produces a
 readable page in the host file.
 
