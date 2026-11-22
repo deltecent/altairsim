@@ -244,14 +244,8 @@ Type the part before the bracket.
 | `basic4k` | The machine Altair 4K BASIC was sold to run on: an 88-SIO Teletype, a cassette in the ACR. |
 | `basic8k` | The machine Altair 8K BASIC was sold to run on: an 88-2SIO terminal, a cassette in the ACR. |
 | `cadzilla` | An HD63484 ACRTC graphics board with a Bt453 RAMDAC in an Altair -- the bench for CADzilla. |
-| `cdbl` | The `default` machine with the Combo Disk Boot Loader in the PROM socket. |
 | `default` | The machine you get when you name none: 56K, and the DBL boot PROM at FF00. |
-| `disk1` | CompuPro Disk 1 floppy: the controller at C0, its boot EPROM and an Interfacer I console. You supply the disk. |
-| `disk1a` | CompuPro Disk 1A floppy: the controller at C0, its boot EPROM and a System Support 1 console. You supply the disk. |
-| `dualidesd` | S100Computers "IDE-AB CF+ESP32" machine -- both boards, CP/M 3 on CF drives A:/B: and SD drives C:/D:. |
-| `dualsd` | S100Computers "Dual SD" machine -- a V2 Z80 CPU board booting CP/M 3 off a microSD card. |
 | `icom` | iCOM FD3712 8" floppy machine -- boots CP/M 2.2 off a single-density iCOM disk. |
-| `jadedd` | Jade Double D machine -- boots Jade CP/M 2.2 (Release 2) off an 8" Jade disk. |
 | `minidisk` | The Altair Minidisk: an 88-MDS at 08 and the MDBL boot PROM. You supply the 5.25" disk. |
 | `northstar` | North Star MDS-A single-density floppy: the controller at E800 and its boot PROM. You supply the disk. |
 | `northstardd` | North Star MDS-A-D double-density floppy: the controller at E800 and its boot PROM. You supply the disk. |
@@ -266,7 +260,6 @@ Type the part before the bracket.
 | `turnkey` | The MITS 8800bt -- an Altair with a Turnkey Module where the front panel used to be. |
 | `vg3sb` | A Vector System B: Z-80, 56K of RAM, Flashwriter II, Bitstreamer II, two Micropolis drives. |
 | `vg3vip` | A Vector 3 VIP: ZCB processor, 56K of RAM, Flashwriter II console and one Micropolis drive. |
-| `vg3vipt` | A Vector 3 VIP with Tandon drives: ZCB processor, 56K of RAM, Flashwriter II, Dual-Mode controller. |
 | `z80` | A minimal Z80 machine: a `z80` CPU, 64K of RAM, and a 2SIO console. |
 
 ## A machine file, in one look

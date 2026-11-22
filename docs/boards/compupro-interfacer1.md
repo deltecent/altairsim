@@ -135,7 +135,7 @@ Status byte:
   warning, once; the far end's messages in the log; and a machine file that loads, drives VI2
   on the bus and comes back out of CONFIG SAVE.
 - CompuPro CP/M 2.2LD and a custom CP/M 2.2N BIOS boot with an `interfacer1` in place of the
-  `gsio` console in the `disk1` machine.
+  `gsio` console in the Disk 1 machine file (`tests/media/compupro/disk1.toml`).
 
 ## References
 

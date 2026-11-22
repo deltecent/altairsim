@@ -28,7 +28,7 @@ at    = 0xE000
 mount = "builtin:vgmon43"
 ```
 
-`altairsim vg3vipt` runs this ROM on a FlashWriter II ([`machines/vg3vipt.toml`](../../machines/vg3vipt.toml)).
+The *User Manual* (boards chapter, `vgfwii`) shows a machine file that runs this ROM on a FlashWriter II.
 
 ## Source
 

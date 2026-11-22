@@ -39,18 +39,43 @@ to every standard Altair terminal until you STOP/RESET:
 
 ## Use it
 
+This machine file is the `default` machine with this PROM in the socket instead of
+[`dbl`](../DBL). Save it as `cdbl.toml`:
+
+```toml
+[machine]
+name = "cdbl"
+base = "default"
+
+[[board]]
+type = "memory"
+id   = "mem0"
+fill = "random"
+
+  [[board.region]]
+  type = "ram"
+  at   = 0000
+  size = "56K"
+
+  [[board.region]]
+  type  = "rom"
+  at    = FF00
+  mount = "builtin:cdbl"
 ```
-$ altairsim cdbl
+
+Start it, mount a disk and run the PROM:
+
+```
+$ altairsim cdbl.toml
 altairsim> MOUNT dsk0:drive0 "examples/cpm/cpm22b23-56k.dsk"
 altairsim> RUN FF00
 
 56K CP/M 2.2b v2.3
 ```
 
-`machines/cdbl.toml` is the built-in machine that does it: the `default` machine
-with this PROM in the socket instead of [`dbl`](../DBL). Swap its `dcdd` for the
-`mds` in `machines/minidisk.toml` and the same PROM boots the minidisk — that is
-the point of it. To put the ROM in a machine of your own:
+Swap the `dcdd` of the `default` machine for the `mds` in `machines/minidisk.toml`,
+and the same PROM boots the minidisk. That is the reason for the PROM. To put the ROM
+in a machine of your own:
 
 ```toml
 [[board.region]]

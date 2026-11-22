@@ -1,11 +1,11 @@
 # CompuPro CP/M 2.2N on the Disk 1, for acceptance-disk1 (tests/acceptance/disk1.cmake).
 #
-# The built-in `disk1` machine with CPM22N.DSK in drive 0. The test copies this folder out
+# The `disk1.toml` machine beside this file, with CPM22N.DSK in drive 0. The test copies this folder out
 # of the tree first, so the guest never writes to the tracked image.
 
 [machine]
 name = "disk1-cpm22n"
-base = "disk1"
+base = "disk1.toml"
 
 [[board]]
 id = "fd0"

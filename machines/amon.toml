@@ -21,7 +21,7 @@
 #     FC00   boot an 88-HDSK hard disk    FF00   boot an 8" floppy or a minidisk
 #
 # FF00 is `builtin:cdbl`, sitting where a boot PROM sits, so this machine boots a
-# floppy without a boot PROM in it -- see `cdbl` for that PROM on its own.
+# floppy without a boot PROM in it -- see roms/CDBL for that PROM on its own.
 #
 # `DU F000 F00F` dumps; `?` prints the command list (a 4K build only -- the 2K build
 # drops `?` and `MT` for room). Control-C aborts a command, Escape too.

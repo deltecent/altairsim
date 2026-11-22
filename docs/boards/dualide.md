@@ -2,8 +2,8 @@
 
 **Status:** done (2026-08). Boots **CP/M 3** (non-banked) to `A>` off a CompactFlash card image,
 through the V2 Z80 CPU board's MASTER monitor. Paired with `dualsd` it is the full
-A:/B:(CF) + C:/D:(SD) system (`altairsim dualidesd`). The *User Manual* shows the machine file
-that removes `sd0` from `dualidesd` for the CF board alone.
+A:/B:(CF) + C:/D:(SD) system (`tests/acceptance/machines/dualidesd.toml`). The *User Manual*
+shows the machine file for the CF board alone.
 
 ## The real hardware
 

@@ -1,6 +1,6 @@
 # The `default` machine with the Combo Disk Boot Loader in the PROM socket.
 #
-#     altairsim cdbl
+#     altairsim tests/acceptance/machines/cdbl.toml
 #     MOUNT dsk0:drive0 "examples/cpm/cpm22b23-56k.dsk"
 #     RUN FF00
 #     -> 56K CP/M 2.2b v2.3

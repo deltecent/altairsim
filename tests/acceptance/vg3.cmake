@@ -44,7 +44,7 @@ endfunction()
 
 # Each machine, its Monitor version, and the first bytes of its ROM.
 foreach(entry "vg3vip|VERSION 4\\.1|E000 C3 18 E0 C3"
-              "vg3vipt|VERSION 4\\.3|E000 C3 15 E0 C3"
+              "${SRC}/tests/acceptance/machines/vg3vipt.toml|VERSION 4\\.3|E000 C3 15 E0 C3"
               "vg3sb|VERSION 4\\.0|E000 C3 16 E0 C3")
   string(REPLACE "|" ";" fields "${entry}")
   list(GET fields 0 machine)

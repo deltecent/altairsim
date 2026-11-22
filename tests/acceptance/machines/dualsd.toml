@@ -1,6 +1,6 @@
 # S100Computers "Dual SD" machine -- a V2 Z80 CPU board booting CP/M 3 off a microSD card.
 #
-#     altairsim dualsd
+#     altairsim tests/acceptance/machines/dualsd.toml
 #     MOUNT sd0:drive0 cpm3-sd.img                # SD card 1 = A: (the boot card)
 #     MOUNT sd0:drive1 blank.img                  # SD card 2 = B: (a blank spare)
 #     RUN F000                                     # the MASTER monitor's `.` prompt

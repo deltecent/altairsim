@@ -2,7 +2,7 @@
 
 **Status:** done — the board's whole bus interface: a polled status port and a data port, with
 its documented status bits as presets you can override. Board type `propio`. It is the console
-of the `dualsd`, `dualide` and `dualidesd` machines.
+of the Dual SD and IDE-AB machine files in the *User Manual*.
 
 **Not modelled:** the Propeller's own terminal (the VGA display and the PS/2 keyboard) — the
 host's terminal takes its place — and the output-busy delay. See *Limitations*.

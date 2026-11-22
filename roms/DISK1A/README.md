@@ -47,8 +47,8 @@ A failed read makes the routine try the DISK 3 at port `90h`. After that, it sta
 
 ## Use it
 
-The `disk1a` board loads this EPROM itself. It is not a ROM that you mount. `altairsim
-disk1a` starts it with `RUN 0`.
+The `disk1a` board loads this EPROM itself. It is not a ROM that you mount. The Disk 1A machine
+file in the *User Manual* (boards chapter, `disk1a`) starts it with `RUN 0`.
 The board reference is [`docs/boards/compupro-disk1a.md`](../../docs/boards/compupro-disk1a.md).
 
 ## Files here

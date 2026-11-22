@@ -1462,7 +1462,7 @@ set_tests_properties(examples-isolation PROPERTIES LABELS acceptance TIMEOUT 60)
 #
 # test_machines.cpp proves every built-in loads; that cannot tell you the ROM is at the
 # address its firmware expects, or that the console is on the port it talks to. This
-# switches `amon`, `acuter` and `cdbl` on and reads the terminal. It needs no fetched
+# switches `amon`, `acuter` and the test machine `cdbl.toml` on and reads the terminal. It needs no fetched
 # media -- the one disk it uses is tracked.
 # ---------------------------------------------------------------------------
 add_test(NAME acceptance-eberhard-roms

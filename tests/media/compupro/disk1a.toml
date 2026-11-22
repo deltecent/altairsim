@@ -1,6 +1,6 @@
 # CompuPro Disk 1A floppy: the controller at C0, its boot EPROM and a System Support 1 console. You supply the disk.
 #
-#     altairsim disk1a
+#     altairsim disk1a.toml
 #     MOUNT fd0:drive0 "CCPM22.DSK"
 #     RUN 0
 #     -> 64K CP/M 2.2LD

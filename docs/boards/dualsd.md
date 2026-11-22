@@ -1,7 +1,8 @@
 # Dual SD — S100Computers microSD card controller
 
 **Status:** done (2026-08-16). Boots **CP/M 3** (non-banked) to `A>` off a microSD card image,
-through the V2 Z80 CPU board's MASTER monitor. `altairsim dualsd`.
+through the V2 Z80 CPU board's MASTER monitor. The *User Manual* shows the machine file, and
+`tests/acceptance/machines/dualsd.toml` is the copy that the test boots.
 
 ## The real hardware
 

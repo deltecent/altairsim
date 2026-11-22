@@ -8,7 +8,7 @@
 
 [machine]
 name = "dualsd-acceptance"
-base = "dualsd"
+base = "machines/dualsd.toml"
 
 [[board]]
 id = "sd0"

@@ -128,7 +128,7 @@ struct Rig {
     }
 };
 
-// A machine like machines/vg3vipt.toml, with Monitor 4.3 in ROM.
+// A machine like tests/acceptance/machines/vg3vipt.toml, with Monitor 4.3 in ROM.
 struct Vector {
     Machine         m;
     NullDisplay     disp;

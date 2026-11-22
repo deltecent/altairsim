@@ -1,5 +1,5 @@
 # THE JADE DOUBLE D FORMAT ACCEPTANCE TEST: Jade's own FORMAT.COM (Release 2A) makes new disks on
-# the jadedd machine, and CP/M reads them after a remount.
+# the jadedd machine (tests/acceptance/machines/jadedd.toml), and CP/M reads them after a remount.
 #
 # Nothing here is ours but the machine. The disk is the 56K DDBIOS2 system disk
 # (tests/media/jade), and FORMAT.COM is the one on it. The board takes each track's layout from
@@ -33,6 +33,8 @@ file(REMOVE_RECURSE "${work}")
 file(MAKE_DIRECTORY "${work}")
 configure_file("${SRC}/tests/media/jade/jadedd-dd-sysgen-56k.dsk" "${work}/A.DSK" COPYONLY)
 configure_file("${SRC}/tests/media/jade/jadedd-dd-sysgen-56k.dsk" "${work}/C.DSK" COPYONLY)
+# The machine file goes in the work folder too, because a MOUNT path is relative to it.
+configure_file("${SRC}/tests/acceptance/machines/jadedd.toml" "${work}/jadedd.toml" COPYONLY)
 
 # One tools/call line. `args` is the JSON object of the tool's arguments.
 set(session "")
@@ -132,7 +134,7 @@ endfunction()
 # Run one session, and check that every run in it stopped because its text arrived.
 macro(session_run name runs)
   execute_process(
-    COMMAND           "${SIM}" jadedd --mcp
+    COMMAND           "${SIM}" jadedd.toml --mcp
     WORKING_DIRECTORY "${work}"
     INPUT_FILE        "${work}/${name}.jsonl"
     OUTPUT_VARIABLE   out
@@ -141,7 +143,7 @@ macro(session_run name runs)
     TIMEOUT           60
   )
   if(NOT rc EQUAL 0)
-    fail("`altairsim jadedd --mcp` (${name}) exited ${rc}, expected 0")
+    fail("`altairsim jadedd.toml --mcp` (${name}) exited ${rc}, expected 0")
   endif()
   foreach(id ${runs})
     reply(${id} r)

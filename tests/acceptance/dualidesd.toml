@@ -9,7 +9,7 @@
 
 [machine]
 name = "dualidesd-acceptance"
-base = "dualidesd"
+base = "machines/dualidesd.toml"
 
 [[board]]
 id = "ide0"

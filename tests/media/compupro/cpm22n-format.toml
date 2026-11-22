@@ -7,7 +7,7 @@
 
 [machine]
 name = "disk1-cpm22n-format"
-base = "disk1"
+base = "disk1.toml"
 
 [[board]]
 id = "fd0"

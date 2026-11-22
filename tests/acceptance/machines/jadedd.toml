@@ -1,6 +1,6 @@
 # Jade Double D machine -- boots Jade CP/M 2.2 (Release 2) off an 8" Jade disk.
 #
-#     altairsim jadedd
+#     altairsim tests/acceptance/machines/jadedd.toml
 #     MOUNT fd0:drive0 "JADEDD-CPM22-MASTER-SSSD.DSK"
 #     RUN F000
 #

@@ -2,7 +2,7 @@
 
 **Status:** built (`disk1a`) for 8″ and 5.25″ drives. The board boots CompuPro CP/M 2.2LD from an
 8″ disk through routine 0 of its own boot EPROM. `tests/test_disk1a.cpp` tests the board, and
-`acceptance-disk1a` boots the tracked disk through the `disk1a` machine. A 5.25″ CompuPro CP/M 2.2Q
+`acceptance-disk1a` boots the tracked disk through the test machine `tests/media/compupro/disk1a.toml`. A 5.25″ CompuPro CP/M 2.2Q
 disk, built from CompuPro's 1985 sources, boots through routine 3 from unit 2. That disk is not in
 the tree (see *Limitations*).
 

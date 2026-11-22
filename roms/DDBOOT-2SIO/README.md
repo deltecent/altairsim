@@ -1,7 +1,7 @@
 # DDBOOT-2SIO — Jade Double D boot PROM for an 88-2SIO console (`builtin:ddboot-2sio`)
 
 Jade's DDBOOT PROM, with its console patched for a MITS **88-2SIO** at ports `10`/`11`. The
-`jadedd` machine uses this PROM. Jade's unpatched PROM is
+Jade Double D machine file in the *User Manual* uses this PROM. Jade's unpatched PROM is
 [`roms/DDBOOT/`](../DDBOOT/README.md) (`builtin:ddboot`). That README describes what the
 PROM does, its entry points and its RAM. This file gives only the differences.
 
@@ -54,7 +54,7 @@ and no interrupts. A jump to `BOOT` (`F003`) does not run `INIT`.
 ```
 
 Add an 88-2SIO (`type = "2sio"`) at `port = 10`, with channel `a` on the console. Then type
-`RUN F000`. [`machines/jadedd.toml`](../../machines/jadedd.toml) is a complete machine.
+`RUN F000`. The *User Manual* (boards chapter, `jadedd`) shows a complete machine file.
 
 ## Files here
 

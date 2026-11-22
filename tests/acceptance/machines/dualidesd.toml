@@ -3,10 +3,10 @@
 # This is the WHOLE S100Computers "IDE-AB CF+ESP32" combination board: the 8255 IDE/CompactFlash
 # controller at ports 30-34 (the `dualide` board, CP/M drives A:/B:) AND the Dual SD ESP32 engine
 # at 80-81 (the `dualsd` board, drives C:/D:), driven by one V2 Z80 CPU board running the HIDE3
-# combination CP/M 3 BIOS. For the SD-only half on its own, load the `dualsd` machine. See
-# reference/dual-ide-card.md and reference/dual-sd-card.md.
+# combination CP/M 3 BIOS. For the SD-only half on its own, see `dualsd.toml` beside this file.
+# See reference/dual-ide-card.md and reference/dual-sd-card.md.
 #
-#     altairsim dualidesd
+#     altairsim tests/acceptance/machines/dualidesd.toml
 #     MOUNT ide0:drive0 cpm3-cf.img                     # IDE/CF drive 0 = A: (the boot card)
 #     MOUNT sd0:drive0  cpm3-sd.img                     # SD card 1     = C:
 #     RUN F000                                          # the MASTER monitor's `->` prompt

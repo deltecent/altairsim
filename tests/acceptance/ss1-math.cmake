@@ -27,7 +27,8 @@ cmake_minimum_required(VERSION 3.16)
 set(work "${BIN}/ss1-math-work")
 file(REMOVE_RECURSE "${work}")
 file(MAKE_DIRECTORY "${work}")
-file(COPY "${SRC}/tests/media/compupro/cpm22n-ss1.toml" "${SRC}/tests/media/compupro/CPM22N.DSK"
+file(COPY "${SRC}/tests/media/compupro/cpm22n-ss1.toml" "${SRC}/tests/media/compupro/disk1.toml"
+          "${SRC}/tests/media/compupro/CPM22N.DSK"
      DESTINATION "${work}")
 
 set(session "")

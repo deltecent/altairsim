@@ -34,7 +34,7 @@ than a missing machine file.** HDBL boots an 88-HDSK, and this simulator has no
 88-HDSK controller: nothing decodes `A0h`–`A7h`, so the loader reads a floating
 bus, fails to find a Pack Descriptor Page, and stops with `LOAD ERR`. A machine
 that cannot boot is not a sample. The other three Eberhard ROMs have one —
-`altairsim amon`, `acuter`, `cdbl`.
+`altairsim amon`, `acuter`, and the machine file in [`roms/CDBL`](../CDBL).
 
 You can still put the PROM in a machine; it is the drive that is absent:
 
