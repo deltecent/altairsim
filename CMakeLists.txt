@@ -1199,6 +1199,16 @@ add_test(NAME acceptance-vgdmdc-fault
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/vgdmdc-fault.cmake)
 set_tests_properties(acceptance-vgdmdc-fault PROPERTIES LABELS acceptance TIMEOUT 180)
 
+# Bad sectors on the 88-HDSK (#972): HDBL past a count=2 fault, a hard data, id or missing fault on
+# the CP/M directory, and write faults that lose SAVE's directory writes without an error.
+add_test(NAME acceptance-hdsk-fault
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -DBIN=${CMAKE_CURRENT_BINARY_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/hdsk-fault.cmake)
+set_tests_properties(acceptance-hdsk-fault PROPERTIES LABELS acceptance TIMEOUT 180)
+
 # The Jade Double D: Jade's own FORMAT.COM makes double-density, single-density and 3740 disks,
 # reformats a disk to a smaller layout and two tracks of another, and the new disk boots.
 add_test(NAME acceptance-jadedd-format

@@ -405,12 +405,12 @@ messages of a guest. The disk image does not change. The faults are in the drive
 image.
 
 These controllers take faults: `tarbell`, `tarbelldd`, `16fdc`, `64fdc`, `versafloppy`,
-`jadedd`, `disk1`, `disk1a`, `dcdd`, `mds`, `mdsa`, `mdsad`, `vgmdc`, `vgdmdc`, and `fdcplus` at
-drive type 5. Another controller refuses the command:
+`jadedd`, `disk1`, `disk1a`, `dcdd`, `mds`, `mdsa`, `mdsad`, `vgmdc`, `vgdmdc`, `hdsk`, and
+`fdcplus` at drive type 5. Another controller refuses the command:
 
 ```
-altairsim> FAULT hdsk0:drive0 ADD 2/0/1 data
-hdsk0:drive0: the hdsk board does not take faults on its disk
+altairsim> FAULT icom0:drive0 ADD 2/0/1 data
+icom0:drive0: the icom board does not take faults on its disk
 ```
 
 ### Give a fault
@@ -532,6 +532,25 @@ starts a read or a write of the sector. Each CP/M BIOS tries a bad sector more t
 |---|---|---|---|
 | `vgmdc` | 56K CP/M 2.20B (VG08) | `2/0/0` | 100 |
 | `vgdmdc` | 56K CP/M 2.22 H | `4/0/0` | 72 |
+
+The MITS `hdsk` has its own error byte, CSTAT. A fault sets the bit that the controller sets
+for that error. The address is `<cylinder>/<side>/<sector>`. The cylinder is 0 to 405, the side
+of the platter is 0 or 1, and the sector is 0 to 23. Each drive is one platter.
+
+| Kind | What the `hdsk` reports |
+|---|---|
+| `data` | A read gets the data and CSTAT bit 2, a data CRC error. A write does not use the fault. |
+| `id` | CSTAT bit 3, a header CRC error. The controller does not read or write the sector. |
+| `missing` | CSTAT bit 4, the header has the wrong sector. The controller does not read or write the sector. |
+| `write` | The drive does not write the sector, and the board does not tell the guest. The old bytes stay on the disk. |
+
+A fault occurs each time that the guest gives a Read Sector or a Write Sector command for the
+sector. The HDBL boot PROM and the CP/M BIOS try a bad sector one time:
+
+| Guest | Sector | After a bad read |
+|---|---|---|
+| HDBL boot PROM | `0/0/0` | `LOAD ERR`, and HDBL stops. Start it again for a new boot. |
+| 48K CP/M 2.2b v1.6 | `1/0/0`, the directory | `Bdos Err On A: Bad Sector` |
 
 These steps test a retry on a soft-sector controller, `fdc0`:
 

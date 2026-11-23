@@ -525,6 +525,7 @@ MITS 88-HDSK Datakeeper: Pertec hard disk, 256-byte sectors from a linear .DSK. 
 | `unit` | int | any | Which logical drive (slot = unit*2 + platter) |
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
 | `readonly` | bool | `true` \| `false` | Write-protect the disk *(also `writeprotect`)* |
+| `faults` | string | text | Bad sectors on the disk: <track>/<head>/<sector> <kind> [count=N], with a ';' between two faults. The kind is data, id, missing or write. With no count, the sector fails each time. The image does not change |
 
 #### Board properties
 

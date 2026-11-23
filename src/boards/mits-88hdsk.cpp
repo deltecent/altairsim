@@ -1,5 +1,6 @@
 #include "boards/mits-88hdsk.h"
 
+#include "boards/floppy-drive.h"
 #include "core/bus.h"
 #include "core/statefile.h"
 #include "host/media.h"
@@ -264,6 +265,38 @@ bool HdskBoard::sectorAccess(int unit, int platter, int side, int cyl, int secto
         status_ |= 0x80;
     }
 
+    // A bad sector (#972). One kind for each access: missing, id, then data or write. A
+    // write-protected write is ignored before any of them, so it uses no fault.
+    DiskFaults& faults = drive_[(size_t)i].faults;
+    if (!faults.empty() && !(status_ & 0x80)) {
+        if (DiskFault* f = faults.find(cyl, side, sector, FaultKind::Missing)) {
+            useFault(*f, i, cyl, side, sector);
+            status_ |= 0x10;  // header has wrong sector (section 6, bit4)
+            return false;
+        }
+        if (DiskFault* f = faults.find(cyl, side, sector, FaultKind::Id)) {
+            useFault(*f, i, cyl, side, sector);
+            status_ |= 0x08;  // CRC error in header (section 6, bit3)
+            return false;
+        }
+        if (write) {
+            if (DiskFault* f = faults.find(cyl, side, sector, FaultKind::Write)) {
+                useFault(*f, i, cyl, side, sector);  // not written, and the guest is not told
+                return false;
+            }
+        } else if (DiskFault* f = faults.find(cyl, side, sector, FaultKind::Data)) {
+            // The data still reaches the buffer; only its CRC fails (section 6, bit2).
+            useFault(*f, i, cyl, side, sector);
+            size_t n = kSectorBytes;
+            if (!img->readSector(cyl, side, sector, buf, &n)) {
+                status_ |= 0x01;
+                return false;
+            }
+            status_ |= 0x04;
+            return false;
+        }
+    }
+
     size_t n  = kSectorBytes;
     bool   ok = write ? img->writeSector(cyl, side, sector, buf, &n)
                       : img->readSector(cyl, side, sector, buf, &n);
@@ -277,6 +310,17 @@ bool HdskBoard::sectorAccess(int unit, int platter, int side, int cyl, int secto
     }
     if (write && ok) img->sync();
     return ok;
+}
+
+// Use a fault: count the hit, wear a count fault down, and say so under DEBUG=fault.
+void HdskBoard::useFault(DiskFault& f, int slot, int cyl, int side, int sector) {
+    DiskFaults::use(f);
+    if (auto* dc = debugChannel(); dc && dc->on(FAULT)) {
+        dbg::line(*dc) << "fault drive" << slot << " " << cyl << "/" << side << "/" << sector << " "
+                       << faultKindName(f.kind) << " hit " << f.hits;
+        if (!f.hard()) dbg::out() << ", " << f.left << " left";
+        dbg::out() << "\n";
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -426,6 +470,7 @@ bool HdskBoard::mount(const std::string& unit, const std::string& path, bool ro,
 
     drive_[(size_t)i].img  = std::move(img);
     drive_[(size_t)i].path = path;
+    drive_[(size_t)i].faults.clearAll();  // the faults were the old platter's
     return true;
 }
 
@@ -439,6 +484,7 @@ bool HdskBoard::unmount(const std::string& unit, std::string& err) {
     d.img->sync();
     d.img.reset();
     d.path.clear();
+    d.faults.clearAll();
     return true;
 }
 
@@ -476,6 +522,7 @@ std::vector<Property> HdskBoard::subUnitProperties(const std::string& table) con
         x.aliases = {"writeprotect"};
         p.push_back(std::move(x));
     }
+    p.push_back(driveFaultsKey());
     return p;
 }
 
@@ -486,20 +533,34 @@ bool HdskBoard::addSubUnit(const std::string& table, const KeyValues& kv, std::s
     }
 
     int         unit = -1;
-    std::string path;
+    std::string path, faultText;
     bool        ro = false;
     for (const auto& [k, v] : kv) {
         if (k == "unit") unit = std::stoi(v);
         else if (k == "mount") path = v;
         else if (k == "readonly") ro = (v == "true" || v == "1" || v == "yes" || v == "on");
+        else if (k == "faults") faultText = v;
     }
 
     if (unit < 0) {
         err = "[[board.drive]] needs a `unit`";
         return false;
     }
-    if (path.empty()) return true;
-    return mount("drive" + std::to_string(unit), path, ro, err);
+    if (path.empty()) {
+        DiskFaults none;  // a fault list on an empty drive is refused, and nothing is kept
+        return applyDriveFaults(none, false, faultText, err);
+    }
+    if (!mount("drive" + std::to_string(unit), path, ro, err)) return false;
+    return applyDriveFaults(drive_[(size_t)unit].faults, true, faultText, err);
+}
+
+bool HdskBoard::takesFaults(const std::string& unit) const {
+    return hdskDriveIndex(unit, drives_) >= 0;
+}
+
+DiskFaults* HdskBoard::faults(const std::string& unit) {
+    const int i = hdskDriveIndex(unit, drives_);
+    return (i >= 0 && drive_[(size_t)i].img) ? &drive_[(size_t)i].faults : nullptr;
 }
 
 std::vector<Board::SubUnit> HdskBoard::subUnits() const {
@@ -513,6 +574,7 @@ std::vector<Board::SubUnit> HdskBoard::subUnits() const {
         su.fields.push_back({"unit", std::to_string(i), false});
         su.fields.push_back({"mount", d.path, true});
         if (d.img->readOnly()) su.fields.push_back({"readonly", "true", false});
+        if (!d.faults.empty()) su.fields.push_back({"faults", d.faults.toText(), true});
         out.push_back(std::move(su));
     }
     return out;
@@ -540,6 +602,8 @@ void HdskBoard::serialize(StateWriter& w) const {
     w.boolean(ack_);
     w.boolean(cdReady_);
     w.boolean(adReady_);
+    // The bad sectors and their counts (#972). `drives` is config, so both sides have as many.
+    for (const auto& d : drive_) d.faults.serialize(w);
 }
 
 void HdskBoard::deserialize(StateReader& r) {
@@ -559,6 +623,7 @@ void HdskBoard::deserialize(StateReader& r) {
     ack_        = r.boolean();
     cdReady_    = r.boolean();
     adReady_    = r.boolean();
+    for (auto& d : drive_) d.faults.deserialize(r);
 }
 
 } // namespace altair

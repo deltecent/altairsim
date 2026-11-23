@@ -2366,7 +2366,9 @@ void test_mcp() {
     SECTION("MCP: disk_fault_add, _list and _clear -- bad sectors on a mounted disk (#966)");
     {
         setMediaResolver([](const std::string& path, bool ro, std::string&) {
-            return std::make_unique<MemoryMedia>(path, std::vector<uint8_t>(256256, 0xE5), ro);
+            // An .hd file is an 88-HDSK platter, which has one size (#972).
+            const bool platter = path.size() > 3 && path.compare(path.size() - 3, 3, ".hd") == 0;
+            return std::make_unique<MemoryMedia>(path, std::vector<uint8_t>(platter ? 4988928 : 256256, 0xE5), ro);
         });
         Machine m;
         if (!loadAltmon(m)) return;
@@ -2376,6 +2378,8 @@ void test_mcp() {
         Monitor(m).exec("MOUNT fd0:drive0 n.nsi", add);
         Monitor(m).exec("BOARDS ADD vgdmdc dm0", add);  // any size is a blank Dual-Mode disk
         Monitor(m).exec("MOUNT dm0:drive1 v.vgi", add);
+        Monitor(m).exec("BOARDS ADD hdsk hd0", add);
+        Monitor(m).exec("MOUNT hd0:drive0 p.hd", add);
         std::ostringstream s;
         int id = 0;
         auto req = [&](const std::string& params) {
@@ -2395,6 +2399,7 @@ void test_mcp() {
         req(R"({"name":"disk_fault_add","arguments":{"id":"sio0","unit":"a","fault":"0/0/1 data"}})");
         req(R"({"name":"disk_fault_add","arguments":{"id":"fd0","unit":"drive0","fault":"2/0/1 id"}})");
         req(R"({"name":"disk_fault_add","arguments":{"id":"dm0","unit":"drive1","fault":"2/1/15 missing"}})");
+        req(R"({"name":"disk_fault_add","arguments":{"id":"hd0","unit":"drive0","fault":"100/0/7 id count=3"}})");
         auto rep = runScript(m, s.str());
         auto isErr = [&](int i) { return rep[(size_t)i].at("result").has("isError"); };
         auto data  = [&](int i) -> const Json& { return rep[(size_t)i].at("result").at("structuredContent"); };
@@ -2420,6 +2425,7 @@ void test_mcp() {
                                 std::string::npos,
               "a North Star drive refuses an id fault, with the reason (#970)");
         CHECK(!isErr(13) && data(13).at("fault").str() == "2/1/15 missing", "the Dual-Mode takes a fault (#971)");
+        CHECK(!isErr(14) && data(14).at("fault").str() == "100/0/7 id count=3", "the 88-HDSK takes a fault (#972)");
         setMediaResolver(openHostFile);
     }
 
