@@ -4,6 +4,7 @@
 #include "core/clock.h"
 #include "core/debuglog.h"
 #include "core/statefile.h"
+#include "boards/floppy-drive.h"
 #include "core/value.h"
 #include "host/endpoint.h"
 #include "host/media.h"
@@ -70,6 +71,15 @@ void FdcPlusBoard::setResolver(EndpointResolver r) { g_resolver = std::move(r); 
 
 FdcPlusBoard::FdcPlusBoard() : stream_(std::make_unique<NullStream>()), buf_(kTrackBuf, 0) {
     latch();
+    // A bad spot used on a type-5 disk: one line, only while `fault` is on (#969).
+    hdf_.setFaultHook([this](int drive, int cyl, int side, const DiskFault& f) {
+        auto* dc = debugChannel();
+        if (!dc || !dc->on(FAULT)) return;
+        dbg::line(*dc) << "fault drive" << drive << " " << cyl << "/" << side << "/0 "
+                       << faultKindName(f.kind) << " hit " << f.hits;
+        if (!f.hard()) dbg::out() << ", " << f.left << " left";
+        dbg::out() << "\n";
+    });
 }
 
 FdcPlusBoard::~FdcPlusBoard() { drain(); }
@@ -615,7 +625,7 @@ const char* FdcPlusBoard::takeReply(const char* cmd, uint16_t& code, uint16_t& d
 
 bool FdcPlusBoard::faultsOn() {
     auto* dc = debugChannel();
-    return dc && (dc->on(FAULT) || dc->on(LINK));
+    return dc && (dc->on(LINKERR) || dc->on(LINK));
 }
 
 // One try of a track write failed. finishWrite() retries, or gives up and says so.
@@ -891,6 +901,7 @@ std::vector<Property> FdcPlusBoard::subUnitProperties(const std::string& table) 
         x.aliases = {"writeprotect"};
         p.push_back(std::move(x));
     }
+    p.push_back(driveFaultsKey());
     return p;
 }
 
@@ -900,19 +911,22 @@ bool FdcPlusBoard::addSubUnit(const std::string& table, const KeyValues& kv, std
         return false;
     }
     int         unit = -1;
-    std::string path;
+    std::string path, faultText;
     bool        ro = false;
     for (const auto& [k, v] : kv) {
         if (k == "unit") unit = std::stoi(v);
         else if (k == "mount") path = v;
         else if (k == "readonly") ro = (v == "true" || v == "1" || v == "yes" || v == "on");
+        else if (k == "faults") faultText = v;
     }
     if (unit < 0) {
         err = "[[board.drive]] needs a `unit`";
         return false;
     }
-    if (path.empty()) return true;
-    return mount("drive" + std::to_string(unit), path, ro, err);
+    if (!path.empty() && !mount("drive" + std::to_string(unit), path, ro, err)) return false;
+    DiskFaults  none;
+    DiskFaults* f = hdf_.faults(unit);
+    return applyDriveFaults(f ? *f : none, f != nullptr, faultText, err);
 }
 
 std::vector<Board::SubUnit> FdcPlusBoard::subUnits() const {
@@ -924,9 +938,18 @@ std::vector<Board::SubUnit> FdcPlusBoard::subUnits() const {
         su.fields.push_back({"unit", std::to_string(i), false});
         su.fields.push_back({"mount", hdf_.path(i), true});
         if (hdf_.readOnly(i)) su.fields.push_back({"readonly", "true", false});
+        if (const DiskFaults* f = hdf_.faults(i); f && !f->empty())
+            su.fields.push_back({"faults", f->toText(), true});
         out.push_back(std::move(su));
     }
     return out;
+}
+
+bool FdcPlusBoard::takesFaults(const std::string& unit) const { return hdDrive(unit) >= 0; }
+
+DiskFaults* FdcPlusBoard::faults(const std::string& unit) {
+    const int i = hdDrive(unit);
+    return i >= 0 ? hdf_.faults(i) : nullptr;
 }
 
 bool FdcPlusBoard::applyEndpoint(const std::string& endpoint, std::string& err) {

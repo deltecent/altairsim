@@ -23,9 +23,11 @@
 // distilled in reference/FDC+ HD Floppy Firmware.md.
 
 #include "core/clock.h"
+#include "host/diskfaults.h"
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -68,6 +70,27 @@ public:
     void serialize(StateWriter& w) const;
     void deserialize(StateReader& r);
 
+    // THE BAD SPOTS OF THE DISK IN DRIVE `i` (#969), or null with no disk. A fault's address is
+    // where the head is: <cylinder>/<side>/0, the bottom side 0 and the top 1, and sector 0, the
+    // one sector of a track. The firmware reports each fault with the bits it already has:
+    //   data     byte 64 of the track comes in wrong, and done brings CHECKSUM ERROR (bit 0)
+    //   id       the sync byte names another track: TRACK ERROR (bit 1); the data still comes
+    //   missing  no sync byte: END OF SECTOR (bit 2) and done at the next index hole
+    //   write    the drive does not write the track; done, as on a write-protected disk
+    // A read or a write uses the fault the moment the firmware meets it: id and missing as the
+    // read starts, data at the checksum, write when the write ends.
+    DiskFaults*       faults(int i);
+    const DiskFaults* faults(int i) const {
+        return const_cast<FdcPlusHdf*>(this)->faults(i);
+    }
+
+    // Called each time a fault is used: drive, cylinder, side, and the fault after the use. The
+    // board writes the `fault` debug line from it.
+    using FaultHook = std::function<void(int, int, int, const DiskFault&)>;
+    void setFaultHook(FaultHook h) { faultHook_ = std::move(h); }
+
+    static constexpr int kFaultDataByte = 64;  // the byte of the track a `data` fault spoils
+
     // The image track at a cylinder and side, or -1: the layout the BIOS uses.
     static int imageTrack(int cyl, bool top);
 
@@ -85,6 +108,7 @@ private:
         std::unique_ptr<MediaFile> img;
         std::string                path;
         int                        cyl = 0;
+        DiskFaults                 faults;
     };
 
     uint64_t now() const { return clock_ ? clock_->now() : 0; }
@@ -103,6 +127,8 @@ private:
     void finishRead();
     void finishWrite();
     void startMotor();              // the motor on, and waitMotor: skip the first hole
+    DiskFault* findFault(FaultKind k);  // the armed fault of kind k under the head, or null
+    void       useFault(DiskFault& f);
     void idle();                    // enterIdle
     void select(uint8_t v);
     void command(uint8_t v);
@@ -144,10 +170,15 @@ private:
     int      done_      = 0;      // bytes moved so far in this transfer
     bool     noSync_    = false;  // the track under the head was never written
     int      xferTrack_ = -1;     // the image track under the head when it started
+    int      xferFault_ = -1;     // the FaultKind this transfer meets, or -1 (#969)
+    int      xferCyl_   = 0;      // where the head was when it started: the fault's address
+    int      xferSide_  = 0;
     uint64_t moveAt_    = 0;      // OC1: the step timer
     bool     moving_    = false;
     uint64_t settleAt_  = 0;      // OC2: the head settle timer
     bool     settling_  = false;
+
+    FaultHook faultHook_;
 };
 
 } // namespace altair

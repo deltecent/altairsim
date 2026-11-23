@@ -390,6 +390,156 @@ int mismatches(const std::vector<uint8_t>& got, int track) {
     return n;
 }
 
+// ---------------------------------------------------------------------------
+// BAD SPOTS ON A TYPE-5 DISK (#969). The address is <cylinder>/<side>/0.
+// ---------------------------------------------------------------------------
+DiskFault& addFault(HdRig& r, const char* spec) {
+    std::string err;
+    DiskFaults* f = r.b.faults("drive0");
+    CHECK(f && f->add(spec, err), spec);
+    return const_cast<DiskFault&>(f->list().back());
+}
+
+void hdfFaultTests() {
+    SECTION("FDC+ type 5 -- FAULT data: byte 64 spoiled, CHECKSUM ERROR with done (#969)");
+    {
+        HdRig r;
+        CHECK(r.b.takesFaults("drive0") && r.b.takesFaults("drive3"), "drive0..drive3 take faults");
+        CHECK(!r.b.takesFaults("line"), "the serial drive's line does not");
+        CHECK(r.b.faults("drive1") == nullptr, "an empty drive has no table");
+        const auto before = r.med->bytes();
+        DiskFault& f      = addFault(r, "0/0/0 data");
+        CHECK(r.ready(), "a hole");
+        r.out(0x0B, 0);
+        std::vector<uint8_t> got;
+        CHECK(r.readTrack(got, 17) == 0x81, "done and checksum error");
+        CHECK(got[64] == (uint8_t)(hdByte(0, 64) ^ 0xFF), "byte 64 came in wrong");
+        CHECK(mismatches(got, 0) == 1, "and only byte 64");
+        CHECK(f.hits == 1, "one hit");
+        CHECK(r.med->bytes() == before, "the image is unchanged");
+    }
+
+    SECTION("FDC+ type 5 -- FAULT id: TRACK ERROR, the data still comes");
+    {
+        HdRig r;
+        DiskFault& f = addFault(r, "0/0/0 id");
+        CHECK(r.ready(), "a hole");
+        r.out(0x0B, 0);
+        std::vector<uint8_t> got;
+        CHECK(r.readTrack(got, 17) == 0x82, "done and track error");
+        CHECK(mismatches(got, 0) == 0, "the bytes are the track's");
+        CHECK(f.hits == 1, "one hit");
+    }
+
+    SECTION("FDC+ type 5 -- FAULT missing: no sync byte, END OF SECTOR at the next hole");
+    {
+        HdRig r;
+        DiskFault& f = addFault(r, "0/0/0 missing");
+        CHECK(r.ready(), "a hole");
+        r.out(0x0B, 0);
+        r.out(0x09, 0x10);
+        r.us(100000);
+        CHECK(r.in(0x08) & 0x80, "no sync byte, no NRDA");
+        r.us(70000);
+        CHECK(r.in(0x0B) == 0x84, "end of sector and done");
+        CHECK(!(r.in(0x08) & 0x80), "and NRDA");
+        CHECK(f.hits == 1, "one hit");
+    }
+
+    SECTION("FDC+ type 5 -- FAULT write: the drive does not write the track; done");
+    {
+        HdRig r;
+        const auto before = r.med->bytes();
+        DiskFault& f      = addFault(r, "0/0/0 write");
+        CHECK(r.ready(), "a hole");
+        r.out(0x0B, 0);
+        CHECK(r.writeTrack(14) == 0x80, "done, as far as the card knows");
+        CHECK(r.med->bytes() == before, "the disk is unchanged");
+        CHECK(f.hits == 1, "one hit");
+    }
+
+    SECTION("FDC+ type 5 -- count=2 wears off; the other side and a read of another kind miss");
+    {
+        HdRig r;
+        addFault(r, "0/1/0 data");  // cylinder 0, top side: track 1
+        addFault(r, "0/0/* data count=2");
+        const DiskFault& top = r.b.faults("drive0")->list()[0];
+        const DiskFault& f   = r.b.faults("drive0")->list()[1];
+        CHECK(r.ready(), "a hole");
+        r.out(0x0B, 0);
+        std::vector<uint8_t> got;
+        CHECK(r.readTrack(got, 17) == 0x81, "1st read: checksum error");
+        r.hole();
+        CHECK(r.readTrack(got, 17) == 0x81, "2nd read: checksum error");
+        r.hole();
+        CHECK(r.readTrack(got, 17) == 0x80, "3rd read: good");
+        CHECK(mismatches(got, 0) == 0, "and every byte is right");
+        CHECK(f.hits == 2 && f.left == 0, "two hits, none left");
+        CHECK(top.hits == 0, "the top side was never read");
+        r.hole();
+        r.out(0x0B, 0);
+        CHECK(r.writeTrack(14) == 0x80, "a write");
+        CHECK(f.hits == 2, "does not use a data fault");
+    }
+
+    SECTION("FDC+ type 5 -- DEBUG=fault: one line a use");
+    {
+        HdRig r;
+        r.b.id = "fdc0";
+        r.b.ensureDebugChannel();
+        std::string err;
+        CHECK(r.b.debugChannel()->enable("fault", err), "the fault flag exists");
+        addFault(r, "0/0/0 data count=2");
+        const std::string text = debugCapture([&] {
+            CHECK(r.ready(), "a hole");
+            r.out(0x0B, 0);
+            std::vector<uint8_t> got;
+            r.readTrack(got, 17);
+        });
+        CHECK(text.find("fault drive0 0/0/0 data hit 1, 1 left") != std::string::npos, text.c_str());
+    }
+
+    SECTION("FDC+ type 5 -- the `faults` key, SNAPSHOT, and MOUNT clearing the table");
+    {
+        HdRig       r(-1);
+        std::string err;
+        CHECK(!r.b.loadSubUnit("drive", {{"unit", "1"}, {"faults", "2/0/0 data"}}, err) &&
+                  !err.empty(),
+              "`faults` with no `mount` is refused");
+        const auto img = hdImage(FdcPlusHdf::kTracks);
+        setMediaResolver([img](const std::string& p, bool ro, std::string&) {
+            return std::unique_ptr<MediaFile>(std::make_unique<MemoryMedia>(p, img, ro));
+        });
+        CHECK(r.b.loadSubUnit("drive",
+                              {{"unit", "0"}, {"mount", "a.dsk"}, {"faults", "2/0/0 data count=3; 5/*/* id"}},
+                              err),
+              "a drive table with `faults` loads");
+        setMediaResolver(openHostMedia);
+        DiskFaults* f = r.b.faults("drive0");
+        CHECK(f && f->list().size() == 2, "two faults");
+        bool saved = false;
+        for (const auto& su : r.b.subUnits())
+            for (const auto& fld : su.fields)
+                saved = saved || (fld.key == "faults" && fld.quoted &&
+                                  fld.text == "2/0/0 data count=3; 5/*/* id");
+        CHECK(saved, "CONFIG SAVE writes the `faults` key back, quoted");
+
+        DiskFaults::use(const_cast<DiskFault&>(f->list()[0]));
+        StateWriter w;
+        r.b.serialize(w);
+        CHECK(r.mount(hdImage(2)) && r.b.faults("drive0")->empty(),
+              "a new disk in the drive brings no faults");
+        StateReader rd(w.data());
+        r.b.deserialize(rd);
+        CHECK(rd.ok(), "restores cleanly");
+        const DiskFaults* g = r.b.faults("drive0");
+        CHECK(g && g->list().size() == 2 && g->list()[0].hits == 1 && g->list()[0].left == 2,
+              "RESTORE brings the faults back with their counts");
+        CHECK(r.b.unmount("drive0", err) && r.b.faults("drive0") == nullptr,
+              "UNMOUNT: no disk, no faults");
+    }
+}
+
 void hdfTests() {
     SECTION("FDC+ type 5 -- select: F5, TRACK 0, WRITE PROTECT; drive 4 deselects");
     {
@@ -629,6 +779,8 @@ void hdfTests() {
         c.addr = 0x08;
         CHECK(b2.read(c) == a.in(0x08), "and the status register");
     }
+
+    hdfFaultTests();
 }
 
 } // namespace

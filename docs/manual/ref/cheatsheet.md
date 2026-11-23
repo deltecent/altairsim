@@ -153,7 +153,7 @@ Type the part before the bracket.
 | `disk1a` | CompuPro Disk 1A: uPD765A floppy controller with DMA |
 | `dualide` | S100Computers IDE-AB: two CompactFlash sockets for CP/M 3 |
 | `dualsd` | S100Computers Dual SD: two microSD sockets for CP/M 3 |
-| `fdcplus` | FarmTek FDC+: serial drive (drive types 6, 7) |
+| `fdcplus` | FarmTek FDC+: 1.5 MB floppy (drive type 5), serial drive (6, 7) |
 | `hdsk` | MITS 88-HDSK Datakeeper: Pertec hard disk controller |
 | `icom` | iCOM FD3712/FD3812: 8" floppy controller with boot PROM |
 | `jadedd` | Jade Double D: double-density controller, own Z80 |

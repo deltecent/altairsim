@@ -71,8 +71,16 @@ public:
     std::vector<Property> properties() override;
     std::vector<MapEntry> ioMap() const override;
 
-    std::vector<std::string> debugFlags() const override { return {"seek", "link", "error"}; }
-    enum DebugFlag { SEEK = 0, LINK = 1, FAULT = 2 };
+    // `error` is the link's faults; `fault` is a bad spot used on a type-5 disk (#969).
+    std::vector<std::string> debugFlags() const override {
+        return {"seek", "link", "error", "fault"};
+    }
+    enum DebugFlag { SEEK = 0, LINK = 1, LINKERR = 2, FAULT = 3 };  // not ERROR: a Windows macro
+
+    // Bad spots, on the type-5 drives only. The serial drive has no medium: its tracks come
+    // from a server's file, so `line` takes no faults.
+    bool        takesFaults(const std::string& unit) const override;
+    DiskFaults* faults(const std::string& unit) override;
 
     // The serial unit, the card's J2 connector, for types 6 and 7 -- the server mounts those
     // images -- and the four drives of type 5, drive0..drive3, which MOUNT fills.

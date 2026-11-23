@@ -1,0 +1,35 @@
+# An FDC+ at drive type 5 whose CP/M disk has a bad track (#969) -- for fdcplus-fault.exp.
+#
+# `faults` is the drive's bad-spot list. On the 1.5 MB floppy a track is one 10,240-byte sector,
+# so the address is <cylinder>/<side>/0. BIOS track t is cylinder t/2, side t&1. Track 0, the
+# bottom of cylinder 0, holds the boot loader's CP/M image, so HDFBL meets the fault at once.
+# count=2: two checksum errors, then the track is good. HDFBL starts again on any error.
+#
+# The directory is BIOS track 1: cylinder 0, the TOP side, 0/1/0. A hard data fault there gets
+# 12 hits (the BIOS's tries) and DIR gives Bdos Err On A: Bad Sector. A hard fault on 1/0/0
+# (BIOS track 2) is not hit by DIR at all. Found with SET fdc0 DEBUG=fault; do not move the
+# fault without checking.
+#
+# NOTHING WRITES TO THE IMAGE. `readonly = true` write-protects the disk, and a fault never
+# changes it. The .exp shasums the image before and after.
+[machine]
+name = "fdcplus-fault"
+base = "default"
+
+startup = ["RUN FF00"]
+
+# The 88-DCDD answers at 08-0A, the same ports as the FDC+.
+[[board]]
+id     = "dsk0"
+remove = true
+
+[[board]]
+type      = "fdcplus"
+id        = "fdc0"
+drivetype = 5
+
+  [[board.drive]]
+  unit     = 0
+  mount    = "../media/cpm/CPM22-48K-HDF.dsk"
+  readonly = true
+  faults   = "0/0/0 data count=2"

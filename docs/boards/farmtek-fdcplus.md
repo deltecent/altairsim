@@ -95,6 +95,7 @@ the images. The four disk units `drive0`–`drive3` are type 5's.
 and a change in the server's mount map) and `error` (only the link's faults: STAT not answered --
 said once, on the change, and again when the server answers -- a bad or wrong reply, a track
 with a bad checksum or cut short, and each failed WRIT/WSTA try). `link` prints the faults too.
+`fault` writes a line each time that a bad spot on a type-5 disk is used (see "Bad sectors (type 5)" below).
 
 ### Reset
 
@@ -172,7 +173,7 @@ put there with `MOUNT` or `[[board.drive]]`.
 | base+0 | drive select: bit 7, or a drive of 4 or more, deselects; bits 3–0 = drive | status (low true): 0 ENWD, 1 MOVE HEAD, 2 HEAD STATUS, 3 drive ready, **4 WRITE PROTECT**, 6 TRACK 0, 7 NRDA |
 | base+1 | command: 0 step in, 1 step out, 2 head load, 3 head unload, **4 read enable**, 6 low write current, 7 write enable | sector position: sector 0 or 15, bit 0 sector true (low) |
 | base+2 | write data, into the track buffer | read data, from the track buffer |
-| base+3 | **the track number** — also picks the side | **I/O status** (high true): 1 track error, 2 end of sector too soon, 7 done |
+| base+3 | **the track number** — also picks the side | **I/O status** (high true): 0 checksum error, 1 track error, 2 end of sector too soon, 7 done |
 
 ### How it is simulated (type 5)
 
@@ -220,9 +221,10 @@ DBL's checksum.
 
 ### Limitations (type 5)
 
-- **No checksum errors.** The sync byte and the checksum are on the disk, not in an image: every
-  read of an image track is good, and its sync byte is the track's own number, so the track error
-  bit means "the head or side is not on the track the 8080 named".
+- **An image has no checksum errors.** The sync byte and the checksum are on the disk, not in an
+  image. Every read of an image track is good, and its sync byte is the track's own number. The
+  track error bit therefore means that the head or the side is not on the track that the 8080
+  named. `FAULT` gives a track a checksum error, a track error or no sync byte (below).
 - **The real drive's MFM, precompensation and write current** change only the flux, which an
   image does not have.
 - **A drive with no disk has no index holes**, so the sector register stays `FF` and the BIOS's
@@ -236,6 +238,43 @@ DBL's checksum.
   1.75 and 2.1 MHz. At `clock_hz = 4000000` it cannot read the disk, as on a real 4 MHz Altair; the FDC+ note
   *Operation with a Z80 at 4MHz* says the same (`reference/FDC+ Manual.md` §7).
 
+### Bad sectors (type 5): `FAULT` and the `faults` key
+
+A type-5 drive can have bad sectors on its disk, to test the retry code of a guest (#969). The
+faults are a table in each drive (`DiskFaults`, `src/host/diskfaults.h`), and the image does not
+change. Give them with `FAULT fdc0:driveN`, with the `disk_fault_*` MCP tools, or with the
+`faults` key of a `[[board.drive]]` table. The *User Manual* gives the syntax, in "Simulate a
+bad sector" in the Disks chapter.
+
+**The serial drive takes no faults.** `FAULT fdc0:line` is refused. Its disks are files on the
+drive server, and the real card never reads a bad sector from them. A bad link is a different
+fault, and the board already reports it (`DEBUG=error`).
+
+The firmware has error bits for a bad track, and the 8080 reads them in the I/O status. A fault
+sets the bit that the firmware sets for that error on a real disk:
+
+| Kind | What the firmware reports | When the fault is used |
+|---|---|---|
+| `data` | Byte 64 of the track is inverted, and done comes with checksum error (bit 0) | When the read ends, at the checksum. The firmware checks the sum whether or not the 8080 reads each byte. |
+| `id` | Track error (bit 1). The data still comes. | When the read starts |
+| `missing` | No sync byte: end of sector too soon (bit 2) and done at the next index hole | When the read starts |
+| `write` | The drive does not write the track. Done is set, as on a write-protected disk. | When the write ends |
+
+- **The address** is `<cylinder>/<side>/0`, the place under the head. The bottom side is 0 and
+  the top side is 1. A track is one sector, so the sector is always 0. BIOS track t is cylinder
+  t/2, side t&1, for t below 144. Tracks 144 to 148 are cylinders 72 to 76, side 0 (`imageTrack`).
+- **The boot loader HDFBL starts again on any error.** A `count=2` data fault on `0/0/0`, track
+  0, gets 2 hits, and CP/M still boots.
+- **The CP/M BIOS reads a bad track 12 times.** The directory is BIOS track 1, which is `0/1/0`.
+  A hard data fault there gets 12 hits, and `DIR` gives `Bdos Err On A: Bad Sector`. A hard
+  fault on `1/0/0`, BIOS track 2, is not read by `DIR`. The acceptance test
+  `acceptance-fdcplus-fault` checks both: the `count=2` fault on `0/0/0` and the hard fault on
+  `0/1/0`.
+
+`SET fdc0 DEBUG=fault` writes a line each time that a fault is used, for example
+`fault drive0 0/1/0 data hit 12`. `MOUNT` and `UNMOUNT` clear the faults of the drive. `CONFIG
+SAVE` writes the `faults` key, and a snapshot keeps the faults with their counts.
+
 ### Verification (type 5)
 
 - `tests/test_fdcplus.cpp` (the type 5 sections): the select and status bits, write protect,
@@ -243,8 +282,9 @@ DBL's checksum.
   checksum, a track read at 17 µs a byte, **a read at 8 µs a byte that gets old bytes**, the read
   enable lost to the hole, the side from the track number and the track error, end of sector on a
   missing track, a write at 14 µs that lands, **a write at 18 µs that falls behind**, write
-  protect, the step and settle times, the motor timer, the size check, `[[board.drive]]` and a
-  snapshot. The timing tests were checked by breaking the byte timing.
+  protect, the step and settle times, the motor timer, the size check, `[[board.drive]]`, a
+  snapshot, and each kind of fault with its status bit, its count and its `faults` key.
+  The timing tests were checked by breaking the byte timing.
 - `acceptance-media` boots `tests/media/cpm/cpm22-fdcplus-hdf.toml` from a copy of the folder:
   DBL, the fake boot sector, HDFBL and the BIOS, to `48K CP/M 2.2b v1.2`, `For Altair 1.5Mb
   Floppy`, `A>` and a directory line.

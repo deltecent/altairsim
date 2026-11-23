@@ -21,10 +21,13 @@ change. `FAULT` lists each fault with the number of times it occurred. `SET <id>
 writes a line for each fault. The `faults` key of a drive puts faults in a machine file, and a
 snapshot keeps them. The MCP tools are `disk_fault_add`, `disk_fault_list` and
 `disk_fault_clear`. The `tarbell`, `tarbelldd`, `16fdc`, `64fdc`, `versafloppy`, `jadedd`,
-`disk1`, `disk1a`, `dcdd` and `mds` controllers take faults. The `dcdd` and the `mds` have no
+`disk1`, `disk1a`, `dcdd` and `mds` controllers take faults, and the `fdcplus` at drive type 5
+(issue #969). The `dcdd` and the `mds` have no
 error bit. On them, a fault changes the bytes that the guest reads, and the CP/M BIOS finds the
 error with its checksum (issue #968). For example, a hard fault on sector 0 of track 2 of the 88-DCDD
-CP/M disk gives 12 reads and then `Bdos Err On A: Bad Sector`.
+CP/M disk gives 12 reads and then `Bdos Err On A: Bad Sector`. On the `fdcplus` 1.5 MB floppy, a
+fault sets the checksum, track or end-of-sector bit of the I/O status. A hard fault on the
+directory track, `0/1/0`, gives 12 reads and the same error. The serial drive takes no faults.
 
 **Fixed: the WD17xx set CRC Error for a sector that it found.** A Read Sector or Write Sector
 can pass a bad ID field on the way to its sector. The chip then set status bit 3, CRC Error,

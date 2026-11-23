@@ -2158,6 +2158,15 @@ if(EXPECT_EXECUTABLE)
   set_tests_properties(acceptance-dcdd-fault PROPERTIES
                        LABELS acceptance TIMEOUT 90
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+  # BAD SPOTS ON THE FDC+ 1.5 MB FLOPPY (#969): a count=2 fault on track 0 that HDFBL retries
+  # past, then a hard one on the directory track: Bdos Err On A: Bad Sector after 12 tries.
+  add_test(NAME acceptance-fdcplus-fault
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/fdcplus-fault.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-fdcplus-fault PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
   # ---------------------------------------------------------------------------
   # DDT SETS A BREAKPOINT -- and it needs no interrupt to do it (RST 7 is a one-byte
   # CALL 0038h, written over the guest's own opcode). Same fixture, same protected
