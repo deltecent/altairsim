@@ -1188,6 +1188,17 @@ add_test(NAME acceptance-vg3
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/vg3.cmake)
 set_tests_properties(acceptance-vg3 PROPERTIES LABELS acceptance TIMEOUT 120)
 
+# Bad sectors on the Vector Graphic Dual-Mode board (#971): a count=2 bad read on track 0 that
+# the Monitor's boot reads past, then a hard data, id and missing fault on the directory -- Bad
+# Sector on the screen each time, after the BIOS's 72 reads.
+add_test(NAME acceptance-vgdmdc-fault
+         COMMAND ${CMAKE_COMMAND}
+                 -DSIM=$<TARGET_FILE:altairsim>
+                 -DSRC=${CMAKE_CURRENT_SOURCE_DIR}
+                 -DBIN=${CMAKE_CURRENT_BINARY_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/vgdmdc-fault.cmake)
+set_tests_properties(acceptance-vgdmdc-fault PROPERTIES LABELS acceptance TIMEOUT 180)
+
 # The Jade Double D: Jade's own FORMAT.COM makes double-density, single-density and 3740 disks,
 # reformats a disk to a smaller layout and two tracks of another, and the new disk boots.
 add_test(NAME acceptance-jadedd-format
@@ -2174,6 +2185,16 @@ if(EXPECT_EXECUTABLE)
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/northstar-fault.exp
                    $<TARGET_FILE:altairsim>)
   set_tests_properties(acceptance-northstar-fault PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+  # The same on the Vector Graphic Micropolis board (#971): a count=2 bad checksum on track 0
+  # that the disk's loader reads past, then a hard data, id and missing fault on the directory --
+  # Bad Sector each time, after the BIOS's 100 tries.
+  add_test(NAME acceptance-vgmdc-fault
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/vgmdc-fault.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-vgmdc-fault PROPERTIES
                        LABELS acceptance TIMEOUT 90
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
   # ---------------------------------------------------------------------------

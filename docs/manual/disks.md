@@ -405,12 +405,12 @@ messages of a guest. The disk image does not change. The faults are in the drive
 image.
 
 These controllers take faults: `tarbell`, `tarbelldd`, `16fdc`, `64fdc`, `versafloppy`,
-`jadedd`, `disk1`, `disk1a`, `dcdd`, `mds`, `mdsa`, `mdsad`, and `fdcplus` at drive type 5.
-Another controller refuses the command:
+`jadedd`, `disk1`, `disk1a`, `dcdd`, `mds`, `mdsa`, `mdsad`, `vgmdc`, `vgdmdc`, and `fdcplus` at
+drive type 5. Another controller refuses the command:
 
 ```
-altairsim> FAULT mdc0:drive0 ADD 2/0/1 data
-mdc0:drive0: the vgmdc board does not take faults on its disk
+altairsim> FAULT hdsk0:drive0 ADD 2/0/1 data
+hdsk0:drive0: the hdsk board does not take faults on its disk
 ```
 
 ### Give a fault
@@ -510,6 +510,28 @@ status byte to wait for the next sector. Because of this, the number of hits on 
 `missing` fault can be one more than the number of tries of the guest. The CP/M 2.23 BIOS of
 `CPM223DQ-48K-SSDD.NSI` reads a bad sector 10 times. Its directory is at `2/0/0`. A hard `data`
 fault there gives 10 hits and then `Bdos Err On A: Bad Sector`.
+
+The Vector Graphic `vgmdc` (Micropolis) and `vgdmdc` (Dual-Mode) have no error bit. A sector is
+a slot of 275 bytes, with a sync byte, a header with the track, the data and a checksum. The
+guest checks each of them. The address is `<track>/<side>/<sector>`. The side is 0, or 1 on a
+two-sided disk. The sector is 0 to 15, the number of the hole.
+
+| Kind | What the guest reads on a `vgmdc` or a `vgdmdc` |
+|---|---|
+| `data` | The data, then a wrong checksum |
+| `id` | A wrong track number in the header |
+| `missing` | No sync byte. The `vgmdc` never starts the read. The `vgdmdc` stores nothing, and its RAM keeps the sector that it read before. |
+| `write` | The drive does not write the sector, and the board does not tell the guest. The old bytes stay on the disk. |
+
+On the `vgmdc`, a `data` or `id` fault occurs when the guest reads the bad byte. A `missing`
+fault occurs one time in each turn of the disk. It occurs when the guest reads the status
+register while the bad sector is under the head. On the `vgdmdc`, a fault occurs each time that the guest
+starts a read or a write of the sector. Each CP/M BIOS tries a bad sector more than one time:
+
+| Board | CP/M disk | Directory | Tries before `Bdos Err On A: Bad Sector` |
+|---|---|---|---|
+| `vgmdc` | 56K CP/M 2.20B (VG08) | `2/0/0` | 100 |
+| `vgdmdc` | 56K CP/M 2.22 H | `4/0/0` | 72 |
 
 These steps test a retry on a soft-sector controller, `fdc0`:
 

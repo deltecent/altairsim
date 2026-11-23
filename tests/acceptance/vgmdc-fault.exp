@@ -1,0 +1,127 @@
+#!/usr/bin/expect -f
+#
+# BAD SECTORS REACH THE VECTOR GRAPHIC MICROPOLIS BOARD (#971). The vgmdc boots Lifeboat CP/M
+# 2.20B off a disk whose machine file puts a fault on track 0:
+#
+#   1. count=2: the checksum of sector 0/0/1 is wrong two times. The board never checks it; the
+#      disk's loader does, and reads again. CP/M still reaches A>. FAULT then shows the fault
+#      used two times and worn off.
+#   2. A hard data fault on the directory (2/0/0): the BIOS tries 100 times, and the BDOS says
+#      `Bdos Err On A: Bad Sector`. FAULT shows the 100 hits.
+#   3. A hard id fault there instead: the track byte of the header is wrong. The same error and
+#      the same 100 hits.
+#   4. A hard missing fault there instead: the sector has no sync byte, so the transfer flag
+#      never comes. The BIOS times out, and DIR gives the same error. A missing hit counts once
+#      for each turn that the BIOS waits through, so it also shows 100.
+#
+# The guest's own code finds every fault: the BIOS adds up the checksum, compares the header,
+# and times out waiting for the sector. So this test proves the BIOS sees the fault, not only
+# the board.
+#
+# IT HAS TO BE AN EXPECT TEST: steps 2 to 4 type at the monitor and at A>, which a pipe cannot
+# do.
+#
+# THE DISK MUST NOT MOVE. A fault is an overlay on the drive; the image never changes. The
+# fixture is write-protected too, and shasummed before and after.
+#
+# usage: expect -f vgmdc-fault.exp <altairsim>
+#
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set dsk "tests/media/vector/VG08.VGI"
+
+set before [exec shasum $dsk]
+
+spawn $exe tests/acceptance/vgmdc-fault.toml
+
+# 1. Two bad checksums on 0/0/1, and the loader's second try gets past them.
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: the machine died before the A> prompt"; exit 1 }
+    timeout { puts "FAIL: CP/M never reached A> past the count=2 fault"; exit 1 }
+}
+
+send "\005"
+expect {
+    -ex "altairsim> " {}
+    timeout { puts "FAIL: Ctrl-E did not reach the monitor"; exit 1 }
+}
+send "FAULT mdc0:drive0\r"
+expect {
+    -re {0/0/1 data count=2 +2 +0} {}
+    timeout { puts "FAIL: FAULT does not show the fault used twice with none left"; exit 1 }
+}
+expect -ex "altairsim> "
+
+# Steps 2 to 4: one hard fault on the directory, DIR, and the hit count. The BIOS tries 100
+# times, and each try reads the faulty byte or waits one turn for the sector: 100 hits.
+#
+# THE ERROR BEFORE IS DISMISSED FIRST, WITH NO FAULT ON THE DISK. After a Return the BDOS goes
+# on with DIR, and its status reads can come while 2/0/0 passes. A missing hit counts on a
+# status read past the time TF is due, so such a read would add a hit that is not one of the
+# 100 tries. The fault goes on after A>, so the count is DIR's tries alone.
+proc dirFault {kind first} {
+    if {!$first} {
+        send "FAULT mdc0:drive0 CLEAR ALL\r"
+        expect -ex "altairsim> "
+        send "RUN\r"
+        sleep 0.5
+        send "\r"
+        expect {
+            -ex "A>" {}
+            eof     { puts "FAIL: the machine died after the BDOS error"; exit 1 }
+            timeout { puts "FAIL: a key after the BDOS error did not give A>"; exit 1 }
+        }
+        send "\005"
+        expect {
+            -ex "altairsim> " {}
+            timeout { puts "FAIL: Ctrl-E did not reach the monitor at A>"; exit 1 }
+        }
+    }
+    send "FAULT mdc0:drive0 ADD 2/0/0 $kind\r"
+    expect {
+        -ex "mdc0:drive0: fault 2/0/0 $kind" {}
+        timeout { puts "FAIL: FAULT ADD did not add the $kind fault"; exit 1 }
+    }
+    expect -ex "altairsim> "
+    send "RUN\r"
+    sleep 0.5
+    send "DIR\r"
+    expect {
+        -ex "Bad Sector" {}
+        -ex "MBASIC" { puts "FAIL: DIR read the directory through a hard $kind fault"; exit 1 }
+        eof     { puts "FAIL: the machine died running DIR"; exit 1 }
+        timeout { puts "FAIL: DIR did not report a bad sector for the $kind fault"; exit 1 }
+    }
+    send "\005"
+    expect {
+        -ex "altairsim> " {}
+        timeout { puts "FAIL: Ctrl-E did not reach the monitor after the error"; exit 1 }
+    }
+    send "FAULT mdc0:drive0\r"
+    expect {
+        -re "2/0/0 $kind +100 " {}
+        -re "2/0/0 $kind +\[0-9\]+ " { puts "FAIL: the hard $kind fault was not hit once for each of the BIOS's 100 tries"; exit 1 }
+        timeout { puts "FAIL: FAULT did not list the hard $kind fault"; exit 1 }
+    }
+    expect -ex "altairsim> "
+}
+
+dirFault data    1
+dirFault id      0
+dirFault missing 0
+
+set after [exec shasum $dsk]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. A fault must never touch the disk image:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    exit 1
+}
+
+puts "OK: the loader read again past a count=2 checksum fault to A>, and a hard data, id or\
+      missing fault on the directory gave Bdos Err On A: Bad Sector after the BIOS's 100 tries,\
+      and the disk image is byte-identical."
+exit 0

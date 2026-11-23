@@ -2527,6 +2527,14 @@ void test_cli() {
                   fmon.failed(),
               o.c_str());
         CHECK(fx("FAULT fd0:drive0 ADD 2/0/1 missing") == "fd0:drive0: fault 2/0/1 missing\n", "a missing fault is taken");
+
+        // The Vector Graphic Micropolis board takes every kind (#971).
+        setMediaResolver([](const std::string& path, bool ro, std::string&) {
+            return std::make_unique<MemoryMedia>(path, std::vector<uint8_t>(338800, 0), ro);
+        });
+        fx("BOARDS ADD vgmdc mdc0");
+        fx("MOUNT mdc0:drive0 v.vgi");
+        CHECK(fx("FAULT mdc0:drive0 ADD 2/0/1 id") == "mdc0:drive0: fault 2/0/1 id\n", "the vgmdc takes an id fault");
         setMediaResolver(openHostFile);
     }
 

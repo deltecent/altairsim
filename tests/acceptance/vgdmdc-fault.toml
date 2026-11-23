@@ -1,0 +1,34 @@
+# A Vector 3 whose CP/M disk on the Dual-Mode board has a bad sector (#971) -- for
+# vgdmdc-fault.cmake.
+#
+# `faults` is the drive's bad-sector list. A Vector address is <track>/<side>/<sector>: the
+# track under the head, the side, and the hard-sector number 0-15. VGBOOT.VGI is Vector Graphic
+# 56K CP/M 2.22 H; it prints on the Flashwriter II. The Monitor's B command reads track 0 and
+# tries a sector 5 times: a hard data fault on 0/0/1 and B gives up, back at Mon>. count=2: two
+# bad reads, and the third is good.
+#
+# The directory starts at 4/0/0. The BIOS reads a sector 72 times before the BDOS gives Bdos Err
+# On A: Bad Sector. Found with FAULT ADD on whole tracks and the hit counts; do not move the fault
+# without checking.
+#
+# FLAT OUT. At 4 MHz each of the 72 reads waits a turn of the disk. The board counts a hit at
+# START, one for each read, so the speed does not change the count.
+#
+# NOTHING WRITES TO THE IMAGE. `writeprotect = true` protects the disk, and a fault never changes
+# it. The .cmake hashes the image before and after.
+[machine]
+name = "vgdmdc-fault"
+base = "machines/vg3vipt.toml"
+
+[[board]]
+id       = "cpu0"
+clock_hz = 0
+
+[[board]]
+id = "dm0"
+
+  [[board.drive]]
+  unit         = 1
+  mount        = "../media/vector/VGBOOT.VGI"
+  writeprotect = true
+  faults       = "0/0/1 data count=2"

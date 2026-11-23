@@ -6,8 +6,10 @@
 #include "boards/s100-memory.h"
 #include "boards/vector-dualmode.h"
 #include "boards/vector-fwii.h"
+#include "core/debug.h"
 #include "core/machine.h"
 #include "core/statefile.h"
+#include "host/cardimg.h"
 #include "host/display_null.h"
 #include "host/media.h"
 #include "host/stream.h"
@@ -15,6 +17,10 @@
 
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -81,7 +87,7 @@ struct Rig {
         dm = dynamic_cast<DualModeBoard*>(m.add("vgdmdc", "dm0", err));
         m.power();
     }
-    ~Rig() { setMediaResolver(nullptr); }
+    ~Rig() { setMediaResolver(openHostMedia); }
 
     // A disk in drive `unit`.
     bool load(int unit, std::vector<uint8_t> image, bool ro = false) {
@@ -163,7 +169,7 @@ struct Vector {
     }
     ~Vector() {
         FwiiBoard::setDisplay(nullptr);
-        setMediaResolver(nullptr);
+        setMediaResolver(openHostMedia);
     }
 
     void load(std::vector<uint8_t> image) {
@@ -215,6 +221,185 @@ void putBootSector(std::vector<uint8_t>& img, std::initializer_list<uint8_t> cod
     std::memcpy(img.data(), s.data(), kSlot);
 }
 
+// What a board's debug channel writes while `f` runs.
+std::string debugCapture(const std::function<void()>& f) {
+    namespace fs = std::filesystem;
+    std::string    err;
+    const fs::path p = fs::temp_directory_path() / "altair_dualmode_debug.log";
+    std::error_code ec;
+    fs::remove(p, ec);
+    dbg::setSink(dbg::Sink::File, p.string(), err);
+    f();
+    dbg::setSink(dbg::Sink::Stderr, "", err);  // closes + flushes the file
+    std::ifstream     in(p, std::ios::binary);
+    const std::string s((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
+    fs::remove(p, ec);
+    return s;
+}
+
+// The syndrome in RAM 270-273 after a read with ECC ENABLE.
+uint32_t syndrome(const std::vector<uint8_t>& r) {
+    return (uint32_t)r[270] << 24 | (uint32_t)r[271] << 16 | (uint32_t)r[272] << 8 | r[273];
+}
+
+// A formatted two-sided image whose every slot carries a good ECC and AA, as a Dual-Mode disk.
+std::vector<uint8_t> withEcc() {
+    auto img = formatted(kTwoSides);
+    for (size_t off = 0; off + kSlot <= img.size(); off += kSlot) {
+        uint32_t e = DualModeBoard::ecc(&img[off], 270);
+        for (size_t i = 0; i < 4; ++i) img[off + 270 + i] = (uint8_t)(e >> (24 - 8 * i));
+        img[off + 274] = 0xAA;
+    }
+    return img;
+}
+
+// BAD SECTORS (#971). The fault damages the bytes that reach RAM; the image never changes.
+void faultTests() {
+    SECTION("vgdmdc: a data fault inverts the checksum, and counts at START");
+    {
+        Rig g;
+        std::string err;
+        CHECK(g.dm->takesFaults("drive0") && g.dm->takesFaults("drive3") && !g.dm->takesFaults("drive4"),
+              "drive0 to drive3 take faults");
+        CHECK(g.dm->faults("drive1") == nullptr, "an empty drive has no table");
+        CHECK(g.load(1, withEcc()), "mount");
+        DiskFaults* f = g.dm->faults("drive1");
+        CHECK(f && f->add("0/0/2 data", err), err.c_str());
+
+        g.transfer(0x01, kRead | 2);
+        auto r    = g.ramOut(275);
+        auto disk = g.onDisk(0, 0, 2);
+        CHECK(r[269] == (uint8_t)~disk[269], "the checksum byte reads inverted");
+        r[269] = disk[269];
+        CHECK(r == disk, "and every other byte is the disk's");
+        CHECK(f->list()[0].hits == 1, "one hit for the transfer");
+
+        g.transfer(0x01, kRead | kEcc | 2);
+        r = g.ramOut(275);
+        CHECK(syndrome(r) != 0, "with ECC ENABLE the hardware sees the bad byte too");
+        CHECK(f->list()[0].hits == 2, "and that read counts as well");
+
+        g.transfer(0x01, kRead | kEcc | 3);
+        CHECK(syndrome(g.ramOut(275)) == 0 && f->list()[0].hits == 2, "the next sector is good");
+        CHECK(g.onDisk(0, 0, 2) == disk, "the image did not change");
+    }
+
+    SECTION("vgdmdc: an id fault inverts the track byte, in place of a data fault");
+    {
+        Rig g;
+        std::string err;
+        CHECK(g.load(1, withEcc()), "mount");
+        DiskFaults* f = g.dm->faults("drive1");
+        CHECK(f->add("0/0/4 data", err) && f->add("0/0/4 id", err), err.c_str());
+        g.transfer(0x01, kRead | kEcc | 4);
+        auto r    = g.ramOut(275);
+        auto disk = g.onDisk(0, 0, 4);
+        CHECK(r[1] == (uint8_t)~disk[1], "the track byte reads inverted");
+        CHECK(r[269] == disk[269], "the checksum is good: one kind for each read");
+        CHECK(syndrome(r) != 0, "and the ECC sees it");
+        CHECK(f->list()[0].hits == 0 && f->list()[1].hits == 1, "the id fault took the hit");
+    }
+
+    SECTION("vgdmdc: a missing fault leaves RAM as it was");
+    {
+        Rig g;
+        std::string err;
+        CHECK(g.load(1, withEcc()), "mount");
+        DiskFaults* f = g.dm->faults("drive1");
+        CHECK(f->add("0/0/6 missing", err), err.c_str());
+        (void)g.in(0xC3);
+        for (int i = 0; i < 512; ++i) g.out(0xC2, 0x5A);
+        g.transfer(0x01, kRead | kEcc | 6);
+        CHECK(g.ramOut(512) == std::vector<uint8_t>(512, 0x5A), "no sync, so nothing reached RAM");
+        CHECK(f->list()[0].hits == 1, "one hit for the transfer");
+        g.transfer(0x01, kRead | 7);
+        CHECK(g.ramOut(275) == g.onDisk(0, 0, 7), "the next sector reads");
+    }
+
+    SECTION("vgdmdc: a write fault drops the write");
+    {
+        Rig g;
+        std::string err;
+        CHECK(g.load(1, formatted(kTwoSides)), "mount");
+        DiskFaults* f = g.dm->faults("drive1");
+        CHECK(f->add("0/0/7 write", err), err.c_str());
+        auto before = g.onDisk(0, 0, 7);
+        auto slot   = makeSlot(0, 7, 0, 0xAA);
+        for (int i = 0; i < 256; ++i) slot[13 + (size_t)i] = (uint8_t)~i;
+        g.loadWrite(slot);
+        g.transfer(0x01, 7);
+        CHECK(g.in(0xC1) == (kStatus1 | 0x04), "the write ends as usual");
+        CHECK(g.onDisk(0, 0, 7) == before, "the disk did not change");
+        CHECK(f->list()[0].hits == 1, "one hit");
+        CHECK(g.dm->drainLog().empty(), "and nothing is said");
+        g.loadWrite(slot);
+        g.transfer(0x01, 8);
+        CHECK(g.onDisk(0, 0, 8) == slot, "another sector is written");
+    }
+
+    SECTION("vgdmdc: count, side and *");
+    {
+        Rig g;
+        std::string err;
+        CHECK(g.load(1, withEcc()), "mount");
+        DiskFaults* f = g.dm->faults("drive1");
+        CHECK(f->add("0/1/2 data count=2", err), err.c_str());
+        g.transfer(0x01, kRead | 2);
+        CHECK(g.ramOut(275) == g.onDisk(0, 0, 2) && f->list()[0].hits == 0, "side 0 is good");
+        for (int i = 0; i < 2; ++i) {
+            g.transfer(0x05, kRead | 2);
+            CHECK(g.ramOut(275)[269] != g.onDisk(1, 0, 2)[269], "side 1 is bad, two times");
+        }
+        g.transfer(0x05, kRead | 2);
+        CHECK(g.ramOut(275) == g.onDisk(1, 0, 2), "then it wears off");
+        CHECK(f->list()[0].hits == 2 && f->list()[0].left == 0, "two hits, none left");
+
+        f->clearAll();
+        CHECK(f->add("0/*/* id", err), err.c_str());
+        g.transfer(0x05, kRead | 11);
+        CHECK(g.ramOut(275)[1] != g.onDisk(1, 0, 11)[1], "* matches any side and sector");
+    }
+
+    SECTION("vgdmdc: DEBUG=fault, the `faults` key, SNAPSHOT, MOUNT");
+    {
+        Rig g;
+        std::string err;
+        CHECK(!g.dm->loadSubUnit("drive", {{"unit", "1"}, {"faults", "2/0/0 data"}}, err) && !err.empty(),
+              "`faults` with no `mount` is refused");
+        CHECK(g.load(0, formatted(kTwoSides)), "mount");
+        CHECK(g.dm->loadSubUnit("drive", {{"unit", "1"}, {"mount", "b.vgi"}, {"faults", "0/0/3 data count=3; 4/*/* missing"}},
+                                err),
+              err.c_str());
+        bool saved = false;
+        for (const auto& su : g.dm->subUnits())
+            for (const auto& fld : su.fields)
+                saved = saved || (fld.key == "faults" && fld.quoted && fld.text == "0/0/3 data count=3; 4/*/* missing");
+        CHECK(saved, "CONFIG SAVE writes the `faults` key back, quoted");
+
+        g.dm->ensureDebugChannel();
+        CHECK(g.dm->debugChannel()->enable("fault", err), "the fault flag exists");
+        const std::string text = debugCapture([&] { g.transfer(0x01, kRead | 3); });
+        CHECK(text.find("fault drive1 0/0/3 data hit 1, 2 left") != std::string::npos, text.c_str());
+        CHECK(g.dm->debugChannel()->disable("fault", err), "the flag goes off");
+
+        StateWriter w;
+        g.dm->serialize(w);
+        Rig dst;
+        CHECK(dst.load(1, formatted(kTwoSides)), "mount in the second machine");
+        StateReader r(w.data());
+        dst.dm->deserialize(r);
+        CHECK(r.ok(), "restores cleanly");
+        const DiskFaults* f = dst.dm->faults("drive1");
+        CHECK(f && f->list().size() == 2 && f->list()[0].hits == 1 && f->list()[0].left == 2,
+              "RESTORE brings the faults back with their counts");
+
+        CHECK(g.load(1, formatted(kTwoSides)) && g.dm->faults("drive1")->empty(),
+              "a new disk in the drive brings no faults");
+        g.dm->faults("drive1")->add("0/0/1 data", err);
+        CHECK(g.dm->unmount("drive1", err) && g.dm->faults("drive1") == nullptr, "UNMOUNT: no disk, no faults");
+    }
+}
 } // namespace
 
 void test_dualmode() {
@@ -648,4 +833,6 @@ void test_dualmode() {
         CHECK(g.m.bus.memRead(0x0100) == 0, "the code never ran");
         CHECK(g.m.cpu()->pc() >= 0xE000, "and the guest is still in the Monitor");
     }
+
+    faultTests();
 }

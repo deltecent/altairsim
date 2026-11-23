@@ -2374,6 +2374,8 @@ void test_mcp() {
         Monitor(m).exec("BOARDS ADD tarbell fdc0", add);
         Monitor(m).exec("BOARDS ADD mdsa fd0", add);  // the MDS-A takes a file of any size
         Monitor(m).exec("MOUNT fd0:drive0 n.nsi", add);
+        Monitor(m).exec("BOARDS ADD vgdmdc dm0", add);  // any size is a blank Dual-Mode disk
+        Monitor(m).exec("MOUNT dm0:drive1 v.vgi", add);
         std::ostringstream s;
         int id = 0;
         auto req = [&](const std::string& params) {
@@ -2392,6 +2394,7 @@ void test_mcp() {
         req(R"({"name":"disk_fault_list","arguments":{}})");
         req(R"({"name":"disk_fault_add","arguments":{"id":"sio0","unit":"a","fault":"0/0/1 data"}})");
         req(R"({"name":"disk_fault_add","arguments":{"id":"fd0","unit":"drive0","fault":"2/0/1 id"}})");
+        req(R"({"name":"disk_fault_add","arguments":{"id":"dm0","unit":"drive1","fault":"2/1/15 missing"}})");
         auto rep = runScript(m, s.str());
         auto isErr = [&](int i) { return rep[(size_t)i].at("result").has("isError"); };
         auto data  = [&](int i) -> const Json& { return rep[(size_t)i].at("result").at("structuredContent"); };
@@ -2416,6 +2419,7 @@ void test_mcp() {
         CHECK(isErr(12) && rep[12].at("result").at("content").items().at(0).at("text").str().find("no ID field") !=
                                 std::string::npos,
               "a North Star drive refuses an id fault, with the reason (#970)");
+        CHECK(!isErr(13) && data(13).at("fault").str() == "2/1/15 missing", "the Dual-Mode takes a fault (#971)");
         setMediaResolver(openHostFile);
     }
 
