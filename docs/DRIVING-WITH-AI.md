@@ -272,6 +272,11 @@ guessing.
 reading and writing memory, the ROMs, reset — is a `board_*`, `bus_*` or `mem_*` tool, and
 `tools/list` names them with their arguments.
 
+**Testing a guest's disk retry code** is `disk_fault_add`, `disk_fault_list` and
+`disk_fault_clear`. They put a bad sector on a disk in a soft-sector controller, as the monitor's
+`FAULT` does. The image does not change. `disk_fault_list` gives `hits`, the number of times
+the guest met each fault, so a test can check how many times the driver tried.
+
 **Driving a running guest** is the handful below, and they are the ones worth knowing by heart:
 
 | Tool | Args | Does |

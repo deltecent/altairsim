@@ -23,6 +23,8 @@
 
 namespace altair {
 
+class DiskFaults;
+
 class ByteStream;  // host/stream.h -- a serial unit's connector, borrowed by unitStream()
 class StateWriter; // core/statefile.h -- SNAPSHOT/RESTORE
 class StateReader;
@@ -927,6 +929,20 @@ public:
         (void)unit;
         err = type() + " has nothing to unmount";
         return false;
+    }
+
+    // THE BAD SECTORS OF THE DISK IN `unit` (host/diskfaults.h, #966). FAULT and the MCP
+    // disk_fault_* tools reach a drive's fault table through these two. takesFaults() says the
+    // unit is a drive that can have bad sectors; faults() is its table, or null when no disk is
+    // in it. Both default to no: a card opts in for each drive it can make fail the way its
+    // own hardware does.
+    virtual bool takesFaults(const std::string& unit) const {
+        (void)unit;
+        return false;
+    }
+    virtual DiskFaults* faults(const std::string& unit) {
+        (void)unit;
+        return nullptr;
     }
 
     // The character-device half. No board implements these yet -- the serial cards

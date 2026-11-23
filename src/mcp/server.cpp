@@ -9,6 +9,7 @@
 #include "core/roms.h"
 #include "core/version.h"
 #include "cpu/cpu.h"
+#include "host/diskfaults.h"
 #include "host/console.h"
 #include "host/endpoint.h"
 #include "host/filter.h"
@@ -398,6 +399,41 @@ Json toolList() {
                        "Mount a host file into a board's unit (a disk into a drive, a tape into a "
                        "deck, an image into a ROM socket). The board decides what it can take.",
                        p, {"id", "unit", "path"}));
+    }
+    // BAD SECTORS (#966): the FAULT command, with JSON back, so a test can check the hits.
+    {
+        Json p = Json::obj();
+        p["id"]    = strSchema("Board id of the disk controller, e.g. fdc0.");
+        p["unit"]  = strSchema("The drive, e.g. drive0. A disk must be mounted in it.");
+        p["fault"] = strSchema("<track>/<head>/<sector> <kind> [count=N]. Use * for any track, head "
+                               "or sector; the sector is the number the guest asks for. Kind: data "
+                               "(a data CRC error; the data still arrives), id (an ID CRC error), "
+                               "missing (no ID field), write (the drive will not write it). No count "
+                               "is a hard fault; count=N fails N times, then the sector is good. A "
+                               "fault with the same address and kind is replaced.");
+        list.push(tool("disk_fault_add",
+                       "Make a sector of a mounted disk bad, to test a guest driver's retry code. "
+                       "The image file does not change. The faults are lost at unmount.",
+                       p, {"id", "unit", "fault"}));
+    }
+    {
+        Json p = Json::obj();
+        p["id"]   = strSchema("Only this board. Leave it out for every drive in the machine.");
+        p["unit"] = strSchema("Only this drive of `id`.");
+        list.push(tool("disk_fault_list",
+                       "The bad sectors of the mounted disks: each fault, its hits (the times it "
+                       "failed a command) and, for a count fault, how many failures are left.",
+                       p, {}));
+    }
+    {
+        Json p = Json::obj();
+        p["id"]    = strSchema("Board id of the disk controller.");
+        p["unit"]  = strSchema("The drive.");
+        p["fault"] = strSchema("<track>/<head>/<sector> [<kind>]: the address as it was added. No "
+                               "kind removes every kind at that address.");
+        p["all"]   = boolSchema("Remove every fault of the drive.");
+        list.push(tool("disk_fault_clear", "Remove bad sectors from a mounted disk. Give `fault` or `all`.",
+                       p, {"id", "unit"}));
     }
     {
         Json p = Json::obj();
@@ -2286,6 +2322,77 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         d["path"] = Json(path);
         d["write_protect"] = Json(wp);
         return dataResult(d, b->id + ":" + unit + " <- " + path + (wp ? " (WP)" : ""));
+    }
+
+    // ---- disk_fault_*: the FAULT command (#966) ----
+    if (name == "disk_fault_add" || name == "disk_fault_clear") {
+        Board* b = m.find(args.at("id").str());
+        if (!b) return textResult("no board '" + args.at("id").str() + "'", true);
+        std::string unit = args.at("unit").str();
+        if (UnitDef ud; b->findUnit(unit, ud)) unit = ud.name;  // the board's spelling
+        const std::string at = b->id + ":" + unit;
+        if (!b->takesFaults(unit))
+            return textResult(at + ": the " + b->type() + " board does not take faults on that unit", true);
+        DiskFaults* f = b->faults(unit);
+        if (!f) return textResult(at + ": no disk is mounted -- a fault is on a disk", true);
+        std::string err;
+        Json        d = Json::obj();
+        d["id"]       = Json(b->id);
+        d["unit"]     = Json(unit);
+        if (name == "disk_fault_add") {
+            const std::string spec = args.at("fault").str();
+            if (!f->add(spec, err)) return textResult(at + ": " + err, true);
+            DiskFault parsed;
+            DiskFaults::parse(spec, parsed, err);
+            d["fault"] = Json(parsed.spec());
+            return dataResult(d, at + ": fault " + parsed.spec());
+        }
+        if (args.has("all") && args.at("all").boolean()) {
+            f->clearAll();
+            d["cleared"] = Json("all");
+            return dataResult(d, at + ": no faults");
+        }
+        if (!args.has("fault")) return textResult("give `fault` or `all`", true);
+        if (!f->clear(args.at("fault").str(), err)) return textResult(at + ": " + err, true);
+        d["cleared"] = Json(args.at("fault").str());
+        return dataResult(d, at + ": cleared " + args.at("fault").str());
+    }
+
+    if (name == "disk_fault_list") {
+        Board* only = nullptr;
+        if (args.has("id")) {
+            only = m.find(args.at("id").str());
+            if (!only) return textResult("no board '" + args.at("id").str() + "'", true);
+        }
+        std::string unit = args.has("unit") ? args.at("unit").str() : "";
+        if (only && !unit.empty())
+            if (UnitDef ud; only->findUnit(unit, ud)) unit = ud.name;
+        Json        list = Json::arr();
+        std::string text;
+        for (const auto& b : m.boards()) {
+            if (only && b.get() != only) continue;
+            for (const auto& u : b->units()) {
+                if (!unit.empty() && u.name != unit) continue;
+                const DiskFaults* f = b->faults(u.name);
+                if (!f) continue;
+                for (const DiskFault& e : f->list()) {
+                    Json j    = Json::obj();
+                    j["id"]   = Json(b->id);
+                    j["unit"] = Json(u.name);
+                    j["fault"] = Json(e.spec());
+                    j["kind"] = Json(faultKindName(e.kind));
+                    j["hard"] = Json(e.hard());
+                    j["hits"] = Json(e.hits);
+                    if (!e.hard()) j["left"] = Json(e.left);
+                    list.push(std::move(j));
+                    text += b->id + ":" + u.name + "  " + e.spec() + "  hits " + std::to_string(e.hits) +
+                            (e.hard() ? "" : ", " + std::to_string(e.left) + " left") + "\n";
+                }
+            }
+        }
+        Json d      = Json::obj();
+        d["faults"] = std::move(list);
+        return dataResult(d, text.empty() ? "no faults" : text);
     }
 
     if (name == "connect") {

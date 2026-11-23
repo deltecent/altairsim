@@ -143,6 +143,27 @@ The AUTO WAIT timeout (`D1`, about 4 s) never fires under either setting: every 
 | **Port 04 D3 ¬RESTORE homes the head on disk selection** | CDOS.COM homes on selection through this line and issues no WD Restore of its own; without it, the first directory read finds the head where the cold loader left it (track 2) and faults Record Not Found. |
 | **Mixed-density track 0 is SD 128-byte** | Cromemco's INIT always lays cyl 0 side 0 single-density so a controller can read the boot sector with no density known yet; a uniform-density probe misreads the boot sector. |
 
+## Bad sectors: `FAULT` and the `faults` key
+
+A drive can have bad sectors on its disk, to test the retry code of a guest (#966). The faults
+are an overlay in the drive (`DiskImageDrive`, `src/host/diskfaults.h`), and the image does not
+change. Give them with `FAULT <id>:driveN`, with the `disk_fault_*` MCP tools, or with the
+`faults` key of a `[[board.drive]]` table. The *User Manual* gives the syntax, in "Simulate a
+bad sector" in the Disks chapter.
+
+The WD17xx reports each fault with the status that it gives for a damaged disk:
+
+| Kind | What the guest reads |
+|---|---|
+| `data` | S3 CRC Error. The data still transfers. |
+| `id` | S4 Record Not Found and S3 CRC Error |
+| `missing` | S4 Record Not Found |
+| `write` | S5 Write Fault. The drive writes nothing. |
+
+`SET <id> DEBUG=fault` writes a line each time that a fault occurs. The `fault` flag is off
+until you turn it on. `CONFIG SAVE` writes the `faults` key, and a snapshot keeps the faults
+with their counts. Read Track ignores the faults and returns the track as it is on the disk.
+
 ## Limitations and deliberate departures
 
 - **Phase 1 is a polled boot.** No interrupt is delivered to the backplane (`assertsInt()` is

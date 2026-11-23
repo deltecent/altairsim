@@ -14,6 +14,8 @@
 #include "core/clock.h"
 #include "core/debug.h"
 #include "core/machine.h"
+#include "core/statefile.h"
+#include "host/diskfaults.h"
 #include "host/media.h"
 #include "test.h"
 
@@ -920,5 +922,53 @@ void test_tarbell() {
         CHECK(in(b, TRK) == 0, "...and the track register is zero");
         out(b, CTL, selA);
         CHECK(((in(b, CMD) & 0x04) != 0) == (oldTrack == 0), "drive A did not move");
+    }
+
+    SECTION("boards/tarbell: bad sectors -- the `faults` key, CONFIG SAVE and SNAPSHOT (#966)");
+    {
+        withRampDisk(256256);
+        std::string  err;
+        TarbellBoard b;
+        b.id = "fdc0";
+        CHECK(b.takesFaults("drive0") && b.takesFaults("drive3") && !b.takesFaults("drive9"),
+              "every drive takes faults, and nothing else does");
+        CHECK(b.faults("drive0") == nullptr, "an empty drive has no fault table");
+
+        CHECK(!b.loadSubUnit("drive", {{"unit", "1"}, {"faults", "2/0/1 data"}}, err) && !err.empty(),
+              "`faults` with no `mount` is refused");
+        err.clear();
+        CHECK(!b.loadSubUnit("drive", {{"unit", "0"}, {"mount", "a.dsk"}, {"faults", "2/0/1 nonsense"}}, err) &&
+                  err.find("fault kind") != std::string::npos,
+              "a bad fault list is refused with the parser's reason");
+
+        CHECK(b.loadSubUnit("drive", {{"unit", "0"}, {"mount", "a.dsk"}, {"faults", "2/0/1 data count=3; 5/*/* id"}},
+                            err),
+              "a drive table with `faults` loads");
+        DiskFaults* f = b.faults("drive0");
+        CHECK(f && f->list().size() == 2 && f->toText() == "2/0/1 data count=3; 5/*/* id", "...and the drive has them");
+
+        bool saved = false;
+        for (const auto& su : b.subUnits())
+            for (const auto& fld : su.fields)
+                saved = saved || (fld.key == "faults" && fld.quoted && fld.text == "2/0/1 data count=3; 5/*/* id");
+        CHECK(saved, "CONFIG SAVE writes the `faults` key back, quoted");
+
+        // SNAPSHOT keeps the counts: use the data fault once, save, restore into a second card.
+        DiskFaults::use(*f->find(2, 0, 1, FaultKind::Data));
+        StateWriter w;
+        b.serialize(w);
+        TarbellBoard c;
+        c.id = "fdc0";
+        CHECK(c.loadSubUnit("drive", {{"unit", "0"}, {"mount", "a.dsk"}}, err), "the same disk in a second card");
+        StateReader r(w.data());
+        c.deserialize(r);
+        CHECK(r.ok() && r.remaining() == 0, "RESTORE reads the whole record");
+        const DiskFaults* g = c.faults("drive0");
+        CHECK(g && g->list().size() == 2 && g->list()[0].left == 2 && g->list()[0].hits == 1,
+              "...and the faults come back with their counts");
+
+        CHECK(b.unmount("drive0", err) && b.faults("drive0") == nullptr, "UNMOUNT: no disk, no faults");
+        CHECK(b.mount("drive0", "a.dsk", false, err) && b.faults("drive0")->empty(),
+              "a new disk in the drive brings no faults");
     }
 }

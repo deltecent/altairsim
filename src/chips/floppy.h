@@ -167,6 +167,14 @@ public:
     virtual bool readData(const SectorId& id, uint8_t* buf, size_t* n) = 0;
     virtual bool writeData(const SectorId& id, const uint8_t* buf, size_t n) = 0;
 
+    // THE CHIP GAVE UP LOOKING FOR `sector` on the track under the head: a Type II search that
+    // ended in Record Not Found, a 765 search that ended in ND or DE. This is no pin. A real
+    // drive does not know what the controller was looking for. It is bookkeeping for a drive
+    // that simulates bad ID fields (boards/floppy-drive.h, #966): the chip reads every ID field
+    // on the track for every command, so only here can the drive tell which command a bad ID
+    // field made fail. The default does nothing.
+    virtual void sectorNotFound(int sector) { (void)sector; }
+
     // ---- THE WHOLE TRACK, GAPS AND ADDRESS MARKS AND ALL (Read Track / Write Track) ----
     //
     // Everything above is a SECTOR interface, because that is what a Type II command

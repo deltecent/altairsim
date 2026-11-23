@@ -693,13 +693,14 @@ void Wd17xx::doVerify(const Clock& clk) {
 // two revolutions of the disk; otherwise, the Record Not Found status bit is set."
 bool Wd17xx::findSector(FloppyDrive::SectorId& out) {
     if (!drive_) return false;
-    const int n = drive_->sectorCount();
+    const int n       = drive_->sectorCount();
+    bool      crcSeen = false;
     for (int i = 0; i < n; ++i) {
         FloppyDrive::SectorId id{};
         if (!drive_->sectorIdAt(i, id)) continue;
         if (!legible(id)) continue;  // the other density: no address mark to find
         if (!id.idCrcOk) {
-            status_ |= kCrcError;  // S3: "an error is found in one or more ID fields"
+            crcSeen = true;  // a rotten ID field is not an answer; read the next one
             continue;
         }
         if (id.track == (int)track_ && id.sector == (int)sector_) {
@@ -707,6 +708,12 @@ bool Wd17xx::findSector(FloppyDrive::SectorId& out) {
             return true;
         }
     }
+    // S3 GOES UP ONLY WITH S4. The status table: "If S4 set: error found in one or more ID
+    // fields; otherwise indicates data-field error." So a search that passes a bad ID field
+    // and then finds its sector must leave S3 down. With S3 up and S4 down, the guest reads a
+    // clean sector as a data CRC error.
+    if (crcSeen) status_ |= kCrcError;
+    drive_->sectorNotFound((int)sector_);
     return false;
 }
 

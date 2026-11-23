@@ -1,7 +1,11 @@
 #include "boards/floppy-drive.h"
 
 #include "core/clock.h"
+#include "core/debuglog.h"
+#include "core/value.h"
 #include "host/disk.h"
+
+#include <ostream>
 
 namespace altair {
 
@@ -75,7 +79,22 @@ const std::vector<DiskImageDrive::RecordedId>* DiskImageDrive::recordedIds() con
     return &it->second;
 }
 
+// THE ID FIELD AS THE CHIP READS IT: the one idAt() gives, with the diskette's bad spots on it
+// (#966). A `missing` fault leaves the ID field out; an `id` fault rots its CRC; a `data` fault
+// rots the CRC of the data field behind it. Nothing is used up here -- the chip reads every ID
+// field on the track for every command, so a hit is counted only where the command meets the
+// fault: readData, writeData, sectorNotFound.
 bool DiskImageDrive::sectorIdAt(int index, SectorId& out) const {
+    if (!idAt(index, out)) return false;
+    if (faults_.empty()) return true;
+    if (faults_.find(head_, side_, out.sector, FaultKind::Missing)) return false;
+    if (faults_.find(head_, side_, out.sector, FaultKind::Id)) out.idCrcOk = false;
+    if (faults_.find(head_, side_, out.sector, FaultKind::Data)) out.dataCrcOk = false;
+    return true;
+}
+
+// The ID field as the image and the recorded list describe it, with no faults.
+bool DiskImageDrive::idAt(int index, SectorId& out) const {
     TrackFormat tf;
     if (!trackFmt(tf)) return false;
     if (index < 0 || index >= tf.sectors) return false;
@@ -109,7 +128,35 @@ bool DiskImageDrive::sectorIdAt(int index, SectorId& out) const {
 
 bool DiskImageDrive::readData(const SectorId& id, uint8_t* buf, size_t* n) {
     if (!img_) return false;
+    // A bad data CRC still hands over the data: the chip reads the whole field, then finds the
+    // CRC wrong. So the read goes on, and the fault is used.
+    if (DiskFault* f = faults_.find(head_, side_, id.sector, FaultKind::Data)) useFault(*f, id.sector);
     return img_->readSector(head_, side_, id.sector, buf, n);
+}
+
+// The chip gave up on `sector`. If an `id` or `missing` fault made it give up, use the fault.
+// A sector the track does not have (the normal end of a multi-record read, sector 27 of 26)
+// failed for its own reason, so it uses nothing.
+void DiskImageDrive::sectorNotFound(int sector) {
+    if (faults_.empty()) return;
+    bool here = false;
+    SectorId s;
+    for (int i = 0; idAt(i, s); ++i) here = here || s.sector == sector;
+    if (!here) return;
+    DiskFault* f = faults_.find(head_, side_, sector, FaultKind::Missing);
+    if (!f) f = faults_.find(head_, side_, sector, FaultKind::Id);
+    if (f) useFault(*f, sector);
+}
+
+void DiskImageDrive::useFault(DiskFault& f, int sector) {
+    DiskFaults::use(f);
+    const dbg::Channel* ch = dbg_ ? dbg_() : nullptr;
+    if (ch && ch->on(dbgBit_)) {
+        dbg::line(*ch) << "fault " << unit_ << " " << head_ << "/" << side_ << "/" << sector << " "
+                         << faultKindName(f.kind) << " hit " << f.hits;
+        if (!f.hard()) dbg::out() << ", " << f.left << " left";
+        dbg::out() << "\n";
+    }
 }
 
 // EVERY WRITE GOES TO THE HOST FILE NOW. The file is the diskette: a write the guest was told
@@ -118,6 +165,11 @@ bool DiskImageDrive::readData(const SectorId& id, uint8_t* buf, size_t* n) {
 // a SIGKILL never reaches (#900). A failed write changed nothing, so it has nothing to sync.
 bool DiskImageDrive::writeData(const SectorId& id, const uint8_t* buf, size_t n) {
     if (!img_) return false;
+    // A bad write: the drive will not take it, and nothing reaches the image.
+    if (DiskFault* f = faults_.find(head_, side_, id.sector, FaultKind::Write)) {
+        useFault(*f, id.sector);
+        return false;
+    }
     // writeSector wants a byte count it can bound against the geometry; a short write is a
     // failure, never a truncation (host/disk.h).
     size_t len = n;
@@ -132,7 +184,7 @@ bool DiskImageDrive::writeData(const SectorId& id, const uint8_t* buf, size_t n)
     if (!ids && id.deleted) {
         std::vector<RecordedId> made;
         SectorId s;
-        for (int i = 0; sectorIdAt(i, s); ++i)
+        for (int i = 0; idAt(i, s); ++i)
             made.push_back({s.track, s.head, s.sector, s.lengthCode, s.deleted});
         ids_[{head_, side_}] = std::move(made);
         ids = recordedIds();
@@ -236,9 +288,14 @@ bool DiskImageDrive::readTrackImage(std::vector<uint8_t>& out, long long rate) {
     std::vector<uint8_t> data((size_t)tf.sectorSize, 0);
     for (int i = 0; i < tf.sectors; ++i) {
         SectorId id;
-        if (!sectorIdAt(i, id)) { out.clear(); return false; }
+        // READ TRACK SEES THE IMAGE, NOT THE FAULTS: it has no error bits, and it uses no
+        // fault. The faults are for the sector commands.
+        if (!idAt(i, id)) { out.clear(); return false; }
         size_t n = data.size();
-        if (!readData(id, data.data(), &n) || n != data.size()) { out.clear(); return false; }
+        if (!img_->readSector(head_, side_, id.sector, data.data(), &n) || n != data.size()) {
+            out.clear();
+            return false;
+        }
 
         // The ID field. H is the side byte as written, or the selected side for a made-up ID.
         const uint8_t f[5] = {0xFE, (uint8_t)id.track, (uint8_t)(id.head >= 0 ? id.head : side_),
@@ -420,6 +477,27 @@ bool DiskImageDrive::formatTrack(const std::vector<SectorId>& ids, uint8_t fill)
     }
     img_->sync();  // one per track, on every path past setTrackFormat (see writeTrackImage)
     return ok;
+}
+
+Property driveFaultsKey() {
+    Property x;
+    x.name = "faults";
+    x.help = "Bad sectors on the disk: <track>/<head>/<sector> <kind> [count=N], with a ';' "
+             "between two faults. The kind is data, id, missing or write. With no count, the "
+             "sector fails each time. The image does not change";
+    x.kind = Kind::Str;
+    return x;
+}
+
+bool applyDriveFaults(DiskImageDrive& d, const std::string& text, std::string& err) {
+    bool blank = true;
+    for (char c : text) blank = blank && (c == ' ' || c == '\t' || c == ';');
+    if (blank) return true;
+    if (!d.loaded()) {
+        err = "`faults` needs a disk: give `mount` in the same table";
+        return false;
+    }
+    return d.faults().fromText(text, err);
 }
 
 } // namespace altair

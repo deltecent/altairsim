@@ -366,6 +366,27 @@ work*: **E48→E46** (XRDY on an Altair — the manual's one hard requirement), 
 follows the select latch), **E52→E41** (the second select bit reaches the 1-of-4 decoder), **E32→E34**
 (software write-fault reset), **E43→E44** (the drive has a READY line).
 
+## Bad sectors: `FAULT` and the `faults` key
+
+A drive can have bad sectors on its disk, to test the retry code of a guest (#966). The faults
+are an overlay in the drive (`DiskImageDrive`, `src/host/diskfaults.h`), and the image does not
+change. Give them with `FAULT <id>:driveN`, with the `disk_fault_*` MCP tools, or with the
+`faults` key of a `[[board.drive]]` table. The *User Manual* gives the syntax, in "Simulate a
+bad sector" in the Disks chapter.
+
+The WD17xx reports each fault with the status that it gives for a damaged disk:
+
+| Kind | What the guest reads |
+|---|---|
+| `data` | S3 CRC Error. The data still transfers. |
+| `id` | S4 Record Not Found and S3 CRC Error |
+| `missing` | S4 Record Not Found |
+| `write` | S5 Write Fault. The drive writes nothing. |
+
+`SET <id> DEBUG=fault` writes a line each time that a fault occurs. The `fault` flag is off
+until you turn it on. `CONFIG SAVE` writes the `faults` key, and a snapshot keeps the faults
+with their counts. Read Track ignores the faults and returns the track as it is on the disk.
+
 ## Limitations
 
 - **The wait port stalls only under `timing = real`.** With the default `full`, DRQ is always ready

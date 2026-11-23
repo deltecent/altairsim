@@ -130,6 +130,27 @@ with 8″ drives at 360 RPM (6 rev/s) and 5.25″ minis at 300 RPM (5 rev/s) —
 | **DD-256 uses double-density 256-byte sectors** | The DDBIOS format probe reads the ID field's length code (`IDSV+3`); a wrong sector size fails detection and the boot falls through to the monitor. |
 | **FD1771 vs FD1791 differ** (step rates, side byte, record-type bits) | Wrong step-rate table seeks at the wrong speed; wrong record-type width misreports deleted sectors. Split into `Wd1771`/`Wd1791` parts, not a flag. |
 
+## Bad sectors: `FAULT` and the `faults` key
+
+A drive can have bad sectors on its disk, to test the retry code of a guest (#966). The faults
+are an overlay in the drive (`DiskImageDrive`, `src/host/diskfaults.h`), and the image does not
+change. Give them with `FAULT <id>:driveN`, with the `disk_fault_*` MCP tools, or with the
+`faults` key of a `[[board.drive]]` table. The *User Manual* gives the syntax, in "Simulate a
+bad sector" in the Disks chapter.
+
+The WD17xx reports each fault with the status that it gives for a damaged disk:
+
+| Kind | What the guest reads |
+|---|---|
+| `data` | S3 CRC Error. The data still transfers. |
+| `id` | S4 Record Not Found and S3 CRC Error |
+| `missing` | S4 Record Not Found |
+| `write` | S5 Write Fault. The drive writes nothing. |
+
+`SET <id> DEBUG=fault` writes a line each time that a fault occurs. The `fault` flag is off
+until you turn it on. `CONFIG SAVE` writes the `faults` key, and a snapshot keeps the faults
+with their counts. Read Track ignores the faults and returns the track as it is on the disk.
+
 ## Limitations and deliberate departures
 
 - **Write Track parses the streamed track, it does not model a bit-level image.** The controller

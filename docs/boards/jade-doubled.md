@@ -149,6 +149,27 @@ The status byte of a strobe read is the one from before the strobes act (see *Li
 | **Track 1 is double density on every Jade disk**, including the single-density layout. The density check is on, so a read at the wrong density ends in Record Not Found. | A system track that reads at either density hides a `DDEN` bug in the program. |
 | **The timer runs on the board clock**, because it times the board Z80's own disk work. 0.37 × 240 kΩ × 47 µF = 4.1736 s: 16,694,400 board T-states at 4 MHz and 8,347,200 at 2 MHz. `TOFF` reads 1 once it has run out. | A timer on the host clock depends on `clock_hz`, which the board does not see. |
 
+## Bad sectors: `FAULT` and the `faults` key
+
+A drive can have bad sectors on its disk, to test the retry code of a guest (#966). The faults
+are an overlay in the drive (`DiskImageDrive`, `src/host/diskfaults.h`), and the image does not
+change. Give them with `FAULT <id>:driveN`, with the `disk_fault_*` MCP tools, or with the
+`faults` key of a `[[board.drive]]` table. The *User Manual* gives the syntax, in "Simulate a
+bad sector" in the Disks chapter.
+
+The WD17xx reports each fault with the status that it gives for a damaged disk:
+
+| Kind | What the guest reads |
+|---|---|
+| `data` | S3 CRC Error. The data still transfers. |
+| `id` | S4 Record Not Found and S3 CRC Error |
+| `missing` | S4 Record Not Found |
+| `write` | S5 Write Fault. The drive writes nothing. |
+
+`SET <id> DEBUG=fault` writes a line each time that a fault occurs. The `fault` flag is off
+until you turn it on. `CONFIG SAVE` writes the `faults` key, and a snapshot keeps the faults
+with their counts. Read Track ignores the faults and returns the track as it is on the disk.
+
 ## Limitations and deliberate departures
 
 - **The boot PROM is in host memory, not on the board.** The board has no PROM of its own.

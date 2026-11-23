@@ -89,6 +89,7 @@ Type the part before the bracket.
 | `D[UMP]` | Show memory as hex and ASCII. | `DUMP [<addr>\|<range>] [WIDTH=16]` |
 | `E[DIT]` | Enter bytes into memory interactively from an address. | `EDIT <addr> [ROM]` |
 | `EX[AMINE]` | Point the front panel at an address (and show that byte). | `EXAMINE [<addr>]` |
+| `FA[ULT]` | Make a sector of a mounted disk bad, to test the retry code of a guest. | `FAULT [<id>:<u> [LIST \| ADD <t>/<h>/<s> <kind> [count=N] \| CLEAR <t>/<h>/<s> [<kind>] \| CLEAR ALL]]` |
 | `F[ILL]` | Fill a range of memory with a byte. | `FILL <range> <byte>` |
 | `HE[LP]` | Show help for a command. | `HELP [<command>]` |
 | `H[ISTORY]` | Replay the recent instruction (or bus-cycle) history. | `HISTORY [BUS\|CPU] [n]` |

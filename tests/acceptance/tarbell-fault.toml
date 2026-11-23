@@ -1,0 +1,21 @@
+# A Tarbell #1011 whose CP/M disk has a bad directory sector (#966) -- for tarbell-fault.exp.
+#
+# `faults` is the drive's bad-sector list. Track 2 sector 1 is the first directory sector of
+# the 8" SSSD disk, and CP/M reads it at the first A> -- so the BIOS meets the fault with
+# nothing typed. count=2: two CRC errors, then the sector is good.
+[machine]
+name = "tarbell-fault-acceptance"
+base = "tarbell"
+
+[[board]]
+type = "tarbell"
+id   = "fdc0"
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../media/tarbell/CPM22b15-48K-SSSD.DSK"
+  writeprotect = true
+  faults       = "2/0/1 data count=2"
+
+[console]
+bsdel = "bs"

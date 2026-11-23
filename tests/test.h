@@ -83,6 +83,7 @@ void test_telnet();
 void test_wd17xx();
 void test_upd765();
 void test_floppy_drive();
+void test_diskfaults();
 void test_bitserial();
 void test_i8257();
 void test_bt453();

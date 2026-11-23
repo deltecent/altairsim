@@ -151,6 +151,27 @@ for the processor clock: 600 at 2 MHz, 1200 at 4 MHz and 2400 at 6 MHz.
 | Port 0 OUT is not decoded | A Disk 1A program that writes the Drive Select Register sees no change |
 | Status bits 0–6 read 0 | A Disk 1A program that waits for READY in bit 0 runs here and fails on the real board |
 
+## Bad sectors: `FAULT` and the `faults` key
+
+A drive can have bad sectors on its disk, to test the retry code of a guest (#966). The faults
+are an overlay in the drive (`DiskImageDrive`, `src/host/diskfaults.h`), and the image does not
+change. Give them with `FAULT <id>:driveN`, with the `disk_fault_*` MCP tools, or with the
+`faults` key of a `[[board.drive]]` table. The *User Manual* gives the syntax, in "Simulate a
+bad sector" in the Disks chapter.
+
+The µPD765 reports each fault with the status that it gives for a damaged disk:
+
+| Kind | What the guest reads |
+|---|---|
+| `data` | ST0 AT, ST1 DE, ST2 DD. The data still transfers. |
+| `id` | ST0 AT, ST1 DE |
+| `missing` | ST0 AT, ST1 ND |
+| `write` | ST0 AT and EC. The drive writes nothing. |
+
+`SET <id> DEBUG=fault` writes a line each time that a fault occurs. The `fault` flag is off
+until you turn it on. `CONFIG SAVE` writes the `faults` key, and a snapshot keeps the faults
+with their counts.
+
 ## Limitations and deliberate departures
 
 - **The serial line is held at SPACING while CP/M 2.2N runs.** The 2.2N BIOS writes `80h` to

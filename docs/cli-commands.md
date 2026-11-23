@@ -69,6 +69,7 @@ derived from. It is here for the notes; the list itself is `HELP`'s, which print
 | `SY` | SYMBOLS | |
 | `STA` | STARTUP | `ST` is still STEP, which is higher in the table |
 | `U` | UNMOUNT | not DISMOUNT — see above |
+| `FA` | FAULT | `F` stays FILL, which is higher in the table |
 | `DISC` | DISCONNECT | |
 | `CONS` | CONSOLE | **configures** the console. It does not start the machine — RUN does |
 | `CONN` | CONNECT | any endpoint — `HELP CONNECT` lists them |

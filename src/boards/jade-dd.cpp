@@ -1,5 +1,7 @@
 #include "boards/jade-dd.h"
 
+#include "core/debuglog.h"
+
 #include "core/statefile.h"
 #include "core/value.h"
 #include "host/media.h"
@@ -517,6 +519,8 @@ bool JadeDdBoard::mount(const std::string& unit, const std::string& path, bool r
     d.img  = std::move(img);
     d.path = path;
     d.drv.mount(d.img.get(), ro);
+    d.drv.setDebug([this] { return (const dbg::Channel*)debugChannel(); }, kFaultDebugBit,
+                   "drive" + std::to_string(i));
     d.drv.setHeadTrack(0);
     d.drv.setFormatting(true);
     d.drv.setRevsPerSecond(size8_ ? 6 : 5);
@@ -569,6 +573,7 @@ std::vector<Property> JadeDdBoard::subUnitProperties(const std::string& table) c
         x.aliases = {"writeprotect"};
         p.push_back(std::move(x));
     }
+    p.push_back(driveFaultsKey());
     return p;
 }
 
@@ -579,10 +584,12 @@ bool JadeDdBoard::addSubUnit(const std::string& table, const KeyValues& kv, std:
     }
     int         unit = -1;
     std::string path;
+    std::string faults;
     bool        ro = false;
     for (const auto& [k, v] : kv) {
         if (k == "unit") unit = std::stoi(v);
         else if (k == "mount") path = v;
+        else if (k == "faults") faults = v;
         else if (k == "readonly") {
             Value       bv;
             std::string e;
@@ -590,8 +597,13 @@ bool JadeDdBoard::addSubUnit(const std::string& table, const KeyValues& kv, std:
         }
     }
     if (unit < 0) { err = "[[board.drive]] needs a `unit`"; return false; }
-    if (path.empty()) return true;
-    return mount("drive" + std::to_string(unit), path, ro, err);
+    if (path.empty()) {
+        if (faults.empty()) return true;
+        err = "`faults` needs a disk: give `mount` in the same table";
+        return false;
+    }
+    if (!mount("drive" + std::to_string(unit), path, ro, err)) return false;
+    return applyDriveFaults(drive_[(size_t)unit].drv, faults, err);
 }
 
 std::vector<Board::SubUnit> JadeDdBoard::subUnits() const {
@@ -604,6 +616,7 @@ std::vector<Board::SubUnit> JadeDdBoard::subUnits() const {
         su.fields.push_back({"unit", std::to_string(i), false});
         su.fields.push_back({"mount", d.path, true});
         if (d.img->readOnly()) su.fields.push_back({"readonly", "true", false});
+        if (!d.drv.faults().empty()) su.fields.push_back({"faults", d.drv.faults().toText(), true});
         out.push_back(std::move(su));
     }
     return out;
@@ -637,7 +650,10 @@ void JadeDdBoard::serialize(StateWriter& w) const {
     bclk_.serialize(w);
     cpu_.serialize(w);
     fdc_.serialize(w);
-    for (const Drive& d : drive_) w.u32((uint32_t)d.drv.headTrackRaw());
+    for (const Drive& d : drive_) {
+        w.u32((uint32_t)d.drv.headTrackRaw());
+        d.drv.faults().serialize(w);  // the bad sectors and their counts (#966)
+    }
 }
 
 void JadeDdBoard::deserialize(StateReader& r) {
@@ -655,7 +671,10 @@ void JadeDdBoard::deserialize(StateReader& r) {
     fdcWake_ = Clock::kNone;
     cpu_.deserialize(r);
     fdc_.deserialize(r);
-    for (Drive& d : drive_) d.drv.setHeadTrack((int)r.u32());
+    for (Drive& d : drive_) {
+        d.drv.setHeadTrack((int)r.u32());
+        d.drv.faults().deserialize(r);
+    }
     applySelection();
     fdcRefresh();
     ioBoard_.intChanged();
@@ -664,5 +683,13 @@ void JadeDdBoard::deserialize(StateReader& r) {
     intChanged();
     rearmHost();
 }
+
+bool JadeDdBoard::takesFaults(const std::string& unit) const { return driveIndex(unit) >= 0; }
+
+DiskFaults* JadeDdBoard::faults(const std::string& unit) {
+    const int i = driveIndex(unit);
+    return (i >= 0 && drive_[(size_t)i].img) ? &drive_[(size_t)i].drv.faults() : nullptr;
+}
+
 
 } // namespace altair

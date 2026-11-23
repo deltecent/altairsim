@@ -1,5 +1,7 @@
 #include "boards/compupro-disk.h"
 
+#include "core/debuglog.h"
+
 #include "core/bus.h"
 #include "core/clock.h"
 #include "core/hex.h"
@@ -561,6 +563,8 @@ bool CompuProDiskBoard::mount(const std::string& unit, const std::string& path, 
     d.path      = path;
     d.eightInch = eight;
     d.drv.mount(d.img.get(), ro);
+    d.drv.setDebug([this] { return (const dbg::Channel*)debugChannel(); }, kFaultDebugBit,
+                   "drive" + std::to_string(i));
     d.drv.setHeadTrack(0);
     d.drv.setFormatting(true);
     d.drv.setRevsPerSecond(eight ? 6 : 5);
@@ -629,6 +633,7 @@ std::vector<Property> CompuProDiskBoard::subUnitProperties(const std::string& ta
         x.kind = Kind::Bool;
         p.push_back(std::move(x));
     }
+    p.push_back(driveFaultsKey());
     return p;
 }
 
@@ -674,6 +679,7 @@ bool CompuProDiskBoard::addSubUnit(const std::string& table, const KeyValues& kv
     }
     int         unit = -1;
     std::string path, media;
+    std::string faults;
     bool        ro = false, create = false;
     auto flag = [](const std::string& v) {
         Value       bv;
@@ -683,12 +689,17 @@ bool CompuProDiskBoard::addSubUnit(const std::string& table, const KeyValues& kv
     for (const auto& [k, v] : kv) {
         if (k == "unit") unit = std::stoi(v);
         else if (k == "mount") path = v;
+        else if (k == "faults") faults = v;
         else if (k == "readonly") ro = flag(v);
         else if (k == "create") create = flag(v);
         else if (k == "media") media = v;
     }
     if (unit < 0) {
         err = "[[board.drive]] needs a `unit`";
+        return false;
+    }
+    if (path.empty() && !faults.empty()) {
+        err = "`faults` needs a disk: give `mount` in the same table";
         return false;
     }
     if (path.empty()) {
@@ -709,7 +720,8 @@ bool CompuProDiskBoard::addSubUnit(const std::string& table, const KeyValues& kv
         }
     }
     // Always passed, empty too: a table with no `media` is a disk the size decides.
-    return mountWith("drive" + std::to_string(unit), path, ro, {{"media", media}}, err);
+    if (!mountWith("drive" + std::to_string(unit), path, ro, {{"media", media}}, err)) return false;
+    return applyDriveFaults(drive_[(size_t)unit].drv, faults, err);
 }
 
 std::vector<Board::SubUnit> CompuProDiskBoard::subUnits() const {
@@ -724,6 +736,7 @@ std::vector<Board::SubUnit> CompuProDiskBoard::subUnits() const {
         if (d.img) {
             su.fields.push_back({"mount", d.path, true});
             if (d.img->readOnly()) su.fields.push_back({"readonly", "true", false});
+            if (!d.drv.faults().empty()) su.fields.push_back({"faults", d.drv.faults().toText(), true});
         }
         out.push_back(std::move(su));
     }
@@ -741,6 +754,7 @@ void CompuProDiskBoard::serializeHeads(StateWriter& w) const {
     for (const Drive& d : drive_) {
         w.u32((uint32_t)d.drv.headTrackRaw());
         w.u8((uint8_t)d.drv.side());
+        d.drv.faults().serialize(w);  // the bad sectors and their counts (#966)
     }
 }
 
@@ -748,7 +762,16 @@ void CompuProDiskBoard::deserializeHeads(StateReader& r) {
     for (Drive& d : drive_) {
         d.drv.setHeadTrack((int)r.u32());
         d.drv.setSide(r.u8() & 1);
+        d.drv.faults().deserialize(r);
     }
 }
+
+bool CompuProDiskBoard::takesFaults(const std::string& unit) const { return driveIndex(unit) >= 0; }
+
+DiskFaults* CompuProDiskBoard::faults(const std::string& unit) {
+    const int i = driveIndex(unit);
+    return (i >= 0 && drive_[(size_t)i].img) ? &drive_[(size_t)i].drv.faults() : nullptr;
+}
+
 
 } // namespace altair

@@ -255,6 +255,8 @@ private:
     void showDebug(std::ostream& out);  // the diagnostic channels, their flags, the sink
     void showRoms(std::ostream& out);
     void showMounts(std::ostream& out);  // every mountable unit, across every board
+    // FAULT's table: every drive's faults, or one drive's (`only`), with HITS and LEFT.
+    void showFaults(std::ostream& out, Board* only, const std::string& unit);
     void showPaths(std::ostream& out);   // what a path resolves against -- 3 answers
     void showVersion(std::ostream& out); // which build this is, and which commit
     void showClock(std::ostream& out);   // emulated time: T-states since POWER, in seconds

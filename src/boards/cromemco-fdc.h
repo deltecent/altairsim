@@ -103,6 +103,12 @@ public:
     bool mount(const std::string& unit, const std::string& path, bool ro, std::string& err) override;
     bool unmount(const std::string& unit, std::string& err) override;
 
+    // Bad sectors on a mounted disk (#966): FAULT, the machine file's `faults`, and a `fault`
+    // debug flag that writes one line each time one is used.
+    bool        takesFaults(const std::string& unit) const override;
+    DiskFaults* faults(const std::string& unit) override;
+    std::vector<std::string> debugFlags() const override { return {"fault"}; }
+
     // The head order a converted IMD must use to mount here: the CDOS 8" disk is
     // cylinder-major/head-minor (interleaved), so delegate to describeGeometry -- the one
     // place that decides the flag -- rather than restate its size table (host/imd.h).

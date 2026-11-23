@@ -340,6 +340,8 @@ The tools let an assistant operate the whole machine:
   and its legal range.
 - List the boards in the machine, get and set any property, and add a board.
 - Mount a disk or a tape, and connect a serial line to an endpoint.
+- Make a sector of a disk bad, to test the retry code of a guest. The tools `disk_fault_add`,
+  `disk_fault_list` and `disk_fault_clear` do what `FAULT` does at the monitor.
 - Examine, deposit, fill, search, save and disassemble memory.
 - Run the machine, type at its console and read what it prints.
 - Start the machine and let it run between tool calls, for example to run a server on the guest,

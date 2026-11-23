@@ -674,6 +674,33 @@ static const std::vector<CommandDef> kCommands = {
      "with no chip in the socket.\n"
      "\n"
      "  U dsk0:drive0"},
+    // FAULT, for a bad sector (#966). FA: FILL already answers to F and FI.
+    {"FAULT", true, nullptr,
+     "FAULT [<id>:<u> [LIST | ADD <t>/<h>/<s> <kind> [count=N] | CLEAR <t>/<h>/<s> [<kind>] | CLEAR ALL]]",  // FA
+     "Makes a sector of a mounted disk bad. Use it to test the retry code of a guest.\n"
+     "The disk image does not change. The faults are in the drive, and UNMOUNT removes\n"
+     "them.\n"
+     "\n"
+     "<t>/<h>/<s> is the track, the head and the sector. The sector is the number that\n"
+     "the guest asks for. Use * for all tracks, heads or sectors.\n"
+     "<kind> is one of these:\n"
+     "  data     The data field has a CRC error. The guest still gets the data.\n"
+     "  id       The ID field has a CRC error. The controller does not find the sector.\n"
+     "  missing  The sector has no ID field. The controller does not find the sector.\n"
+     "  write    The drive does not write the sector. The controller reports a fault.\n"
+     "With no count, the sector fails each time. With count=N, the sector fails N\n"
+     "times. After that, the sector is good.\n"
+     "\n"
+     "FAULT with no unit lists the faults of all the drives. HITS is the number of\n"
+     "times that a fault occurred. LEFT is the number of failures before the sector is\n"
+     "good. SET <id> DEBUG=fault writes a line each time that a fault occurs.\n"
+     "\n"
+     "  FAULT fdc0:drive0 ADD 2/0/1 data count=2  ; two CRC errors, then good\n"
+     "  FAULT fdc0:drive0 ADD 5/*/* id            ; all of track 5, each time\n"
+     "  FAULT fdc0:drive0                         ; the faults of one drive\n"
+     "  FAULT fdc0:drive0 CLEAR 2/0/1\n"
+     "  FAULT fdc0:drive0 CLEAR ALL\n"
+     "  SET fdc0 DEBUG=fault                      ; a line for each fault"},
     {"DISCONNECT", true, nullptr, "DISCONNECT <id>:<u>",  // DISC
      "A shortcut for CONNECT <id>:<u> null.\n"
      "\n"

@@ -237,7 +237,7 @@ const char* commandGroup(const std::string& n) {
     if (n == "BREAK" || n == "NOBREAK" || n == "TRACE" || n == "HISTORY" ||
         n == "DISASM" || n == "SYMBOLS" || n == "WHO") return "Debugging and tracing";
     if (n == "BOARDS" || n == "REGION" || n == "SET" || n == "SHOW" || n == "CONFIG" ||
-        n == "CONSOLE" || n == "MOUNT" || n == "UNMOUNT" || n == "CONNECT" ||
+        n == "CONSOLE" || n == "MOUNT" || n == "UNMOUNT" || n == "FAULT" || n == "CONNECT" ||
         n == "DISCONNECT" || n == "SNAPSHOT" || n == "RESTORE" || n == "MACHINE" ||
         n == "STARTUP" || n == "DO")
         return "Configuring the machine";
@@ -282,6 +282,7 @@ const char* commandSummary(const std::string& n) {
     if (n == "DISASM") return "Disassemble memory into instructions.";
     if (n == "SYMBOLS") return "Load or clear a symbol table for disassembly.";
     if (n == "UNMOUNT") return "Take a disk or tape out of a drive.";
+    if (n == "FAULT") return "Make a sector of a mounted disk bad, to test the retry code of a guest.";
     if (n == "DISCONNECT") return "Shortcut for CONNECT <id>:<u> null: unplug the endpoint.";
     if (n == "CONSOLE") return "Shortcut for SHOW CONSOLE and SET CONSOLE.";
     if (n == "CONNECT") return "Attach a serial unit to an endpoint (console, socket, file, ...).";

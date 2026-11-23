@@ -7,12 +7,17 @@
 #include "boards/floppy-drive.h"
 #include "chips/wd17xx.h"
 #include "core/clock.h"
+#include "core/debuglog.h"
 #include "host/disk.h"
 #include "host/media.h"
 #include "test.h"
 #include "trackdecode.h"
 
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <sstream>
 #include <string>
 #include <memory>
 #include <vector>
@@ -125,6 +130,53 @@ uint8_t writeSector(Wd17xx& f, Clock& clk, uint8_t cmd, int tr, int r, uint8_t v
         if (c.drq()) c.writeData(v, clk);
     });
     return f.readStatus(clk);
+}
+
+// AN IMAGE TO PUT BAD SECTORS ON (#966): 8" SSSD, 3 tracks of 26 x 128, every byte of sector
+// r on track t is (t * 32 + r). The MemoryMedia stays reachable, so a test can prove that a
+// fault never touched the image.
+struct FaultDisk {
+    MemoryMedia*   m = nullptr;
+    DiskImage      img;
+    DiskImageDrive drv;
+    static std::vector<uint8_t> bytes() {
+        std::vector<uint8_t> b((size_t)(3 * 26 * 128), 0);
+        for (size_t i = 0; i < b.size(); ++i) b[i] = (uint8_t)((i / 128 / 26) * 32 + (i / 128 % 26) + 1);
+        return b;
+    }
+    FaultDisk() : img(take()) {
+        img.init(3, 1, false);
+        img.initFormat(0, 2, 0, 0, Density::SD, 26, 128, 1);
+        drv.mount(&img, false);
+    }
+    std::unique_ptr<MediaFile> take() {
+        auto owned = std::make_unique<MemoryMedia>("f.dsk", bytes());
+        m          = owned.get();
+        return owned;
+    }
+    void fault(const char* spec) {
+        std::string err;
+        drv.faults().add(spec, err);
+    }
+    const DiskFault& at(size_t i) const { return drv.faults().list()[i]; }
+};
+
+// Route the debug sink to a scratch file while `f` runs, and return what reached it.
+std::string captureDebug(const std::function<void()>& f) {
+    namespace fs     = std::filesystem;
+    const fs::path p = fs::temp_directory_path() / "altair_fault_debug.log";
+    std::error_code ec;
+    fs::remove(p, ec);
+    std::string err;
+    dbg::setSink(dbg::Sink::File, p.string(), err);
+    f();
+    dbg::setSink(dbg::Sink::Stderr, "", err);
+    std::ifstream      in(p, std::ios::binary);
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    in.close();
+    fs::remove(p, ec);
+    return ss.str();
 }
 
 } // namespace
@@ -368,5 +420,155 @@ void test_floppy_drive() {
         for (const std::string& l : f.drainLog())
             said = said || l.find("other density") != std::string::npos;
         CHECK(got.empty() && said, "a track at the other density gives no bytes, and the log says why");
+    }
+
+    // ---- BAD SECTORS (#966) ----
+    // WD1791 status bits: S3 CRC Error 0x08, S4 Record Not Found 0x10, S5 Write Fault 0x20.
+
+    auto wd = [](FaultDisk& d, Clock& clk, Wd1791& f) {
+        f.attach(&d.drv);
+        f.powerOn(clk);
+        spin(f, clk, [](Wd17xx&) {});
+    };
+
+    SECTION("DiskImageDrive faults: a data fault is a data CRC error, and the data still arrives");
+    {
+        FaultDisk d;
+        Clock     clk;
+        Wd1791    f("fdc");
+        wd(d, clk, f);
+        d.fault("0/0/3 data count=2");
+        const std::vector<uint8_t> before = d.m->bytes();
+
+        std::vector<uint8_t> got;
+        uint8_t st = readSector(f, clk, 0, 3, got);
+        CHECK((st & 0x18) == 0x08, "first read: S3 up, S4 down (a data-field error)");
+        CHECK(got.size() == 128 && got[0] == 3 && got[127] == 3, "...and the sector's data arrived");
+        st = readSector(f, clk, 0, 3, got);
+        CHECK((st & 0x18) == 0x08, "second read: S3 again");
+        CHECK(d.at(0).hits == 2 && d.at(0).left == 0, "two hits, none left");
+        st = readSector(f, clk, 0, 3, got);
+        CHECK((st & 0x3C) == 0 && got.size() == 128 && got[0] == 3, "third read: clean -- the retry recovered");
+        CHECK(d.at(0).hits == 2, "a clean read uses nothing");
+        st = readSector(f, clk, 0, 4, got);
+        CHECK((st & 0x3C) == 0 && got[0] == 4, "the sector next to it was never bad");
+        CHECK(d.m->bytes() == before, "the image is unchanged");
+    }
+
+    SECTION("DiskImageDrive faults: a hard id fault is Record Not Found with S3, every time");
+    {
+        FaultDisk d;
+        Clock     clk;
+        Wd1791    f("fdc");
+        wd(d, clk, f);
+        d.fault("0/0/4 id");
+        std::vector<uint8_t> got;
+        bool                 all = true;
+        for (int i = 0; i < 5; ++i) all = all && (readSector(f, clk, 0, 4, got) & 0x18) == 0x18 && got.empty();
+        CHECK(all, "five reads: S4 and S3, no data");
+        CHECK(d.at(0).hits == 5 && d.at(0).hard(), "five hits, and a hard fault never wears off");
+
+        // THE S3 RULE: a search that passes the bad ID field and finds its own sector leaves S3
+        // down. With S3 up and S4 down the guest would read this clean sector as a CRC error.
+        const uint8_t st = readSector(f, clk, 0, 9, got);
+        CHECK((st & 0x18) == 0 && got.size() == 128 && got[0] == 9,
+              "sector 9, past the bad ID field of sector 4: clean, S3 down");
+        CHECK(d.at(0).hits == 5, "...and the fault on sector 4 was not used");
+    }
+
+    SECTION("DiskImageDrive faults: a missing ID field is Record Not Found without S3");
+    {
+        FaultDisk d;
+        Clock     clk;
+        Wd1791    f("fdc");
+        wd(d, clk, f);
+        d.fault("0/0/6 missing count=1");
+        std::vector<uint8_t> got;
+        CHECK((readSector(f, clk, 0, 6, got) & 0x18) == 0x10, "first read: S4 only");
+        CHECK((readSector(f, clk, 0, 6, got) & 0x18) == 0 && got[0] == 6, "second read: found");
+        CHECK(d.at(0).hits == 1, "one hit");
+
+        // A sector the track does not have fails for its own reason and uses no fault.
+        d.fault("0/0/27 missing");
+        CHECK((readSector(f, clk, 0, 27, got) & 0x10) == 0x10, "sector 27 of 26: Record Not Found");
+        CHECK(d.at(1).hits == 0, "...and the fault on it is not used");
+    }
+
+    SECTION("DiskImageDrive faults: a write fault is Write Fault, and the image keeps its data");
+    {
+        FaultDisk d;
+        Clock     clk;
+        Wd1791    f("fdc");
+        wd(d, clk, f);
+        d.fault("0/0/7 write count=1");
+        const size_t at = 6 * 128;  // track 0, sector 7
+        CHECK((writeSector(f, clk, 0xA0, 0, 7, 0xAA) & 0x20) == 0x20, "first write: S5");
+        CHECK(d.m->bytes()[at] == 7 && d.m->bytes()[at + 127] == 7, "...and nothing reached the image");
+        CHECK((writeSector(f, clk, 0xA0, 0, 7, 0xAA) & 0x20) == 0, "second write: taken");
+        CHECK(d.m->bytes()[at] == 0xAA, "...and it is in the image");
+        CHECK(d.at(0).hits == 1 && d.at(0).left == 0, "one hit");
+    }
+
+    SECTION("DiskImageDrive faults: wildcards, the side, and a new diskette");
+    {
+        FaultDisk d;
+        Clock     clk;
+        Wd1791    f("fdc");
+        wd(d, clk, f);
+        d.fault("0/*/* data");
+        std::vector<uint8_t> got;
+        CHECK((readSector(f, clk, 0, 1, got) & 0x08) && (readSector(f, clk, 0, 26, got) & 0x08),
+              "0/*/*: every sector on track 0");
+        d.drv.faults().clearAll();
+        d.fault("0/1/1 data");
+        CHECK((readSector(f, clk, 0, 1, got) & 0x08) == 0, "a fault on side 1 is not on side 0");
+
+        d.drv.mount(&d.img, false);
+        CHECK(d.drv.faults().empty(), "mount: a new diskette brings no faults");
+        d.fault("0/0/1 data");
+        d.drv.eject();
+        CHECK(d.drv.faults().empty(), "eject clears them too");
+    }
+
+    SECTION("DiskImageDrive faults: the debug line is written only while the flag is on");
+    {
+        FaultDisk    d;
+        Clock        clk;
+        Wd1791       f("fdc");
+        dbg::Channel ch("faulttest", {"fault"});
+        wd(d, clk, f);
+        d.drv.setDebug([&ch] { return &ch; }, 0, "drive0");
+        d.fault("0/0/3 data");
+        std::vector<uint8_t> got;
+
+        std::string out = captureDebug([&] { readSector(f, clk, 0, 3, got); });
+        CHECK(out.empty(), "flag off: the fault fires and writes nothing");
+        CHECK(d.at(0).hits == 1, "...but it was used");
+
+        std::string err;
+        CHECK(ch.enable("fault", err), "DEBUG=fault");
+        out = captureDebug([&] { readSector(f, clk, 0, 3, got); });
+        CHECK(out.find("faulttest: fault drive0 0/0/3 data hit 2\n") != std::string::npos &&
+                  out.find('\n') == out.size() - 1,
+              "flag on: exactly one line");
+
+        d.drv.faults().clearAll();
+        d.fault("0/0/5 data count=2");
+        out = captureDebug([&] { readSector(f, clk, 0, 5, got); });
+        CHECK(out.find("fault drive0 0/0/5 data hit 1, 1 left\n") != std::string::npos,
+              "a count fault says how many are left");
+
+        CHECK(ch.disable("fault", err), "NODEBUG=fault");
+        out = captureDebug([&] { readSector(f, clk, 0, 5, got); });
+        CHECK(out.empty(), "flag off again: nothing");
+    }
+
+    SECTION("DiskImageDrive faults: Read Track shows the image and uses no fault");
+    {
+        FaultDisk d;
+        d.fault("0/0/2 missing");
+        std::vector<uint8_t> t;
+        CHECK(d.drv.readTrackImage(t, 250000) && !t.empty(), "the track reads");
+        CHECK(d.at(0).hits == 0, "...and the fault is not used");
     }
 }
