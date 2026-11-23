@@ -147,6 +147,18 @@ fault and writes nothing. The address is the head position, `<cylinder>/<side>/0
 transfer starts. The serial drive (`line`) takes no faults, because its disks are files on the
 drive server. The FDC+ document has the table of the kinds.
 
+**The North Star MDS-A and MDS-A-D (#970).** `NorthStarFdc` keeps a `DiskFaults` in each
+`Drive`. The board never checks the check character, and the guest does. A `data` fault makes
+`readData` give the check character XOR `FF`, and counts there. A `missing` fault makes
+`loadSector` return false, so the body bit never comes, and counts once a pass. A `write` fault
+makes `commitWrite` write nothing. A North Star sector has no ID field, so the constructor calls
+`DiskFaults::refuse(FaultKind::Id, why)` on each drive's table. After that, `add` and `fromText`
+fail with the reason, so `FAULT ADD`, `disk_fault_add` and the `faults` key refuse `id` with no
+code of their own. `clearAll` and `deserialize` keep the refusal. A `missing` hit can be one more
+than the guest's tries. The CP/M BIOS waits for the sector flag by reading the A-status that
+holds the body bit. `loadSector` cannot tell that read from a wait for the body. The North
+Star document has the table of the kinds.
+
 ## Geometry in real time — the FORMAT path
 
 This is the reusable core. A soft-sector disk's geometry is **not** fixed at mount: sector

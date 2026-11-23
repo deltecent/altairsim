@@ -22,6 +22,10 @@
 #include "test.h"
 
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -175,6 +179,247 @@ bool ddReadsSector(Rig& g, size_t off, int n) {
         chk = rol(v ^ chk);
     }
     return ok && (uint8_t)(g.rd(CTLCMD | DMRD) ^ chk) == 0;
+}
+
+// Route the debug sink to a scratch file while `f` runs, and return what landed there.
+std::string debugCapture(const std::function<void()>& f) {
+    namespace fs = std::filesystem;
+    std::string    err;
+    const fs::path p = fs::temp_directory_path() / "altair_northstar_debug.log";
+    std::error_code ec;
+    fs::remove(p, ec);
+    dbg::setSink(dbg::Sink::File, p.string(), err);
+    f();
+    dbg::setSink(dbg::Sink::Stderr, "", err);  // closes + flushes the file
+    std::ifstream     in(p, std::ios::binary);
+    const std::string s((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
+    fs::remove(p, ec);
+    return s;
+}
+
+// One read of sector `sec` of the track under the head, as the PROM reads it (#970). `data`
+// says the bytes are the image's at `off`; the return is the check character the board sent
+// XOR the one the data gives -- 0 for a good sector.
+uint8_t sdReadAt(Rig& g, int sec, size_t off, bool& data) {
+    while ((sdB(g) & 0x0F) != sec) g.toPulse();
+    g.m.clock.advance(kBody);
+    uint8_t chk = 0;
+    data        = true;
+    for (int i = 0; i < 256; ++i) {
+        uint8_t v = g.rd(CTLRD | CTLNOP);
+        if (v != pat(off + (size_t)i)) data = false;
+        chk = rol(v ^ chk);
+    }
+    const uint8_t got = g.rd(CTLRD | CTLNOP);
+    g.toPulse();
+    return (uint8_t)(got ^ chk);
+}
+
+const DiskFault* first(Rig& g, const char* unit = "drive0") {
+    const DiskFaults* f = g.b->faults(unit);
+    return (f && !f->list().empty()) ? &f->list()[0] : nullptr;
+}
+
+// BAD SECTORS (#970). A North Star sector is zeros, the sync, the data and a check character,
+// and the board never checks the check character -- the guest does. So a data fault spoils
+// the check character and leaves the data, a missing fault takes away the sync, a write fault
+// drops the sector, and an id fault is refused: there is no ID field.
+void faultTests() {
+    SECTION("North Star -- FAULT data: the data is intact, the check character is wrong");
+    {
+        Rig g("mdsa");
+        g.mount("drive0", image(kSD));
+        CHECK(g.b->takesFaults("drive0") && g.b->takesFaults("drive2"), "the MDS-A's drives take faults");
+        CHECK(!g.b->takesFaults("drive3"), "...and it has three");
+        CHECK(g.b->faults("drive1") == nullptr, "an empty drive has no table to give");
+        std::string err;
+        CHECK(g.b->faults("drive0")->add("0/0/3 data count=2", err), err.c_str());
+        sdReady(g);
+
+        bool data = false;
+        CHECK(sdReadAt(g, 3, 3 * 256, data) == 0xFF && data,
+              "sector 3: the 256 bytes are the image's, and the check character fails");
+        CHECK(first(g)->hits == 1 && first(g)->left == 1, "one hit, one left");
+        CHECK(sdReadAt(g, 4, 4 * 256, data) == 0 && data, "sector 4 is good");
+        CHECK(sdReadAt(g, 3, 3 * 256, data) == 0xFF && data, "sector 3 fails again");
+        CHECK(sdReadAt(g, 3, 3 * 256, data) == 0 && data, "count=2: the third read is good");
+        CHECK(first(g)->hits == 2 && first(g)->left == 0, "two hits, none left");
+        CHECK(g_media->bytes() == image(kSD), "the image never changed");
+    }
+
+    SECTION("North Star -- FAULT data on a data byte the guest never reaches is not counted");
+    {
+        Rig g("mdsa");
+        g.mount("drive0", image(kSD));
+        std::string err;
+        g.b->faults("drive0")->add("0/0/5 data", err);
+        sdReady(g);
+        while ((sdB(g) & 0x0F) != 5) g.toPulse();
+        g.m.clock.advance(kBody);
+        for (int i = 0; i < 200; ++i) (void)g.rd(CTLRD | CTLNOP);
+        g.toPulse();
+        CHECK(first(g)->hits == 0, "a read that stops before the check character meets no fault");
+    }
+
+    SECTION("North Star -- FAULT missing: no sync, so body never comes on that sector");
+    {
+        Rig g("mdsa");
+        g.mount("drive0", image(kSD));
+        std::string err;
+        g.b->faults("drive0")->add("0/0/2 missing", err);
+        sdReady(g);
+        while ((sdB(g) & 0x0F) != 2) g.toPulse();
+        g.m.clock.advance(kSector - 1);
+        CHECK((sdA(g) & SABDY) == 0 && (sdA(g) & SABDY) == 0, "sector 2: the whole sector goes by with no body");
+        CHECK(g.rd(CTLRD | CTLNOP) == 0, "and read-data has nothing to give");
+        CHECK(first(g)->hits == 1, "one hit for the pass, however often the guest looks");
+        bool data = false;
+        CHECK(sdReadAt(g, 3, 3 * 256, data) == 0 && data, "sector 3 reads");
+        while ((sdB(g) & 0x0F) != 2) g.toPulse();
+        g.m.clock.advance(kBody);
+        CHECK((sdA(g) & SABDY) == 0 && first(g)->hits == 2, "the next pass of sector 2: no body, a second hit");
+    }
+
+    SECTION("North Star -- FAULT write: the sector is not written, and the next one is");
+    {
+        Rig g("mdsa");
+        g.mount("drive0", image(kSD));
+        std::string err;
+        g.b->faults("drive0")->add("0/0/6 write count=1", err);
+        sdReady(g);
+        auto writeSec = [&](int sec, uint8_t fill) {
+            while ((sdB(g) & 0x0F) != sec) g.toPulse();
+            g.rd(CTLWRT);
+            g.m.clock.advance(kWindow);
+            for (int i = 0; i < 15; ++i) g.rd(SDWD | 0x00);
+            g.rd(SDWD | 0xFB);
+            for (int i = 0; i < 256; ++i) g.rd(SDWD | fill);
+            g.toPulse();
+        };
+        writeSec(6, 0x11);
+        CHECK(g_media->bytes()[6 * 256] == pat(6 * 256) && g_media->bytes()[6 * 256 + 255] == pat(6 * 256 + 255),
+              "sector 6 keeps its old bytes");
+        CHECK(first(g)->hits == 1 && first(g)->left == 0, "one hit, and the fault wore off");
+        CHECK(g.b->drainLog().empty(), "the host is not told: the guest's verify finds it");
+        writeSec(7, 0x22);
+        CHECK(g_media->bytes()[7 * 256] == 0x22, "sector 7 is written");
+        writeSec(6, 0x33);
+        CHECK(g_media->bytes()[6 * 256] == 0x33, "count=1: the second write of sector 6 is taken");
+    }
+
+    SECTION("North Star -- the address is track/side/sector: the head, the side, the hole");
+    {
+        Rig g("mdsad");
+        g.mount("drive0", image(kQuad));
+        std::string err;
+        CHECK(g.b->takesFaults("drive3"), "the MDS-A-D has four drives");
+        g.b->faults("drive0")->add("1/1/* data", err);
+        ddReady(g);
+        g.rd(CTLORD | ORDSIN | ORDDS1);
+        g.rd(CTLORD | ORDSIN | ORDST | ORDDS1);
+        g.rd(CTLORD | ORDSIN | ORDDS1);  // track 1
+        g.toPulse();
+        int sec = (int)(g.m.clock.now() / kSector % 10);
+        g.m.clock.advance(kBody);
+        CHECK(ddReadsSector(g, (size_t)(10 + sec) * 512, 512), "track 1, side 0: good");
+
+        g.rd(CTLORD | ORDSS | ORDSIN | ORDDS1);
+        g.toPulse();
+        sec = (int)(g.m.clock.now() / kSector % 10);
+        g.m.clock.advance(kBody);
+        CHECK(!ddReadsSector(g, (size_t)((35 + 33) * 10 + sec) * 512, 512) && first(g)->hits == 1,
+              "track 1, side 1 -- the 69th track of the file -- fails: the address is the head's, not the file's");
+    }
+
+    SECTION("North Star -- an id fault is refused: the sector has no ID field");
+    {
+        Rig g("mdsad");
+        g.mount("drive0", image(kDD));
+        std::string err;
+        CHECK(!g.b->faults("drive0")->add("0/0/1 id", err) &&
+                  err == "bad fault '0/0/1 id': a North Star sector has no ID field. Give data, missing or write",
+              err.c_str());
+        CHECK(g.b->faults("drive0")->empty(), "nothing was added");
+        CHECK(!g.b->loadSubUnit("drive", {{"unit", "1"}, {"mount", "b.nsi"}, {"faults", "0/0/1 data; 2/0/1 id"}}, err) &&
+                  err.find("no ID field") != std::string::npos,
+              "the `faults` key refuses it too");
+        g.b->faults("drive0")->clearAll();
+        CHECK(!g.b->faults("drive0")->add("0/0/1 id", err), "CLEAR ALL keeps the refusal");
+        std::string uerr;
+        g.b->unmount("drive0", uerr);
+        g.mount("drive0", image(kDD));
+        CHECK(!g.b->faults("drive0")->add("0/0/1 id", err), "...and so does a new disk");
+    }
+
+    SECTION("North Star -- DEBUG=fault: one line a use");
+    {
+        Rig g("mdsa");
+        g.mount("drive0", image(kSD));
+        g.b->ensureDebugChannel();
+        std::string err;
+        CHECK(g.b->debugChannel()->enable("fault", err), "the fault flag exists");
+        g.b->faults("drive0")->add("0/0/2 missing count=2", err);
+        sdReady(g);
+        const std::string text = debugCapture([&] {
+            while ((sdB(g) & 0x0F) != 2) g.toPulse();
+            g.m.clock.advance(kBody);
+            (void)sdA(g);
+        });
+        CHECK(text.find("fault drive0 0/0/2 missing hit 1, 1 left") != std::string::npos, text.c_str());
+    }
+
+    SECTION("North Star -- the `faults` key, SNAPSHOT, and MOUNT clearing the table");
+    {
+        Rig         g("mdsa");
+        std::string err;
+        CHECK(!g.b->loadSubUnit("drive", {{"unit", "1"}, {"faults", "2/0/0 data"}}, err) && !err.empty(),
+              "`faults` with no `mount` is refused");
+        g.mount("drive0", image(kSD));  // installs the resolver for the table's mount
+        CHECK(g.b->loadSubUnit("drive", {{"unit", "1"}, {"mount", "b.nsi"}, {"faults", "0/0/3 data count=3; 4/*/* missing"}},
+                               err),
+              err.c_str());
+        bool saved = false;
+        for (const auto& su : g.b->subUnits())
+            for (const auto& fld : su.fields)
+                saved = saved || (fld.key == "faults" && fld.quoted && fld.text == "0/0/3 data count=3; 4/*/* missing");
+        CHECK(saved, "CONFIG SAVE writes the `faults` key back, quoted");
+
+        // A damaged read in flight survives a snapshot.
+        g.rd(CTLMO | CTLNOP);
+        g.rd(0xEB02);  // CTLDS2: drive 2 is unit 1
+        while ((sdB(g) & 0x0F) != 3) g.toPulse();
+        g.m.clock.advance(kBody);
+        for (int i = 0; i < 100; ++i) (void)g.rd(CTLRD | CTLNOP);
+        StateWriter w;
+        g.b->serialize(w);
+
+        g.b->faults("drive1")->clearAll();
+        for (int i = 100; i < 256; ++i) (void)g.rd(CTLRD | CTLNOP);
+        g.rd(CTLRD | CTLNOP);
+
+        StateReader r(w.data());
+        g.b->deserialize(r);
+        CHECK(r.ok(), "restores cleanly");
+        uint8_t chk = 0;
+        for (int i = 0; i < 256; ++i) {
+            const uint8_t v = i < 100 ? pat(3 * 256 + (size_t)i) : g.rd(CTLRD | CTLNOP);
+            chk = rol(v ^ chk);
+        }
+        CHECK((uint8_t)(g.rd(CTLRD | CTLNOP) ^ chk) == 0xFF, "the read resumes, and its check character still fails");
+        const DiskFaults* f = g.b->faults("drive1");
+        CHECK(f && f->list().size() == 2 && f->list()[0].hits == 1 && f->list()[0].left == 2,
+              "RESTORE brings the faults back with their counts");
+        CHECK(!g.b->faults("drive1")->add("0/0/1 id", err), "...and the drive still refuses an id fault");
+
+        CHECK(g.mount("drive1", image(kSD)) && g.b->faults("drive1")->empty(),
+              "a new disk in the drive, with no UNMOUNT first, brings no faults");
+        g.b->faults("drive1")->add("0/0/1 data", err);
+        std::string uerr;
+        CHECK(g.b->unmount("drive1", uerr) && g.b->faults("drive1") == nullptr, "UNMOUNT: no disk, no faults");
+        g.mount("drive1", image(kSD));
+        CHECK(g.b->faults("drive1")->empty(), "...and the next disk has none");
+    }
 }
 
 } // namespace
@@ -980,4 +1225,6 @@ void test_northstar() {
               "the first byte waits out the window and the zero the board writes itself");
         CHECK(step(g) == sdByte && step(g) == sdByte, "...and each next byte one byte time");
     }
+
+    faultTests();
 }

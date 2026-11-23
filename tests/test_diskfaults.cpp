@@ -127,4 +127,23 @@ void test_diskfaults() {
         CHECK(u.list()[0].left == 2 && u.list()[0].hits == 1 && u.list()[0].count == 3, "the count fault's counters");
         CHECK(u.list()[1].hard() && u.list()[1].hits == 2, "the hard fault's hits");
     }
+
+    SECTION("DiskFaults: refuse() -- a kind the drive's medium cannot have (#970)");
+    {
+        DiskFaults  t;
+        std::string err;
+        t.refuse(FaultKind::Id, "no ID field here");
+        CHECK(!t.add("1/0/2 id", err) && err == "bad fault '1/0/2 id': no ID field here", err.c_str());
+        CHECK(t.add("1/0/2 data", err) && t.list().size() == 1, "another kind is taken");
+        CHECK(!t.fromText("3/0/1 missing; 4/0/1 ID", err) && err.find("no ID field here") != std::string::npos,
+              "fromText refuses it");
+        CHECK(t.toText() == "1/0/2 data", "...and changes nothing");
+        t.clearAll();
+        CHECK(!t.add("1/0/2 id", err), "clearAll keeps the refusal");
+        StateWriter w;
+        t.serialize(w);
+        StateReader r(w.data());
+        t.deserialize(r);
+        CHECK(!t.add("1/0/2 id", err), "...and so does deserialize");
+    }
 }

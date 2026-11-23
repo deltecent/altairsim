@@ -1,0 +1,125 @@
+#!/usr/bin/expect -f
+#
+# BAD SECTORS REACH THE NORTH STAR MDS-A-D (#970). The MDS-A-D boots Lifeboat CP/M 2.23 off a
+# disk whose machine file puts a fault on track 0:
+#
+#   1. count=2: the check character after sector 0/0/0 is wrong two times. The board never
+#      checks it; the BIOS does, and tries again. CP/M still reaches A>. FAULT then shows the
+#      fault used two times and worn off.
+#   2. A hard data fault on the directory (2/0/0): the BIOS tries 10 times, and the BDOS says
+#      `Bdos Err On A: Bad Sector`. FAULT shows the 10 hits.
+#   3. A hard missing fault there instead: the sector has no sync character, so the body never
+#      comes. The BIOS times out, and DIR gives the same error. The hit count is not checked
+#      (see step 3 below).
+#
+# The guest's own code finds both faults: the BIOS compares the check character, and it times
+# out waiting for the body. So this test proves the BIOS sees the fault, not only the board.
+#
+# IT HAS TO BE AN EXPECT TEST: steps 2 and 3 type at the monitor and at A>, which a pipe cannot
+# do.
+#
+# THE DISK MUST NOT MOVE. A fault is an overlay on the drive; the image never changes. The
+# fixture is write-protected too, and shasummed before and after.
+#
+# usage: expect -f northstar-fault.exp <altairsim>
+#
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set dsk "tests/media/northstar/CPM223DQ-48K-SSDD.NSI"
+
+set before [exec shasum $dsk]
+
+spawn $exe tests/acceptance/northstar-fault.toml
+
+# 1. Two bad check characters on 0/0/0, and the BIOS's retry gets past them.
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: the machine died before the A> prompt"; exit 1 }
+    timeout { puts "FAIL: CP/M never reached A> past the count=2 fault"; exit 1 }
+}
+
+send "\005"
+expect {
+    -ex "altairsim> " {}
+    timeout { puts "FAIL: Ctrl-E did not reach the monitor"; exit 1 }
+}
+send "FAULT fd0:drive0\r"
+expect {
+    -re {0/0/0 data count=2 +2 +0} {}
+    timeout { puts "FAIL: FAULT does not show the fault used twice with none left"; exit 1 }
+}
+expect -ex "altairsim> "
+
+# 2. A hard data fault on the directory: the directory cannot be read.
+send "FAULT fd0:drive0 ADD 2/0/0 data\r"
+expect {
+    -ex "fd0:drive0: fault 2/0/0 data" {}
+    timeout { puts "FAIL: FAULT ADD did not add the data fault"; exit 1 }
+}
+expect -ex "altairsim> "
+send "RUN\r"
+sleep 0.5
+send "DIR\r"
+expect {
+    -ex "Bad Sector" {}
+    -ex "STAT" { puts "FAIL: DIR read the directory through a hard data fault"; exit 1 }
+    eof     { puts "FAIL: the machine died running DIR"; exit 1 }
+    timeout { puts "FAIL: DIR did not report a bad sector for the data fault"; exit 1 }
+}
+
+# One hit for each check character the BIOS read: its 10 tries, no more and no fewer.
+send "\005"
+expect {
+    -ex "altairsim> " {}
+    timeout { puts "FAIL: Ctrl-E did not reach the monitor after the error"; exit 1 }
+}
+send "FAULT fd0:drive0\r"
+expect {
+    -re {2/0/0 data +10 } {}
+    -re {2/0/0 data +[0-9]+ } { puts "FAIL: the hard fault was not hit once for each of the BIOS's 10 tries"; exit 1 }
+    timeout { puts "FAIL: FAULT did not list the hard data fault"; exit 1 }
+}
+expect -ex "altairsim> "
+
+# 3. A hard missing fault on the directory: no sync character, so the body never comes, and the
+#    BIOS times out. Its hit count is not checked: a pass counts when the guest reads the body
+#    bit after the body is due, and the BIOS's wait for a sector flag reads the same status
+#    byte. Whether that wait crosses 2/0/0 depends on where the disk is in its turn.
+send "FAULT fd0:drive0 CLEAR ALL\r"
+expect -ex "altairsim> "
+send "FAULT fd0:drive0 ADD 2/0/0 missing\r"
+expect {
+    -ex "fd0:drive0: fault 2/0/0 missing" {}
+    timeout { puts "FAIL: FAULT ADD did not add the missing fault"; exit 1 }
+}
+expect -ex "altairsim> "
+send "RUN\r"
+sleep 0.5
+send "\r"
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: the machine died in the warm boot after the error"; exit 1 }
+    timeout { puts "FAIL: a key after the BDOS error did not give A>"; exit 1 }
+}
+send "DIR\r"
+expect {
+    -ex "Bad Sector" {}
+    -ex "STAT" { puts "FAIL: DIR read the directory through a missing sector"; exit 1 }
+    eof     { puts "FAIL: the machine died running DIR"; exit 1 }
+    timeout { puts "FAIL: DIR did not report a bad sector for the missing sector"; exit 1 }
+}
+
+set after [exec shasum $dsk]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. A fault must never touch the disk image:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    exit 1
+}
+
+puts "OK: the BIOS retried past a count=2 check-character fault to A>, a hard data fault on\
+      the directory gave Bdos Err On A: Bad Sector after the BIOS's 10 tries, a missing sector\
+      there gave the same error, and the disk image is byte-identical."
+exit 0

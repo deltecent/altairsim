@@ -2515,6 +2515,18 @@ void test_cli() {
         CHECK(fx("FAULT fdc0:drive0") == "  fdc0:drive0: no faults\n", "a new disk brings no faults");
 
         CHECK(fx("SHOW DEBUG").find("fault") != std::string::npos, "SHOW DEBUG lists the fault flag");
+
+        // A North Star sector has no ID field, so its drives refuse an id fault (#970).
+        setMediaResolver([](const std::string& path, bool ro, std::string&) {
+            return std::make_unique<MemoryMedia>(path, std::vector<uint8_t>(179200, 0xE5), ro);
+        });
+        fx("BOARDS ADD mdsad fd0");
+        fx("MOUNT fd0:drive0 n.nsi");
+        o = fx("FAULT fd0:drive0 ADD 2/0/1 id");
+        CHECK(o == "fd0:drive0: bad fault '2/0/1 id': a North Star sector has no ID field. Give data, missing or write\n" &&
+                  fmon.failed(),
+              o.c_str());
+        CHECK(fx("FAULT fd0:drive0 ADD 2/0/1 missing") == "fd0:drive0: fault 2/0/1 missing\n", "a missing fault is taken");
         setMediaResolver(openHostFile);
     }
 

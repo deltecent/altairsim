@@ -209,9 +209,10 @@ is its command interface.
   deadline, so an idle machine can stop its clock.
 - **No DMA.**
 - **Properties:** `base` (a multiple of `400`), `drives`, `interrupt`, `motor`. For each
-  drive: `unit`, `mount`, `readonly` (`writeprotect`), `media`, `create`.
+  drive: `unit`, `mount`, `readonly` (`writeprotect`), `media`, `create`, `faults`.
 - **Units** are `drive0` … . `drive0` is the drive that North Star software calls drive 1.
-- **Debug flags:** `seek` (each head step), `sector` (each sector read or written).
+- **Debug flags:** `seek` (each head step), `sector` (each sector read or written), `fault`
+  (each use of a bad sector).
 
 ### Reset
 
@@ -290,6 +291,61 @@ table, and the MDS-A PROM writes `59` (not initialized) to the table before it l
 - **The MDS-A-D answers RESET\*.** See [Reset](#reset): this is from the checkout text, not a
   schematic.
 
+## Bad sectors: `FAULT` and the `faults` key
+
+A drive can have bad sectors on its disk, to test the retry code of a guest (#970). The faults
+are a table in each drive (`DiskFaults`, `src/host/diskfaults.h`), and the image does not
+change. Give them with `FAULT fd0:driveN`, with the `disk_fault_*` MCP tools, or with the
+`faults` key of a `[[board.drive]]` table. The *User Manual* gives the syntax, in "Simulate a
+bad sector" in the Disks chapter. The code is in `NorthStarFdc`, so the `mdsa` and the `mdsad`
+have the same faults.
+
+The board has no error bit, and it never checks the check character. The guest computes the
+check character of the data and compares it with the one that it reads from the board. A fault
+therefore changes what the guest reads:
+
+| Kind | What the guest reads | When the fault is used |
+|---|---|---|
+| `data` | The data, then a wrong check character: the correct one XOR `FF` | When the guest reads the check character |
+| `missing` | No sync character, so the body bit never comes for that sector. A data read gives 0. | Once a pass, when the guest reads the body bit after the body time |
+| `write` | The board does not write the sector. The old bytes stay in the image, and the guest is not told, as on the real board. | At the last data byte, where the sector would go to the image |
+| `id` | Refused | |
+
+- **`id` is refused** with `a North Star sector has no ID field. Give data, missing or write`.
+  The track is where the head is, and the sector is the hole count. `DiskFaults::refuse()` makes
+  `FAULT ADD`, `disk_fault_add` and the `faults` key refuse the kind with that reason. The shared
+  text of `HELP FAULT` and of the `faults` key still lists `id`, and it says that the controller
+  reports a `write` fault. On this board, neither is true.
+- **The address** is `<track>/<side>/<sector>`: the track under the head, the side, and the hole
+  count, 0 to 9. The side is 0, or 1 on a two-sided `mdsad` diskette. The track is the track of
+  the head, not the track in the image file. The second side is in the file from the inside out
+  (see "Side 2" above), but this does not change the address of a fault.
+- **A `data` hit is exact.** It counts one time in each pass where the guest reads the check
+  character. The MDS-A-D boot PROM reads sector `0/0/0` but not its check character, so a fault
+  there gets no hit from the PROM.
+- **A `missing` hit can be one more than the guest's tries.** The body bit is in A-status with
+  the sector flag. The CP/M BIOS reads A-status to wait for the sector flag, and to wait for the
+  body. The board cannot tell the two reads apart. If a wait for the sector flag goes past the
+  body time of the bad sector, that pass counts too. This depends on where the disk is in its
+  turn when the guest starts. Because of this, a `count=N` `missing` fault can end one try
+  early. The board does not count a `missing` fault at a data read. The BIOS times out on the
+  body bit and reads no data.
+- **The CP/M BIOS tries a bad sector again.** The Lifeboat CP/M 2.23 BIOS on the `mdsad` tries
+  10 times. The CP/M 2.2b BIOS on the `mdsa` tries 16 times. The directory is at `2/0/0` on
+  `CPM223DQ-48K-SSDD.NSI`, and at `3/0/7` on `CPM22b14-48K-SDC-ALTAIR.NSI`. A hard `data` fault
+  on the directory gets one hit for each try, and `DIR` gives `Bdos Err On A: Bad Sector`. A
+  hard `missing` fault there gives the same error. It got 10 or 11 hits on the `mdsad`, and 17
+  on the `mdsa` under `--mcp`.
+- **The acceptance test `acceptance-northstar-fault`** uses the `mdsad`. A `count=2` `data` fault
+  on `0/0/0` gets 2 hits, and the BIOS gets past it at cold start. A hard `data` fault on `2/0/0`
+  gets 10 hits. A hard `missing` fault there gives the BDOS error, and the test does not check
+  its hit count.
+
+`SET fd0 DEBUG=fault` writes a line each time that a fault is used, for example
+`fault drive0 0/0/0 data hit 1, 1 left`. `MOUNT` and `UNMOUNT` clear the faults of the drive.
+`CONFIG SAVE` writes the `faults` key. A snapshot keeps the faults with their counts, and a read
+of a bad sector that is in progress.
+
 ## Verification
 
 - **Unit suite `northstar`** (`tests/test_northstar.cpp`), through real bus cycles: the
@@ -298,14 +354,21 @@ table, and the MDS-A PROM writes `59` (not initialized) to the table before it l
   one T-state; a sector read with the check character computed as the PROM does; writes, a
   late begin-write, a write cut short, write-protect; step and track 0; drive select; side 2;
   the interrupt and its deadline; the motor timer; reset; the probe; snapshot and restore.
+  The bad sectors on both boards: each kind, `count=N`, side 1, the `id` refusal, `MOUNT` and
+  the `faults` key, and a snapshot taken during a bad read.
 - **`acceptance-northstar`**: the `mdsa` boots CP/M 2.2b (`DIR`) and North Star DOS 5.1
   (`LI`, `GO BASIC`, `PRINT 6*7`).
 - **`acceptance-northstardd`**: the `mdsad` boots Lifeboat CP/M 2.23 from a one-sided
   diskette (`DIR`) and from a two-sided diskette, where it runs `FINDBAD`, which is stored on
   side 2 and reads every block of both sides. It boots North Star DOS 5.1 (`LI`, `GO BASIC`).
+- **`acceptance-northstar-fault`**: the `mdsad` boots CP/M past a `count=2` `data` fault, and
+  `DIR` gives the BDOS error on a hard `data` fault and on a hard `missing` fault. The image
+  does not change.
 - **Mutations that the tests catch:** the check character rotated the wrong way; side 2 not
   reversed; the MDS-A-D case map on the MDS-A; one sync character at double density; the
-  status sampled after the command.
+  status sampled after the command. For the faults: the check character not changed, a
+  `missing` sector still read, a `write` fault still written, `id` not refused, and the faults
+  not saved or not restored.
 - **By hand, over `--mcp`:** a file written with `PIP … [V]` under CP/M, and a BASIC program
   saved with `NSAVE` under North Star DOS, each read back after a cold boot in a new process,
   on both boards. A blank diskette formatted with `IN 2` (`mdsa`) and `IN 2 D` (`mdsad`). A

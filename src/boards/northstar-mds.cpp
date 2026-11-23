@@ -1,5 +1,6 @@
 #include "boards/northstar-mds.h"
 
+#include "boards/floppy-drive.h"
 #include "core/bus.h"
 #include "core/clock.h"
 #include "core/hex.h"
@@ -73,6 +74,9 @@ bool truthy(const std::string& v) { return v == "true" || v == "1" || v == "yes"
 NorthStarFdc::NorthStarFdc(const char* romName, uint16_t romOrigin, int drives)
     : romName_(romName), romOrigin_(romOrigin), drives_(drives) {
     drive_.resize((size_t)drives_);
+    for (Drive& d : drive_)
+        d.faults.refuse(FaultKind::Id,
+                        "a North Star sector has no ID field. Give data, missing or write");
     spindle_.configure(300, kNsSectors);  // an SA-400: 200 ms a revolution, 20 ms a sector
     loadProm();
 }
@@ -229,6 +233,7 @@ void NorthStarFdc::endSector() {
     rdAbs_      = ~0ull;
     rdValid_    = false;
     rdPos_      = 0;
+    rdFault_    = -1;
     bodyForced_ = false;
 }
 
@@ -377,12 +382,34 @@ bool NorthStarFdc::loadSector(const Rotation& r) {
         (int)n != d->fmt->sectorBytes)
         return false;
     rdLen_   = (int)n;
+
+    // BAD SECTORS (#970). A missing sector has no sync character: body mode never comes, as
+    // on a sector that is not in the file. A data fault spoils the check character only.
+    rdFault_ = -1;
+    if (!d->faults.empty()) {
+        if (DiskFault* f = d->faults.find(d->track, side(), r.sector, FaultKind::Missing)) {
+            useFault(*f, d->track, side(), r.sector);
+            return false;
+        }
+        if (d->faults.find(d->track, side(), r.sector, FaultKind::Data))
+            rdFault_ = (int)FaultKind::Data;
+    }
     rdValid_ = true;
 
     if (auto* dc = debugChannel(); dc && dc->on(SECTOR))
         dbg::line(*dc) << "read drive=" << sel_ + 1 << " track=" << d->track << " side=" << side()
                        << " sector=" << r.sector << "\n";
     return true;
+}
+
+void NorthStarFdc::useFault(DiskFault& f, int track, int side, int sector) {
+    DiskFaults::use(f);
+    if (auto* dc = debugChannel(); dc && dc->on(FAULT)) {
+        dbg::line(*dc) << "fault drive" << sel_ << " " << track << "/" << side << "/" << sector
+                       << " " << faultKindName(f.kind) << " hit " << f.hits;
+        if (!f.hard()) dbg::out() << ", " << f.left << " left";
+        dbg::out() << "\n";
+    }
 }
 
 bool NorthStarFdc::body(const Rotation& r) {
@@ -402,7 +429,17 @@ uint8_t NorthStarFdc::readData(const Rotation& r) {
         holdUntil(now() - r.into + tFromUs(kBodyUs) + (uint64_t)(rdPos_ + 1) * byteT(mediumDD()));
     uint8_t v = 0;
     if (rdPos_ < rdLen_)       v = rdBuf_[rdPos_];
-    else if (rdPos_ == rdLen_) v = checkChar(rdBuf_, rdLen_);
+    else if (rdPos_ == rdLen_) {
+        v = checkChar(rdBuf_, rdLen_);
+        // #970: the guest's compare fails. The fault is looked up again here, so a FAULT
+        // CLEAR while the data went by leaves the sector clean.
+        Drive* d = selected();
+        if (rdFault_ == (int)FaultKind::Data && d)
+            if (DiskFault* f = d->faults.find(d->track, side(), r.sector, FaultKind::Data)) {
+                v ^= 0xFF;
+                useFault(*f, d->track, side(), r.sector);
+            }
+    }
     if (rdPos_ <= rdLen_) ++rdPos_;
     return v;
 }
@@ -432,6 +469,7 @@ void NorthStarFdc::beginWrite(const Rotation& r) {
     wrPos_    = 0;
     rdAbs_    = ~0ull;  // whatever was read from here is about to be stale
     rdValid_  = false;
+    rdFault_  = -1;
 }
 
 void NorthStarFdc::writeData(uint8_t v) {
@@ -519,6 +557,13 @@ void NorthStarFdc::commitWrite() {
                           id.c_str(), sel_);
             say(m);
         }
+        return;
+    }
+
+    // A BAD SPOT THE DRIVE WILL NOT WRITE (#970): the bytes go nowhere and the old ones stay.
+    // The guest is not told, as on the real board. Its verify, or the next read, finds it.
+    if (DiskFault* f = d->faults.find(wrTrack_, wrSide_, wrSector_, FaultKind::Write)) {
+        useFault(*f, wrTrack_, wrSide_, wrSector_);
         return;
     }
 
@@ -636,6 +681,7 @@ bool NorthStarFdc::mount(const std::string& unit, const std::string& path, bool 
     d.path   = std::move(fresh.path);
     d.fmt    = fresh.fmt;
     d.roSaid = false;
+    d.faults.clearAll();  // the faults were the old diskette's
     return true;
 }
 
@@ -651,6 +697,7 @@ bool NorthStarFdc::unmount(const std::string& unit, std::string& err) {
     d.img.reset();
     d.path.clear();
     d.fmt = nullptr;
+    d.faults.clearAll();
     return true;
 }
 
@@ -792,6 +839,7 @@ std::vector<Property> NorthStarFdc::subUnitProperties(const std::string& table) 
         x.kind = Kind::Bool;
         p.push_back(std::move(x));
     }
+    p.push_back(driveFaultsKey());
     return p;
 }
 
@@ -831,7 +879,7 @@ bool NorthStarFdc::addSubUnit(const std::string& table, const KeyValues& kv, std
     }
 
     int         unit = -1;
-    std::string path, media;
+    std::string path, media, faultText;
     bool        ro     = false;
     bool        create = false;
 
@@ -843,6 +891,7 @@ bool NorthStarFdc::addSubUnit(const std::string& table, const KeyValues& kv, std
         else if (k == "readonly") ro = truthy(v);
         else if (k == "media") media = v;
         else if (k == "create") create = truthy(v);
+        else if (k == "faults") faultText = v;
     }
 
     if (unit < 0) {
@@ -852,7 +901,7 @@ bool NorthStarFdc::addSubUnit(const std::string& table, const KeyValues& kv, std
 
     if (path.empty()) {
         drive_[(size_t)unit].forced = media;
-        return true;
+        return applyDriveFaults(drive_[(size_t)unit].faults, false, faultText, err);
     }
 
     // `create = true`: make the file (empty) where mount() will open it. Never replace a
@@ -866,7 +915,17 @@ bool NorthStarFdc::addSubUnit(const std::string& table, const KeyValues& kv, std
         }
     }
     // Always passed, empty too: a table with no `media` is a disk the size decides.
-    return mountWith("drive" + std::to_string(unit), path, ro, {{"media", media}}, err);
+    if (!mountWith("drive" + std::to_string(unit), path, ro, {{"media", media}}, err)) return false;
+    return applyDriveFaults(drive_[(size_t)unit].faults, true, faultText, err);
+}
+
+bool NorthStarFdc::takesFaults(const std::string& unit) const {
+    return driveIndex(unit, drives_) >= 0;
+}
+
+DiskFaults* NorthStarFdc::faults(const std::string& unit) {
+    const int i = driveIndex(unit, drives_);
+    return (i >= 0 && drive_[(size_t)i].img) ? &drive_[(size_t)i].faults : nullptr;
 }
 
 // An EMPTY drive with no forced media writes no table (DESIGN.md 5).
@@ -883,6 +942,7 @@ std::vector<Board::SubUnit> NorthStarFdc::subUnits() const {
         if (d.img) {
             su.fields.push_back({"mount", d.path, true});
             if (d.img->readOnly()) su.fields.push_back({"readonly", "true", false});
+            if (!d.faults.empty()) su.fields.push_back({"faults", d.faults.toText(), true});
         }
         out.push_back(std::move(su));
     }
@@ -922,6 +982,10 @@ void NorthStarFdc::serialize(StateWriter& w) const {
     w.u32((uint32_t)(int32_t)wrSector_);
     w.u32((uint32_t)(int32_t)wrPos_);
     w.raw(wrBuf_, sizeof wrBuf_);
+
+    // The bad sectors and their counts, and the fault on the sector being read (#970).
+    for (const auto& d : drive_) d.faults.serialize(w);
+    w.u32((uint32_t)(int32_t)rdFault_);
 }
 
 void NorthStarFdc::deserialize(StateReader& r) {
@@ -960,6 +1024,10 @@ void NorthStarFdc::deserialize(StateReader& r) {
     wrSector_ = (int)(int32_t)r.u32();
     wrPos_    = (int)(int32_t)r.u32();
     r.raw(wrBuf_, sizeof wrBuf_);
+
+    // Into each drive's own table, so the drive's refusals (an id fault) stay.
+    for (auto& d : drive_) d.faults.deserialize(r);
+    rdFault_ = (int)(int32_t)r.u32();
 
     intChanged();
     scheduleWake();
