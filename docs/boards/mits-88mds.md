@@ -283,6 +283,15 @@ Controller will automatically turn off."*
 - **The DRWT diagnostic PROM** (p5) is not in the tree. It is not needed to boot, and no image of it has
   surfaced.
 
+## Bad sectors: `FAULT` and the `faults` key
+
+The 88-MDS takes faults in the same way as the 88-DCDD (#968), because the code is in the shared
+`HardSectorFdc`. A fault changes the bytes that the guest reads from the slot, and the image does
+not change. The 88-DCDD document has the table of the kinds, in "Bad sectors". On the minidisk,
+the sector of a fault is the physical sector, 0 to 15, and the head is always 0. A hit counts
+when the guest reads the bad byte. `SET <id> DEBUG=fault` writes a line each time that a fault
+occurs.
+
 ## Verification
 
 - **`tests/test_mds.cpp`** — the 76,720 probe and the XMODEM pad; the 35-track step clamp; a 16-sector

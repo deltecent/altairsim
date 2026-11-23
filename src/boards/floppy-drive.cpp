@@ -490,14 +490,18 @@ Property driveFaultsKey() {
 }
 
 bool applyDriveFaults(DiskImageDrive& d, const std::string& text, std::string& err) {
+    return applyDriveFaults(d.faults(), d.loaded(), text, err);
+}
+
+bool applyDriveFaults(DiskFaults& faults, bool loaded, const std::string& text, std::string& err) {
     bool blank = true;
     for (char c : text) blank = blank && (c == ' ' || c == '\t' || c == ';');
     if (blank) return true;
-    if (!d.loaded()) {
+    if (!loaded) {
         err = "`faults` needs a disk: give `mount` in the same table";
         return false;
     }
-    return d.faults().fromText(text, err);
+    return faults.fromText(text, err);
 }
 
 } // namespace altair

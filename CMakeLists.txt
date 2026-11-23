@@ -2149,6 +2149,15 @@ if(EXPECT_EXECUTABLE)
   set_tests_properties(acceptance-dcdd-readonly PROPERTIES
                        LABELS acceptance TIMEOUT 90
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+  # BAD SECTORS ON THE 88-DCDD (#968): a count=2 fault the BIOS retries past, then a hard one
+  # that gives Bdos Err On A: Bad Sector after the BIOS's 12 tries. Same protected disk.
+  add_test(NAME acceptance-dcdd-fault
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/dcdd-fault.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-dcdd-fault PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
   # ---------------------------------------------------------------------------
   # DDT SETS A BREAKPOINT -- and it needs no interrupt to do it (RST 7 is a one-byte
   # CALL 0038h, written over the guest's own opcode). Same fixture, same protected

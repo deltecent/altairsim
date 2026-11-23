@@ -56,6 +56,7 @@
 #include "core/board.h"
 #include "core/spindle.h"
 #include "host/disk.h"
+#include "host/diskfaults.h"
 
 #include <cstdint>
 #include <memory>
@@ -119,9 +120,30 @@ public:
     // Diagnostic flags (core/debuglog.h, DESIGN.md 7.2). `SET mds0 DEBUG=seek` traces
     // head steps; `DEBUG=sector` traces each sector the head reaches under the guest's
     // real-time byte shifting. The bit order here IS the DebugFlag enum below -- the
-    // two must not drift, so they live one after the other.
-    std::vector<std::string> debugFlags() const override { return {"sector", "seek"}; }
-    enum DebugFlag { SECTOR = 0, SEEK = 1 };
+    // two must not drift, so they live one after the other. `DEBUG=fault` writes a line
+    // each time a bad sector is used (#968).
+    std::vector<std::string> debugFlags() const override { return {"sector", "seek", "fault"}; }
+    enum DebugFlag { SECTOR = 0, SEEK = 1, FAULT = 2 };
+
+    // BAD SECTORS (#968, host/diskfaults.h). The card never looks inside a slot, so a fault
+    // is a bad spot on the disk: the bytes the guest reads from the slot are wrong, and the
+    // BIOS finds it with its own checksum, stop-byte and track checks. The image does not
+    // change. The kinds, on the 137-byte slot:
+    //
+    //   data     byte kFaultDataByte reads inverted. It is payload in both slot layouts, so
+    //            the checksum fails.
+    //   id       byte 0 (sync bit and track) reads with the track bits inverted: the sync
+    //            bit is there, the track is wrong.
+    //   missing  the whole slot reads as zeros, as an unformatted slot does.
+    //   write    the drive does not write; the old bytes stay.
+    //
+    // The address is <track>/0/<sector>: the head's track, head 0, and the physical sector
+    // position the guest reads from the sector register. A hit is counted when the guest
+    // reads the bad byte, not when the slot passes under the head: the BIOS watches every
+    // sector go by, and a count=N fault must wear down only on reads.
+    static constexpr int kFaultDataByte = 64;
+    bool        takesFaults(const std::string& unit) const override;
+    DiskFaults* faults(const std::string& unit) override;
 
     std::vector<UnitDef> units() const override;
     bool mount(const std::string& unit, const std::string& path, bool ro, std::string& err) override;
@@ -167,6 +189,7 @@ protected:
         bool        roSaid = false;  // "write-protected, discarding" -- said once, not per sector
         int         track  = 0;
         Spindle     spindle;
+        DiskFaults  faults;  // the bad sectors of the disk in it (#968); MOUNT clears them
     };
 
     // ---- WHAT A CARD MUST SAY ABOUT ITSELF ----------------------------------
@@ -274,6 +297,9 @@ private:
     void selectDrive(int n);
     void syncSector(const Position&);
     bool probe(Drive&, std::string& err);
+    void applyFault(Drive&, int sector);             // damage buf_ as the slot is loaded
+    void countFault(Drive&, int sector, int index);  // the guest read a damaged byte
+    void useFault(DiskFault&, int track, int sector);
 
     int sel_ = -1;  // -1 = none selected. Status then reads 0xFF.
 
@@ -283,6 +309,10 @@ private:
     uint8_t buf_[kHsSectorBytes]{};
     int     bufSector_ = -1;
     int     readPos_   = 0;
+
+    // The fault kind that damaged buf_, or -1 for a clean slot (#968). read() counts the hit
+    // when the guest takes the damaged byte -- the kind says which byte that is.
+    int bufFault_ = -1;
 
     // The write path. WRITE ENABLE arms it; the card then consumes EXACTLY 137 bytes and
     // commits. A partial write that is interrupted by a step or a select must still be

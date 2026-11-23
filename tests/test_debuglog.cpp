@@ -167,9 +167,9 @@ void test_debuglog() {
             dbg::Channel* c = dbg::find("mds1");
             CHECK(c != nullptr, "attaching the card created its channel, named by id");
             if (c) {
-                CHECK(c->flags().size() == 2, "carrying both declared flags");
-                CHECK(c->flags().size() == 2 && c->flags()[0] == "sector" &&
-                          c->flags()[1] == "seek",
+                CHECK(c->flags().size() == 3, "carrying all three declared flags");
+                CHECK(c->flags().size() == 3 && c->flags()[0] == "sector" &&
+                          c->flags()[1] == "seek" && c->flags()[2] == "fault",
                       "in the bit order the card's emit sites assume");
             }
 

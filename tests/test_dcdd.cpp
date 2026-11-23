@@ -21,6 +21,7 @@
 
 #include "boards/mits-88dcdd.h"
 #include "core/clock.h"
+#include "core/statefile.h"
 #include "host/disk.h"
 #include "host/media.h"
 #include "test.h"
@@ -66,6 +67,35 @@ constexpr uint64_t kByte       = 64;     // 32 us -- 250 kbit/s
 constexpr uint64_t kTrue       = 60;     // 30 us -- the F4 one-shot
 constexpr uint64_t kReadStart  = 280;    // 140 us -- the READ CLEAR one-shot
 constexpr uint64_t kWriteStart = 560;    // 280 us -- the WRITE CLEAR one-shot
+
+// ONE PASS OF A SECTOR, read the way the BIOS reads it (#968): wait for the sector, then take
+// all 137 bytes as NRDA paces them. Polls the sector port half a turn earlier, as a BIOS's
+// hunt loop does, so the head has left the sector since the last pass.
+std::vector<uint8_t> readSlot(DcddBoard& b, Clock& c, int sector) {
+    const uint64_t perTrack = kPerSector * 32;
+    const uint64_t at       = (uint64_t)sector * kPerSector;
+    c.advance((at + perTrack / 2 + perTrack - c.now() % perTrack) % perTrack + 1);
+    (void)in(b, 0x09);
+    c.advance((at + perTrack - c.now() % perTrack) % perTrack + kReadStart);
+    std::vector<uint8_t> v;
+    for (int i = 0; i < kHsSectorBytes; ++i) {
+        v.push_back(in(b, 0x0A));
+        c.advance(kByte);
+    }
+    return v;
+}
+
+// One pass of a sector WRITTEN: 137 bytes of `fill`, then the head moves on to the next
+// sector, which commits the write.
+void writeSlot(DcddBoard& b, Clock& c, int sector, uint8_t fill) {
+    const uint64_t perTrack = kPerSector * 32;
+    c.advance(((uint64_t)sector * kPerSector + perTrack - c.now() % perTrack) % perTrack);
+    out(b, 0x09, 0x80);  // cWRTEN
+    c.advance(kWriteStart);
+    for (int i = 0; i < kHsSectorBytes; ++i) { out(b, 0x0A, fill); c.advance(kByte); }
+    c.advance(kPerSector);
+    (void)in(b, 0x08);  // the head is on the next sector: the write is committed
+}
 
 } // namespace
 
@@ -768,6 +798,175 @@ void test_dcdd() {
         out(b, 0x08, 0x0F);
         CHECK(in(b, 0x08) == 0xFF, "selecting a drive the card has not got selects NOTHING");
 
+        setMediaResolver(openHostFile);
+    }
+
+    SECTION("88-DCDD -- FAULT damages the bytes the guest reads, and never the image (#968)");
+    {
+        // A disk whose slots say where they are: byte 0 is track|0x80 (the sync bit), the
+        // rest is 0x40 + sector. Every byte known, so every damaged byte shows.
+        std::vector<uint8_t> img((size_t)337568, 0);
+        for (int t = 0; t < 77; ++t)
+            for (int s = 0; s < 32; ++s) {
+                uint8_t* slot = &img[((size_t)t * 32 + (size_t)s) * kHsSectorBytes];
+                std::memset(slot, 0x40 + s, kHsSectorBytes);
+                slot[0] = (uint8_t)(t | 0x80);
+            }
+        const std::vector<uint8_t> master = img;
+        setMediaResolver([&img](const std::string& p, bool ro, std::string&) {
+            return std::make_unique<MemoryMedia>(p, img, ro);
+        });
+
+        Clock     c;
+        DcddBoard b;
+        b.attachClock(&c);
+        std::string err;
+        CHECK(b.takesFaults("drive0") && b.takesFaults("drive3"), "every drive on the card takes faults");
+        CHECK(!b.takesFaults("drive4") && !b.takesFaults("tape"), "...and a unit the card has not got does not");
+        CHECK(b.faults("drive0") == nullptr, "an empty drive has no fault table");
+        CHECK(b.mount("drive0", "a.dsk", false, err), "an 8-inch disk mounts");
+        ready(b);
+        DiskFaults* f = b.faults("drive0");
+        CHECK(f && f->empty(), "a mounted disk has an empty table");
+
+        CHECK(f->add("0/0/3 data", err) && f->add("0/0/4 id", err) && f->add("0/0/5 missing", err),
+              "three faults on track 0");
+
+        std::vector<uint8_t> v = readSlot(b, c, 3);
+        bool rest = true;
+        for (int i = 0; i < kHsSectorBytes; ++i)
+            if (i != 0 && i != HardSectorFdc::kFaultDataByte) rest = rest && v[(size_t)i] == 0x43;
+        CHECK(v[(size_t)HardSectorFdc::kFaultDataByte] == (uint8_t)(0x43 ^ 0xFF),
+              "data: the payload byte reads inverted, so the BIOS's checksum fails");
+        CHECK(v[0] == 0x80 && rest, "...and every other byte of the slot is good");
+        CHECK(f->find(0, 0, 3, FaultKind::Data)->hits == 1, "...and the read is one hit");
+
+        v = readSlot(b, c, 4);
+        CHECK(v[0] == (0x80 ^ 0x7F) && (v[0] & 0x80), "id: the sync bit is there, the track is wrong");
+        CHECK(v[1] == 0x44 && v[HardSectorFdc::kFaultDataByte] == 0x44, "...and the payload is good");
+        CHECK(f->find(0, 0, 4, FaultKind::Id)->hits == 1, "...one hit");
+
+        v = readSlot(b, c, 5);
+        bool zero = true;
+        for (uint8_t x : v) zero = zero && x == 0;
+        CHECK(zero, "missing: the whole slot reads as zeros, as an unformatted slot does");
+        CHECK(f->find(0, 0, 5, FaultKind::Missing)->hits == 1, "...one hit");
+
+        v = readSlot(b, c, 6);
+        CHECK(v[0] == 0x80 && v[HardSectorFdc::kFaultDataByte] == 0x46, "a sector with no fault reads clean");
+
+        // Head 1 does not exist on this card: such a fault never matches. `*` does.
+        f->clearAll();
+        CHECK(f->add("0/1/7 data", err), "a fault on head 1");
+        v = readSlot(b, c, 7);
+        CHECK(v[HardSectorFdc::kFaultDataByte] == 0x47, "...never matches: the card has one head");
+        CHECK(f->add("0/*/7 data", err), "a fault on any head");
+        v = readSlot(b, c, 7);
+        CHECK(v[HardSectorFdc::kFaultDataByte] == (uint8_t)(0x47 ^ 0xFF), "...matches head 0");
+
+        CHECK(img == master, "the image did not change: a fault is an overlay");
+        setMediaResolver(openHostFile);
+    }
+
+    SECTION("88-DCDD -- a count=N fault wears down only on READS, not as the slot goes by (#968)");
+    {
+        withDisk(337568, 0x5A);
+        Clock     c;
+        DcddBoard b;
+        b.attachClock(&c);
+        std::string err;
+        b.mount("drive0", "a.dsk", false, err);
+        ready(b);
+        DiskFaults* f = b.faults("drive0");
+        CHECK(f->add("0/0/9 data count=2", err), "a fault that fails twice");
+
+        // Ten turns of the disk with the guest watching the sector port and never reading
+        // data. The BIOS does this all the time; it must not wear the fault.
+        for (int i = 0; i < 32 * 10; ++i) { c.advance(kPerSector); (void)in(b, 0x09); }
+        CHECK(f->list()[0].hits == 0 && f->list()[0].left == 2, "slots going by use nothing");
+
+        // A pass that reads the slot but stops before the bad byte uses nothing either.
+        const uint64_t perTrack = kPerSector * 32;
+        c.advance((9 * kPerSector + perTrack - c.now() % perTrack) % perTrack + kReadStart);
+        for (int i = 0; i < 10; ++i) { (void)in(b, 0x0A); c.advance(kByte); }
+        CHECK(f->list()[0].hits == 0, "a read that stops at byte 10 never reached the bad byte");
+
+        CHECK(readSlot(b, c, 9)[HardSectorFdc::kFaultDataByte] == (0x5A ^ 0xFF), "first read: bad");
+        CHECK(readSlot(b, c, 9)[HardSectorFdc::kFaultDataByte] == (0x5A ^ 0xFF), "second read: bad");
+        CHECK(readSlot(b, c, 9)[HardSectorFdc::kFaultDataByte] == 0x5A, "third read: good -- the retry recovers");
+        CHECK(f->list()[0].hits == 2 && f->list()[0].left == 0, "two hits, none left");
+
+        // THE DATA PORT IS A LATCH: a fast CPU reads the same byte twice. That is one bad byte
+        // on the disk, so it is one hit.
+        CHECK(f->add("0/0/11 data", err), "a hard fault on sector 11");
+        c.advance((11 * kPerSector + perTrack - c.now() % perTrack) % perTrack + kReadStart +
+                  kByte * HardSectorFdc::kFaultDataByte);
+        CHECK(in(b, 0x0A) == (0x5A ^ 0xFF) && in(b, 0x0A) == (0x5A ^ 0xFF), "the bad byte, read twice in one byte time");
+        CHECK(f->find(0, 0, 11, FaultKind::Data)->hits == 1, "...is one hit");
+        setMediaResolver(openHostFile);
+    }
+
+    SECTION("88-DCDD -- a write fault: the drive does not write, and the old bytes stay (#968)");
+    {
+        withDisk(337568, 0x11);
+        Clock     c;
+        DcddBoard b;
+        b.attachClock(&c);
+        std::string err;
+        b.mount("drive0", "a.dsk", false, err);
+        ready(b);
+        DiskFaults* f = b.faults("drive0");
+        CHECK(f->add("0/0/2 write", err), "a write fault on sector 2");
+
+        writeSlot(b, c, 2, 0x99);
+        CHECK(f->list()[0].hits == 1, "the write is one hit");
+        CHECK(readSlot(b, c, 2)[40] == 0x11, "...and the sector still holds the old bytes");
+
+        writeSlot(b, c, 3, 0x99);
+        CHECK(readSlot(b, c, 3)[40] == 0x99, "a sector with no fault takes the write");
+        setMediaResolver(openHostFile);
+    }
+
+    SECTION("88-DCDD -- the `faults` key, SNAPSHOT, and MOUNT clearing the table (#968)");
+    {
+        withDisk(337568);
+        DcddBoard b;
+        b.id = "dsk0";
+        std::string err;
+        CHECK(!b.loadSubUnit("drive", {{"unit", "1"}, {"faults", "2/0/1 data"}}, err) && !err.empty(),
+              "`faults` with no `mount` is refused");
+        err.clear();
+        CHECK(b.loadSubUnit("drive", {{"unit", "0"}, {"mount", "a.dsk"}, {"faults", "2/0/1 data count=3; 5/*/* id"}},
+                            err),
+              "a drive table with `faults` loads");
+        DiskFaults* f = b.faults("drive0");
+        CHECK(f && f->toText() == "2/0/1 data count=3; 5/*/* id", "...and the drive has them");
+
+        bool saved = false;
+        for (const auto& su : b.subUnits())
+            for (const auto& fld : su.fields)
+                saved = saved || (fld.key == "faults" && fld.quoted && fld.text == "2/0/1 data count=3; 5/*/* id");
+        CHECK(saved, "CONFIG SAVE writes the `faults` key back, quoted");
+
+        DiskFaults::use(*f->find(2, 0, 1, FaultKind::Data));
+        StateWriter w;
+        b.serialize(w);
+        DcddBoard b2;
+        b2.id = "dsk0";
+        CHECK(b2.loadSubUnit("drive", {{"unit", "0"}, {"mount", "a.dsk"}}, err), "the same disk in a second card");
+        StateReader r(w.data());
+        b2.deserialize(r);
+        CHECK(r.ok() && r.remaining() == 0, "RESTORE reads the whole record");
+        const DiskFaults* g = b2.faults("drive0");
+        CHECK(g && g->list().size() == 2 && g->list()[0].left == 2 && g->list()[0].hits == 1,
+              "...and the faults come back with their counts");
+
+        CHECK(b.mount("drive0", "b.dsk", false, err) && b.faults("drive0")->empty(),
+              "a new disk in the drive brings no faults");
+        b.faults("drive0")->add("1/0/1 data", err);
+        CHECK(b.unmount("drive0", err) && b.faults("drive0") == nullptr, "UNMOUNT: no disk, no faults");
+        CHECK(b.mount("drive0", "a.dsk", false, err) && b.faults("drive0")->empty(),
+              "...and the table was cleared, not only hidden");
         setMediaResolver(openHostFile);
     }
 }

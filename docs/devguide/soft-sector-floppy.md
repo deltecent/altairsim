@@ -129,6 +129,16 @@ serializes it next to the head position for `SNAPSHOT`. `Board::takesFaults` and
 `takesFaults` is false, `FAULT` says that the board does not take faults. When it is true and
 `faults` returns `nullptr`, the drive is empty.
 
+**The hard-sector boards (#968).** The 88-DCDD and the 88-MDS have no chip and no
+`DiskImageDrive`. `HardSectorFdc` keeps a `DiskFaults` in each `Drive` and applies it in
+`syncSector`, after `readSector` fills the slot buffer. The card has no error bit, so the fault
+damages the bytes in the buffer, and the BIOS finds the error with its own checks. A hit counts in
+`read()`, when the guest first reads the damaged byte in that pass. `syncSector` runs for each
+slot that goes under the head. A count there would use up a fault on slots that the guest never
+read. A `write` fault makes `flushWrite` write nothing. `applyDriveFaults` has an overload
+that takes a `DiskFaults&`, so these boards use the same `faults` key rule. The 88-DCDD document
+has the table of the kinds.
+
 ## Geometry in real time — the FORMAT path
 
 This is the reusable core. A soft-sector disk's geometry is **not** fixed at mount: sector
