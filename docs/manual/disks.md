@@ -405,11 +405,11 @@ messages of a guest. The disk image does not change. The faults are in the drive
 image.
 
 These controllers take faults: `tarbell`, `tarbelldd`, `16fdc`, `64fdc`, `versafloppy`,
-`jadedd`, `disk1` and `disk1a`. Another controller refuses the command:
+`jadedd`, `disk1`, `disk1a`, `dcdd` and `mds`. Another controller refuses the command:
 
 ```
-altairsim> FAULT dsk0:drive0 ADD 2/0/1 data
-dsk0:drive0: the dcdd board does not take faults on its disk
+altairsim> FAULT fd0:drive0 ADD 2/0/1 data
+fd0:drive0: the mdsa board does not take faults on its disk
 ```
 
 ### Give a fault
@@ -423,7 +423,9 @@ A fault is a sector address, a kind and an optional count:
 - The track, the head and the sector are decimal numbers. Use `*` for all tracks, all heads or
   all sectors.
 - The sector is the number that the guest asks for. On most soft-sector controllers, the first
-  sector of a track is 1.
+  sector of a track is 1. On the `dcdd` and the `mds`, the sector is the number that the guest
+  reads from the sector position port: 0 to 31 on an 8-inch disk, 0 to 15 on a minidisk. The
+  head is always 0.
 - With no count, the fault is **hard**. The sector fails each time.
 - With `count=N`, the sector fails N times. After that, the sector is good. A test with a count
   shows that a retry gets past the error.
@@ -444,6 +446,33 @@ a µPD765. The other controllers have a WD17xx.
 | `id` | Record Not Found and CRC Error (bits 4 and 3) | ST0 AT, ST1 DE |
 | `missing` | Record Not Found (bit 4) | ST0 AT, ST1 ND |
 | `write` | Write Fault (bit 5) | ST0 AT and EC |
+
+The `dcdd` and the `mds` have no error bit. The guest reads each sector as 137 raw bytes, and it
+finds an error with its own checks, such as a checksum. A fault on these controllers changes the
+bytes that the guest reads:
+
+| Kind | What the guest reads on a `dcdd` or an `mds` |
+|---|---|
+| `data` | Byte 64 of the sector is wrong, so the checksum of the sector fails. |
+| `id` | Byte 0 gives the wrong track number. |
+| `missing` | Each byte of the sector is 0, as on a sector that was never written. |
+| `write` | The drive does not write the sector. The old bytes stay on the disk. |
+
+On these controllers, a fault occurs when the guest reads the bad byte. A sector that turns
+under the head while the guest does not read it does not use the fault. For example, the CP/M
+BIOS of the 88-DCDD reads a bad sector 12 times. Sector 0 of track 2 holds directory entries. A
+hard fault on that sector gives 12 hits and then the BDOS error:
+
+```
+A>DIR
+Bdos Err On A: Bad Sector
+```
+
+```
+altairsim> FAULT
+  UNIT         FAULT        HITS   LEFT
+  dsk0:drive0  2/0/0 data     12      -
+```
 
 1. Mount the disk.
 2. Add the fault. This one gives two CRC errors on track 2, head 0, sector 1:

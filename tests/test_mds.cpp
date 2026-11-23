@@ -528,4 +528,44 @@ void test_mds() {
 
         setMediaResolver(openHostFile);  // put the real filesystem back
     }
+
+    SECTION("88-MDS -- FAULT runs on the minidisk too: the hook is the shared base's (#968)");
+    {
+        withDisk(76720, 0x33);
+        Clock    c;
+        MdsBoard b;
+        b.attachClock(&c);
+        std::string err;
+        CHECK(b.mount("drive0", "a.dsk", false, err), "a minidisk mounts");
+        ready(b, c);
+        DiskFaults* f = b.faults("drive0");
+        CHECK(f && f->add("0/0/5 data", err) && f->add("0/0/6 missing", err), "two faults on track 0");
+
+        // One pass of a sector at the minidisk's 64 us byte clock, with a poll half a turn
+        // earlier, as the BIOS's hunt loop does.
+        auto readSlot = [&](int sector) {
+            const uint64_t perTrack = kPerSector * 16;
+            const uint64_t at       = (uint64_t)sector * kPerSector;
+            c.advance((at + perTrack / 2 + perTrack - c.now() % perTrack) % perTrack + 1);
+            (void)in(b, 0x09);
+            c.advance((at + perTrack - c.now() % perTrack) % perTrack + kReadStart);
+            std::vector<uint8_t> v;
+            for (int i = 0; i < kHsSectorBytes; ++i) {
+                v.push_back(in(b, 0x0A));
+                c.advance(kByte);
+            }
+            return v;
+        };
+
+        std::vector<uint8_t> v = readSlot(5);
+        CHECK(v[(size_t)HardSectorFdc::kFaultDataByte] == (0x33 ^ 0xFF) && v[10] == 0x33,
+              "data: the payload byte reads inverted, the rest good");
+        v = readSlot(6);
+        bool zero = true;
+        for (uint8_t x : v) zero = zero && x == 0;
+        CHECK(zero, "missing: the slot reads as zeros");
+        CHECK(f->list()[0].hits == 1 && f->list()[1].hits == 1, "one hit each");
+        CHECK(readSlot(7)[(size_t)HardSectorFdc::kFaultDataByte] == 0x33, "a sector with no fault reads clean");
+        setMediaResolver(openHostFile);
+    }
 }

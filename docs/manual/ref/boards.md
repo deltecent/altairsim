@@ -361,6 +361,7 @@ MITS 88-DCDD: 8" hard-sector floppy, up to 16 drives. Three ports at BASE+0..2. 
 | `readonly` | bool | `true` \| `false` | Write-protect the disk. The DRIVE senses it, so the guest is never told: it writes, the head is inhibited, the bytes go nowhere *(also `writeprotect`)* |
 | `media` | enum | `8in` \| `fdc8mb` | Force the format instead of probing the image's size |
 | `create` | bool | `true` \| `false` | Make the disk file (empty) if it is not there, then mount it -- a fresh disk to FORMAT. Pair with `media` to pick its geometry |
+| `faults` | string | text | Bad sectors on the disk: <track>/<head>/<sector> <kind> [count=N], with a ';' between two faults. The kind is data, id, missing or write. With no count, the sector fails each time. The image does not change |
 
 #### Board properties
 
@@ -597,6 +598,7 @@ MITS 88-MDS: 5.25" minidisk, 4 drives. Same three ports as the dcdd -- but 300 R
 | `readonly` | bool | `true` \| `false` | Write-protect the disk. The DRIVE senses it, so the guest is never told: it writes, the head is inhibited, the bytes go nowhere *(also `writeprotect`)* |
 | `media` | enum | `minidisk` | Force the format instead of probing the image's size |
 | `create` | bool | `true` \| `false` | Make the disk file (empty) if it is not there, then mount it -- a fresh disk to FORMAT. Pair with `media` to pick its geometry |
+| `faults` | string | text | Bad sectors on the disk: <track>/<head>/<sector> <kind> [count=N], with a ';' between two faults. The kind is data, id, missing or write. With no count, the sector fails each time. The image does not change |
 
 #### Board properties
 

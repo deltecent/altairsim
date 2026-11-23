@@ -377,6 +377,45 @@ They are **separate and both apply.** Document this loudly.
   Period software polls them rather than counting, so it cannot tell — but a formatter that *timed*
   a seek would. If the MITS manual's numbers turn up, they belong here.
 
+## Bad sectors: `FAULT` and the `faults` key
+
+A drive can have bad sectors on its disk, to test the retry code of a guest (#968). The faults
+are a table in the drive (`DiskFaults`, `src/host/diskfaults.h`), and the image does not change.
+Give them with `FAULT <id>:driveN`, with the `disk_fault_*` MCP tools, or with the `faults` key
+of a `[[board.drive]]` table. The *User Manual* gives the syntax, in "Simulate a bad sector" in
+the Disks chapter. The code is in `HardSectorFdc`, so the 88-MDS has the same faults.
+
+The real card has no error bit, and it never looks inside the 137-byte slot. The BIOS finds a
+bad sector with its own checks: the checksum, the `FF` stop byte and the track number in byte 0.
+A fault therefore changes the bytes that the guest reads from the slot:
+
+| Kind | What the guest reads | The BIOS check that fails |
+|---|---|---|
+| `data` | Byte 64 inverted. Byte 64 is in the payload on a system track and on a data track. | The checksum |
+| `id` | Byte 0 with the sync bit set and the other 7 bits inverted | The track number |
+| `missing` | Each byte 0, as an unformatted slot reads | The stop byte |
+| `write` | The board does not write the slot. The old bytes stay in the image. | A later read |
+
+- **The address** is `<track>/0/<sector>`. The track is the head position. The head is always 0,
+  and a fault on head 1 never matches. The sector is the physical sector, 0 to 31, the number in
+  the sector position register. It is not the CP/M sector after either skew.
+- **A hit counts when the guest reads the bad byte**, the first time in that pass of the slot:
+  byte 0 for `id` and `missing`, byte 64 for `data`. A slot that goes under the head while the
+  guest does not read it does not use the fault. A second read of the latch in the same byte time
+  does not count again. A `write` fault counts when the board would flush the slot.
+- **The buffered CP/M 2.2b BIOS reads a whole track.** It reads each slot of the track, and it
+  reads a bad slot 12 times. A fault on any slot of a track gets 12 hits when the BIOS loads that
+  track. The BIOS then marks the slot bad in its track buffer. It reports
+  `Bdos Err On A: Bad Sector` only when CP/M asks for that sector. On the CP/M 2.2b disk, physical
+  sector 0 of track 2 holds directory entries, and physical sector 5 holds none. A hard fault on
+  `2/0/0` stops `DIR`. A hard fault on `2/0/5` gets its 12 hits, and `DIR` lists the disk. The
+  acceptance test `acceptance-dcdd-fault` uses `2/0/0`: a `count=2` fault that the BIOS gets
+  past, and a hard fault with 12 hits.
+
+`SET <id> DEBUG=fault` writes a line each time that a fault occurs. `MOUNT` and `UNMOUNT` clear
+the faults of the drive. `CONFIG SAVE` writes the `faults` key, and a snapshot keeps the faults
+with their counts.
+
 ## The BIOS track-buffer trap (not a board bug, but it will bite you)
 
 The 8 MB Altair CP/M BIOS does **not** write to the DCDD when CP/M closes a file. BIOS WRITE only copies into an in-memory `trkBuf` (32 × 137 = 4,384 bytes, each slot prefixed with a status byte) and marks it dirty. The actual port-0x0A write happens in `invFlush`, **called from the BIOS CONIN entry** — the BIOS uses console input as its flush trigger.

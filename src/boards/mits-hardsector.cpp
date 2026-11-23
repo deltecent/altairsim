@@ -1,7 +1,9 @@
 #include "boards/mits-hardsector.h"
 
 #include "core/bus.h"
+#include "boards/floppy-drive.h"
 #include "core/clock.h"
+#include "core/debuglog.h"
 #include "core/statefile.h"
 #include "host/media.h"
 
@@ -135,6 +137,7 @@ void HardSectorFdc::syncSector(const Position& pos) {
     // does not have at all -- is a different thing, but the guest sees the same rejection.)
     size_t n = sizeof buf_;
     (void)d->img->readSector(d->track, 0, pos.sector, buf_, &n);
+    applyFault(*d, pos.sector);
 
     // The head has reached a new slot (once per sector transition, not per byte). Traced
     // only when the operator asked -- one AND on the way past otherwise.
@@ -226,6 +229,7 @@ uint8_t HardSectorFdc::read(const BusCycle& c) {
     Position pos = where();
     syncSector(pos);  // the head has kept turning since you last looked
     if (pos.byteIndex < 0) return 0x00;  // the READ CLEAR one-shot holds the path cleared
+    if (bufFault_ >= 0 && readPos_ <= pos.byteIndex) countFault(*d, bufSector_, pos.byteIndex);
     readPos_ = pos.byteIndex + 1;
     return buf_[pos.byteIndex];
 }
@@ -391,6 +395,16 @@ void HardSectorFdc::flushWrite() {
         return;
     }
 
+    // A BAD SPOT THE DRIVE WILL NOT WRITE (#968): the bytes go nowhere and the old ones stay.
+    // The guest is not told, as on the real card -- its write-verify, or the next read, is
+    // what finds it.
+    if (DiskFault* f = d->faults.find(wTrack_, 0, wSector_, FaultKind::Write)) {
+        useFault(*f, wTrack_, wSector_);
+        writePos_ = 0;
+        if (bufSector_ == wSector_) bufSector_ = -1;
+        return;
+    }
+
     size_t n = kHsSectorBytes;
     if (!d->img->writeSector(wTrack_, 0, wSector_, wbuf_, &n)) {
         char m[128];
@@ -402,6 +416,43 @@ void HardSectorFdc::flushWrite() {
     }
     writePos_ = 0;
     if (bufSector_ == wSector_) bufSector_ = -1;  // the buffer we hold is now stale
+}
+
+// ---------------------------------------------------------------------------
+// BAD SECTORS (#968) -- see the header. The slot is damaged as it is loaded into buf_, and the
+// hit is counted when the guest reads the damaged byte. One kind per pass: missing, then id,
+// then data, so a slot with two kinds shows the worse one first.
+// ---------------------------------------------------------------------------
+void HardSectorFdc::applyFault(Drive& d, int sector) {
+    bufFault_ = -1;
+    if (d.faults.empty()) return;
+    if (d.faults.find(d.track, 0, sector, FaultKind::Missing)) {
+        std::memset(buf_, 0, sizeof buf_);  // no sync, no stop byte: an unformatted slot
+        bufFault_ = (int)FaultKind::Missing;
+    } else if (d.faults.find(d.track, 0, sector, FaultKind::Id)) {
+        buf_[0] ^= 0x7F;  // the sync bit stays; the track never matches
+        bufFault_ = (int)FaultKind::Id;
+    } else if (d.faults.find(d.track, 0, sector, FaultKind::Data)) {
+        buf_[kFaultDataByte] ^= 0xFF;  // the sum always changes: 0xFF - 2b is odd
+        bufFault_ = (int)FaultKind::Data;
+    }
+}
+
+void HardSectorFdc::countFault(Drive& d, int sector, int index) {
+    const FaultKind k   = (FaultKind)bufFault_;
+    const int       bad = (k == FaultKind::Data) ? kFaultDataByte : 0;
+    if (index != bad) return;
+    if (DiskFault* f = d.faults.find(d.track, 0, sector, k)) useFault(*f, d.track, sector);
+}
+
+void HardSectorFdc::useFault(DiskFault& f, int track, int sector) {
+    DiskFaults::use(f);
+    if (auto* dc = debugChannel(); dc && dc->on(FAULT)) {
+        dbg::line(*dc) << "fault drive" << sel_ << " " << track << "/0/" << sector << " "
+                       << faultKindName(f.kind) << " hit " << f.hits;
+        if (!f.hard()) dbg::out() << ", " << f.left << " left";
+        dbg::out() << "\n";
+    }
 }
 
 void HardSectorFdc::invalidatePosition() {
@@ -441,11 +492,13 @@ void HardSectorFdc::serialize(StateWriter& w) const {
         w.boolean(d.loaded);
         w.boolean(d.roSaid);
         w.u32((uint32_t)(int32_t)d.track);
+        d.faults.serialize(w);  // the bad sectors and their counts (#968)
     }
     w.boolean(writing_);
     w.raw(buf_, kHsSectorBytes);
     w.u32((uint32_t)(int32_t)bufSector_);
     w.u32((uint32_t)(int32_t)readPos_);
+    w.u32((uint32_t)(int32_t)bufFault_);
     w.raw(wbuf_, kHsSectorBytes);
     w.u32((uint32_t)(int32_t)writePos_);
     w.u32((uint32_t)(int32_t)wSector_);
@@ -467,16 +520,20 @@ void HardSectorFdc::deserialize(StateReader& r) {
         bool loaded = r.boolean();
         bool roSaid = r.boolean();
         int  track  = (int)(int32_t)r.u32();
+        DiskFaults table;
+        table.deserialize(r);
         if (i < drive_.size()) {
             drive_[i].loaded = loaded;
             drive_[i].roSaid = roSaid;
             drive_[i].track  = track;
+            drive_[i].faults = std::move(table);
         }
     }
     writing_ = r.boolean();
     r.raw(buf_, kHsSectorBytes);
     bufSector_ = (int)(int32_t)r.u32();
     readPos_   = (int)(int32_t)r.u32();
+    bufFault_  = (int)(int32_t)r.u32();
     r.raw(wbuf_, kHsSectorBytes);
     writePos_ = (int)(int32_t)r.u32();
     wSector_  = (int)(int32_t)r.u32();
@@ -621,6 +678,7 @@ bool HardSectorFdc::mount(const std::string& unit, const std::string& path, bool
     d.fmt     = fresh.fmt;
     d.spindle = fresh.spindle;
     d.roSaid  = false;  // a new disk gets a fresh warning; the fields are copied one by one
+    d.faults.clearAll();  // the faults were the old disk's
     return true;
 }
 
@@ -637,6 +695,7 @@ bool HardSectorFdc::unmount(const std::string& unit, std::string& err) {
     d.path.clear();
     d.spindle.stop();  // no disk, no rotation. sectorAt() reads 0 and arms nothing.
     d.loaded = false;
+    d.faults.clearAll();
     return true;
 }
 
@@ -747,6 +806,7 @@ std::vector<Property> HardSectorFdc::subUnitProperties(const std::string& table)
         x.kind = Kind::Bool;
         p.push_back(std::move(x));
     }
+    p.push_back(driveFaultsKey());
     return p;
 }
 
@@ -786,7 +846,7 @@ bool HardSectorFdc::addSubUnit(const std::string& table, const KeyValues& kv, st
     }
 
     int         unit = -1;
-    std::string path, media;
+    std::string path, media, faultText;
     bool        ro     = false;
     bool        create = false;
 
@@ -797,6 +857,7 @@ bool HardSectorFdc::addSubUnit(const std::string& table, const KeyValues& kv, st
         else if (k == "mount") path = v;
         else if (k == "readonly") ro = (v == "true" || v == "1" || v == "yes" || v == "on");
         else if (k == "media") media = v;
+        else if (k == "faults") faultText = v;
         else if (k == "create") create = (v == "true" || v == "1" || v == "yes" || v == "on");
     }
 
@@ -809,7 +870,7 @@ bool HardSectorFdc::addSubUnit(const std::string& table, const KeyValues& kv, st
 
     if (path.empty()) {
         drive_[(size_t)unit].forced = media;
-        return true;
+        return applyDriveFaults(drive_[(size_t)unit].faults, false, faultText, err);
     }
 
     // `create = true`: make the file (empty) if it is not there, at the SAME place mount()
@@ -824,7 +885,8 @@ bool HardSectorFdc::addSubUnit(const std::string& table, const KeyValues& kv, st
         }
     }
     // Always passed, empty too: a table with no `media` is a disk the size decides.
-    return mountWith("drive" + std::to_string(unit), path, ro, {{"media", media}}, err);
+    if (!mountWith("drive" + std::to_string(unit), path, ro, {{"media", media}}, err)) return false;
+    return applyDriveFaults(drive_[(size_t)unit].faults, true, faultText, err);
 }
 
 // The inverse (DESIGN.md 5). An EMPTY drive with no forced media has nothing to say, so it
@@ -843,10 +905,20 @@ std::vector<Board::SubUnit> HardSectorFdc::subUnits() const {
         if (d.img) {
             su.fields.push_back({"mount", d.path, true});
             if (d.img->readOnly()) su.fields.push_back({"readonly", "true", false});
+            if (!d.faults.empty()) su.fields.push_back({"faults", d.faults.toText(), true});
         }
         out.push_back(std::move(su));
     }
     return out;
+}
+
+bool HardSectorFdc::takesFaults(const std::string& unit) const {
+    return driveIndex(unit, drives_) >= 0;
+}
+
+DiskFaults* HardSectorFdc::faults(const std::string& unit) {
+    const int i = driveIndex(unit, drives_);
+    return (i >= 0 && drive_[(size_t)i].img) ? &drive_[(size_t)i].faults : nullptr;
 }
 
 } // namespace altair

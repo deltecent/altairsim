@@ -1,0 +1,29 @@
+# An 88-DCDD whose CP/M disk has a bad sector on the directory track (#968) -- for
+# dcdd-fault.exp.
+#
+# `faults` is the drive's bad-sector list. Track 2 holds the directory. The buffered BIOS reads
+# all of track 2 into its track buffer when CP/M logs in the disk at the first A>, so the BIOS
+# meets the fault with nothing typed. The sector number is the physical sector, 0 to 31.
+# count=2: two checksum errors, then the sector is good.
+#
+# Physical sector 0 holds directory entries, so a hard fault there stops DIR. Not every sector of
+# track 2 does: the BIOS reads a bad slot 12 times, marks it bad in its track buffer, and reports
+# the error only when CP/M asks for that sector. A hard fault on 2/0/5 gets 12 hits and DIR still
+# lists the disk. Found with SET dsk0 DEBUG=sector,fault; do not move the fault without checking.
+#
+# NOTHING WRITES TO THE IMAGE. `readonly = true` write-protects the disk, and a fault never
+# changes it. The .exp shasums the image before and after.
+[machine]
+name = "dcdd-fault"
+base = "default"
+
+startup = ["RUN FF00"]
+
+[[board]]
+id = "dsk0"
+
+  [[board.drive]]
+  unit     = 0
+  mount    = "../media/cpm/cpm22b23-56k.dsk"
+  readonly = true
+  faults   = "2/0/0 data count=2"

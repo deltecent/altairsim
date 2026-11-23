@@ -217,6 +217,10 @@ Property driveFaultsKey();
 // list on a drive with no disk is refused: the faults belong to a diskette.
 bool applyDriveFaults(DiskImageDrive& d, const std::string& text, std::string& err);
 
+// The same rule for a card that keeps its own table beside a raw image (the hard-sector
+// cards, #968). `loaded` says whether the drive has a disk.
+bool applyDriveFaults(DiskFaults& faults, bool loaded, const std::string& text, std::string& err);
+
 // The debug flag every such card offers for its drives' faults: `fault`, bit 0 of the channel.
 constexpr unsigned kFaultDebugBit = 0;
 
