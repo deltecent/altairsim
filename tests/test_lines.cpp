@@ -218,13 +218,19 @@ void test_lines() {
             bool serial = false;
             for (const auto& u : b->units()) serial = serial || u.kind == UnitKind::Serial;
             if (!serial) continue;
+            // A guest at a prompt polls for as long as it waits, so the reads go on through
+            // 40 ms of host time: the Flashwriter II counts a wait only after the guest has
+            // polled through two blanking pulses (#976).
+            uint64_t ns = 0;
+            m.bus.busClock().setHostNs([&ns] { return ns; });
             m.power();
-            for (int port = 0; port < 256; ++port) {
-                BusCycle c;
-                c.type = Cycle::IoRead;
-                c.addr = (uint16_t)port;
-                if (b->decodes(c)) (void)b->read(c);
-            }
+            for (; ns < 40000000; ns += 250000)
+                for (int port = 0; port < 256; ++port) {
+                    BusCycle c;
+                    c.type = Cycle::IoRead;
+                    c.addr = (uint16_t)port;
+                    if (b->decodes(c)) (void)b->read(c);
+                }
             CHECK(m.lineActivity().emptyPolls > 0,
                   (t.name + ": a status read with no byte counts as the guest waiting").c_str());
         }

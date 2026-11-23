@@ -70,18 +70,37 @@ bool FwiiBoard::decodes(const BusCycle& c) const {
 uint8_t FwiiBoard::read(const BusCycle& c) {
     if (c.type == Cycle::MemRead) return vram_[c.addr - base_];
     if ((c.port() & 1) == 0) {
+        const uint8_t s      = statusByte();
+        const bool    active = (s & 0x20) != 0;
         // A guest waiting for a key polls here. With no key latched it is waiting
         // (Board::emptyPolls, #948); the line hears of it too, for the console's own count
         // (#861). The key still comes in through pump(): this only asks.
+        //
+        // BUT BIT 5 IS ON THIS PORT TOO, and a guest can poll it to time the raster. At cold
+        // boot, Vector CP/M 2.22 H waits for the display, then for the blank, then counts
+        // through the blank to learn the processor's speed: one blanking start in all. Read
+        // as a key wait, that loop stopped `run` as idle again and again (#976). So the reads
+        // count only after the guest has polled through two blanking starts with no key, in
+        // one unbroken run of status reads. A prompt does that within two fields; the speed
+        // loop never does. A gap in the reads starts the count over, so the Monitor's own
+        // reads before the boot do not add to the loop's.
+        const uint64_t t = clock_ ? clock_->now() : 0;
+        if (t - kbLastPollT_ > kPollGapT) kbBlankStarts_ = 0;
+        kbLastPollT_ = t;
         if (!kbHave_) {
-            ++kbEmptyPolls_;
-            kb_->readable();
+            if (kbLastActive_ && !active && kbBlankStarts_ < kWaitBlankStarts) ++kbBlankStarts_;
+            if (kbBlankStarts_ >= kWaitBlankStarts) {
+                ++kbEmptyPolls_;
+                kb_->readable();
+            }
         }
-        return statusByte();
+        kbLastActive_ = active;
+        return s;
     }
 
     // INPD selects U46, and the read clears the flag. That is also the only thing that
-    // releases pin 73. The latch keeps its byte.
+    // releases pin 73. The latch keeps its byte. A key wait after a key starts over (#976).
+    if (kbHave_) kbBlankStarts_ = 0;
     kbHave_ = false;
     intChanged();
     return kbData_;
@@ -157,6 +176,7 @@ void FwiiBoard::reset(Reset r) {
     if (r != Reset::PowerOn) return;
     kbData_ = 0;
     kbHave_ = false;
+    kbBlankStarts_ = 0;
     intChanged();
 }
 

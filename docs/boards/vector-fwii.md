@@ -87,7 +87,7 @@ The unit `keyboard` takes `connect`. A machine file connects it to `console`, so
 | The last 128 bytes of the 2K do not show | The Monitor stops its scroll at `F780`. A guest can keep data in those bytes |
 | All eight bits of the key pass through | A program that sends bit 7 as a key flag still gets it |
 | Bit 5 is a 60 Hz clock | The CP/M 2.22 H BIOS counts loops across the pulse to find the processor speed. With `clock_hz` set, the bit follows emulated time, and the count is correct |
-| A status read counts as a poll of an empty line | The idle policy lets a machine stand down at the Monitor prompt, instead of using a host core |
+| A status read with no key counts as a poll of an empty line, after the guest polls through two blanking starts | The idle policy lets a machine stand down at the Monitor prompt, instead of using a host core. The CP/M 2.22 H speed count also reads this port, through one blanking start. If those reads count as a key wait, `run` over `--mcp` stops in the count many times (issue #976). A gap of more than 2000 T-states between two status reads starts the count of blanking starts again |
 
 ## Limitations and deliberate departures
 
