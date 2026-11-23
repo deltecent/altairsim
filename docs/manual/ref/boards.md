@@ -761,6 +761,7 @@ Vector Graphic Dual-Mode Disk Controller, floppy half: 4 drives of 77-track 16-h
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
 | `readonly` | bool | `true` \| `false` | Write-protect the disk. The guest reads it at status 0 bit 0, and the drive drops the write *(also `writeprotect`)* |
 | `create` | bool | `true` \| `false` | Make the disk file (empty) if it is not there, then mount it |
+| `faults` | string | text | Bad sectors on the disk: <track>/<head>/<sector> <kind> [count=N], with a ';' between two faults. The kind is data, id, missing or write. With no count, the sector fails each time. The image does not change |
 
 #### Board properties
 
@@ -783,6 +784,7 @@ Vector Graphic Micropolis Disk Controller Board: 4 drives of 77-track 16-hard-se
 | `mount` | string | text | The disk image to put in it. Relative to THIS FILE. |
 | `readonly` | bool | `true` \| `false` | Write-protect the disk. The guest reads it at status bit 4, and the board drops the write *(also `writeprotect`)* |
 | `create` | bool | `true` \| `false` | Make the disk file (empty) if it is not there, then mount it |
+| `faults` | string | text | Bad sectors on the disk: <track>/<head>/<sector> <kind> [count=N], with a ';' between two faults. The kind is data, id, missing or write. With no count, the sector fails each time. The image does not change |
 
 #### Board properties
 

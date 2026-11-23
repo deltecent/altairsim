@@ -1,5 +1,6 @@
 #include "boards/vector-dualmode.h"
 
+#include "boards/floppy-drive.h"
 #include "core/bus.h"
 #include "core/clock.h"
 #include "core/statefile.h"
@@ -154,11 +155,25 @@ void DualModeBoard::start() {
 // With ECC ENABLE the hardware makes the ECC again as the bytes go by, and the four bytes that
 // reach RAM are the difference: 00 on a match, a syndrome if not (reference 1-6). Without it,
 // they are the bytes on the disk.
+//
+// A bad spot (#971) is put in before the ECC compare, so the hardware sees it too.
 void DualModeBoard::readSlot(Drive& d, int sector) {
     uint8_t slot[kSlot];
     size_t  n = sizeof slot;
     int     side = (c0_ >> 2) & 1;
+    if (DiskFault* f = d.faults.find(d.track, side, sector, FaultKind::Missing)) {
+        useFault(*f, d.track, side, sector);
+        return;
+    }
     if (side >= d.sides || !d.img->readSector(d.track, side, sector, slot, &n) || !slot[0]) return;
+
+    if (DiskFault* f = d.faults.find(d.track, side, sector, FaultKind::Id)) {
+        slot[kFaultIdByte] ^= 0xFF;
+        useFault(*f, d.track, side, sector);
+    } else if (DiskFault* g = d.faults.find(d.track, side, sector, FaultKind::Data)) {
+        slot[kFaultDataByte] ^= 0xFF;
+        useFault(*g, d.track, side, sector);
+    }
 
     if (eccEnabled()) {
         uint32_t made = ecc(slot, kEccAt);
@@ -199,12 +214,28 @@ void DualModeBoard::writeSlot(Drive& d, int sector) {
 
     size_t n    = sizeof slot;
     int    side = (c0_ >> 2) & 1;
+
+    // A bad spot that takes no write (#971). The old bytes stay, and the guest is not told.
+    if (DiskFault* f = d.faults.find(d.track, side, sector, FaultKind::Write)) {
+        useFault(*f, d.track, side, sector);
+        return;
+    }
     if (side >= d.sides || !d.img->writeSector(d.track, side, sector, slot, &n)) {
         say(id + ": write failed at track " + std::to_string(d.track) + " side " +
             std::to_string(side) + " sector " + std::to_string(sector));
         return;
     }
     d.img->sync();
+}
+
+void DualModeBoard::useFault(DiskFault& f, int track, int side, int sector) {
+    DiskFaults::use(f);
+    if (auto* dc = debugChannel(); dc && dc->on(FAULT)) {
+        dbg::line(*dc) << "fault drive" << (c0_ & 3) << " " << track << "/" << side << "/"
+                       << sector << " " << faultKindName(f.kind) << " hit " << f.hits;
+        if (!f.hard()) dbg::out() << ", " << f.left << " left";
+        dbg::out() << "\n";
+    }
 }
 
 // POC* clears both latches and the motor one-shot, and the board is not busy. The schematic
@@ -234,6 +265,8 @@ void DualModeBoard::serialize(StateWriter& w) const {
         w.u32((uint32_t)d.track);
         w.boolean(d.roSaid);
     }
+    // The bad sectors and their counts (#971).
+    for (const auto& d : drive_) d.faults.serialize(w);
 }
 
 void DualModeBoard::deserialize(StateReader& r) {
@@ -248,6 +281,7 @@ void DualModeBoard::deserialize(StateReader& r) {
         d.track  = (int)r.u32();
         d.roSaid = r.boolean();
     }
+    for (auto& d : drive_) d.faults.deserialize(r);
 }
 
 // ---------------------------------------------------------------------------
@@ -304,6 +338,7 @@ bool DualModeBoard::mount(const std::string& unit, const std::string& path, bool
     d.img    = std::make_unique<DiskImage>(std::move(media));
     d.path   = path;
     d.roSaid = false;
+    d.faults.clearAll();  // the faults were the old diskette's
     probe(d);
 
     if (d.img->readOnlyForced())
@@ -324,6 +359,7 @@ bool DualModeBoard::unmount(const std::string& unit, std::string& err) {
     d.path.clear();
     d.sides = 0;
     d.spindle.stop();
+    d.faults.clearAll();
     return true;
 }
 
@@ -394,6 +430,7 @@ std::vector<Property> DualModeBoard::subUnitProperties(const std::string& table)
         x.kind = Kind::Bool;
         p.push_back(std::move(x));
     }
+    p.push_back(driveFaultsKey());
     return p;
 }
 
@@ -404,7 +441,7 @@ bool DualModeBoard::addSubUnit(const std::string& table, const KeyValues& kv, st
     }
 
     int         unit = -1;
-    std::string path;
+    std::string path, faultText;
     bool        ro     = false;
     bool        create = false;
     for (const auto& [k, v] : kv) {
@@ -412,13 +449,14 @@ bool DualModeBoard::addSubUnit(const std::string& table, const KeyValues& kv, st
         else if (k == "mount") path = v;
         else if (k == "readonly") ro = (v == "true" || v == "1" || v == "yes" || v == "on");
         else if (k == "create") create = (v == "true" || v == "1" || v == "yes" || v == "on");
+        else if (k == "faults") faultText = v;
     }
 
     if (unit < 0) {
         err = "[[board.drive]] needs a `unit`";
         return false;
     }
-    if (path.empty()) return true;
+    if (path.empty()) return applyDriveFaults(drive_[(size_t)unit].faults, false, faultText, err);
 
     if (create) {
         std::string     rp = resolvePath(path);
@@ -428,7 +466,17 @@ bool DualModeBoard::addSubUnit(const std::string& table, const KeyValues& kv, st
             if (!writeHostFile(rp, {}, cerr)) { err = cerr + pathNote(path); return false; }
         }
     }
-    return mount("drive" + std::to_string(unit), path, ro, err);
+    if (!mount("drive" + std::to_string(unit), path, ro, err)) return false;
+    return applyDriveFaults(drive_[(size_t)unit].faults, true, faultText, err);
+}
+
+bool DualModeBoard::takesFaults(const std::string& unit) const {
+    return driveIndex(unit, kDrives) >= 0;
+}
+
+DiskFaults* DualModeBoard::faults(const std::string& unit) {
+    const int i = driveIndex(unit, kDrives);
+    return (i >= 0 && drive_[(size_t)i].img) ? &drive_[(size_t)i].faults : nullptr;
 }
 
 // An empty drive writes no table.
@@ -443,6 +491,7 @@ std::vector<Board::SubUnit> DualModeBoard::subUnits() const {
         su.fields.push_back({"unit", std::to_string(i), false});
         su.fields.push_back({"mount", d.path, true});
         if (d.img->readOnly()) su.fields.push_back({"readonly", "true", false});
+        if (!d.faults.empty()) su.fields.push_back({"faults", d.faults.toText(), true});
         out.push_back(std::move(su));
     }
     return out;

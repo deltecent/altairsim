@@ -30,10 +30,25 @@
 //
 // THE SLOT IS 275 BYTES AND THE IMAGE HOLDS ALL OF IT: sync, track, sector, 10 zeros, 256 data,
 // checksum, 4 ECC, valid. That is the sector as it reads back into RAM, from the sync byte on.
+//
+// BAD SECTORS (#971, host/diskfaults.h). The board never looks inside a slot, so a fault is a bad
+// spot on the disk: the bytes that reach RAM are wrong, and the guest finds it with its own
+// header, checksum and ECC checks. The image does not change. The kinds, on the 275-byte slot:
+//
+//   data     the checksum, byte 269, reads inverted. The data is intact, and the sum fails.
+//   id       the track, byte 1, reads inverted, so the header compare fails.
+//   missing  the slot has no sync byte, so RAM keeps what it held.
+//   write    the drive does not write. The old bytes stay, and the guest is not told.
+//
+// The damage goes in before the ECC compare, so with ECC ENABLE the four ECC bytes in RAM are a
+// syndrome, as for a real bad byte. One kind for each read, in the order missing, id, data. The
+// address is <track>/<side>/<sector>: the head's track, control 0 bit 2, and the sector. Each hit
+// counts at START, one for each transfer.
 
 #include "core/board.h"
 #include "core/spindle.h"
 #include "host/disk.h"
+#include "host/diskfaults.h"
 
 #include <cstdint>
 #include <memory>
@@ -63,9 +78,14 @@ public:
     std::vector<Property> properties() override;
     std::vector<MapEntry> ioMap() const override;
 
-    // `SET dm0 DEBUG=seek` traces head steps. `DEBUG=sector` traces each transfer.
-    std::vector<std::string> debugFlags() const override { return {"sector", "seek"}; }
-    enum DebugFlag { SECTOR = 0, SEEK = 1 };
+    // `SET dm0 DEBUG=seek` traces head steps. `DEBUG=sector` traces each transfer. `DEBUG=fault`
+    // writes a line each time a bad sector is used (#971).
+    std::vector<std::string> debugFlags() const override { return {"sector", "seek", "fault"}; }
+    enum DebugFlag { SECTOR = 0, SEEK = 1, FAULT = 2 };
+
+    // Bad sectors. See the header.
+    bool        takesFaults(const std::string& unit) const override;
+    DiskFaults* faults(const std::string& unit) override;
 
     std::vector<UnitDef> units() const override;
     bool mount(const std::string& unit, const std::string& path, bool ro, std::string& err) override;
@@ -100,6 +120,8 @@ private:
     static constexpr size_t   kEccRam   = 310;  // in RAM on a write: U51 times it off the address
     static constexpr uint16_t kRamBytes = 512;
     static constexpr int      kMotorSec = 4;
+    static constexpr size_t   kFaultIdByte   = 1;    // the track
+    static constexpr size_t   kFaultDataByte = 269;  // the checksum
 
     struct Drive {
         std::unique_ptr<DiskImage> img;
@@ -108,6 +130,7 @@ private:
         int         track  = 0;
         bool        roSaid = false;  // "write-protected, discarding" -- said once
         Spindle     spindle;         // stopped when empty, so no sector pulses arrive
+        DiskFaults  faults;          // the bad sectors of the diskette (#971). MOUNT clears them
     };
 
     uint64_t now() const { return clock_ ? clock_->now() : 0; }
@@ -125,6 +148,7 @@ private:
     void start();
     void readSlot(Drive& d, int sector);
     void writeSlot(Drive& d, int sector);
+    void useFault(DiskFault& f, int track, int side, int sector);
     void say(std::string s) { log_.push_back(std::move(s)); }
 
     uint16_t port_ = 0xC0;  // jumper block D, A7-A4

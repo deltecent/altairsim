@@ -67,13 +67,52 @@ The command is in bits 7-5.
 | `ready` | `forced`, the Rev. 1 standard, or `drive`, true only with a disk in the drive |
 | `interrupt` | The interrupt jumper |
 | `drive0` to `drive3` | Units for `MOUNT`. The boot ROM reads `drive0` |
-| `[[board.drive]]` | In a machine file: `unit`, `mount`, `readonly`, `create` |
-| `DEBUG=sector`, `DEBUG=seek` | Trace each write, or each head step |
+| `[[board.drive]]` | In a machine file: `unit`, `mount`, `readonly`, `create`, `faults` |
+| `DEBUG=sector`, `DEBUG=seek`, `DEBUG=fault` | Trace each write, each head step, or each use of a bad sector |
 
 ### Reset
 
 - `Reset::PowerOn` (POC*, cold): RST/ goes low. The drive is deselected, and interrupts and the write latch clear. The timer starts as timed out. A head stays on its track.
 - `Reset::Bus` (RESET*, warm): nothing. Only POC reaches the board. The guest uses the reset command.
+
+## Bad sectors: `FAULT` and the `faults` key
+
+A drive can have bad sectors on its disk, to test the retry code of a guest (#971). The faults
+are a table in each drive (`DiskFaults`, `src/host/diskfaults.h`), and the image does not
+change. Give them with `FAULT mdc0:driveN`, with the `disk_fault_*` MCP tools, or with the
+`faults` key of a `[[board.drive]]` table. The *User Manual* gives the syntax, in "Simulate a
+bad sector" in the Disks chapter.
+
+The board has no error bit, and it never looks inside a slot. The guest checks the sync byte,
+the header and the checksum itself. A fault therefore changes the bytes that the guest reads:
+
+| Kind | What the guest reads | When the fault is used |
+|---|---|---|
+| `data` | The data, then a wrong checksum: byte 269 of the slot XOR `FF` | When the guest reads byte 269 |
+| `id` | A wrong track number: byte 1 of the slot XOR `FF` | When the guest reads byte 1 |
+| `missing` | No sync byte, so TF stays false for that sector | Once a pass, at a read of the status register after the time of TF |
+| `write` | The board does not write the sector. The old bytes stay in the image, and the guest is not told. | At the end of the write, where the slot would go to the image |
+
+- **The address** is `<track>/<side>/<sector>`: the track under the head, the head (0, or 1 on a
+  two-sided disk), and the hard-sector number, 0 to 15.
+- **A sector gets one kind on a read,** in the order `missing`, `id`, `data`.
+- **A `data` or `id` hit is exact.** It counts one time in each pass where the guest reads the
+  bad byte. A slot that turns under the head while the guest does not read it uses no fault.
+- **A `missing` hit can be more than the guest's tries.** The guest waits for the sector in the
+  sector register, then reads TF in the status register. Each read of the status register after
+  the time of TF, while the bad sector is under the head, counts one hit for that pass. The CP/M
+  BIOS also reads the status register when it goes on after an error, so a hit or two more can
+  come.
+- **The CP/M BIOS tries a bad sector 100 times.** On VG08, 56K CP/M 2.20B, the directory is at
+  `2/0/0`. A hard `data`, `id` or `missing` fault there gives `Bdos Err On A: Bad Sector`. The
+  BIOS times out on TF, so a `missing` fault gives the error too.
+- **The boot ROM and the CP/M loader try track 0 for ever.** They check each checksum and read
+  the sector again until it is good. A hard fault on `0/0/0`, `0/0/1` or `1/0/0` stops the boot.
+  A `count=N` fault there wears off, and the boot continues.
+
+`SET mdc0 DEBUG=fault` writes a line each time that a fault is used, for example
+`fault drive0 2/0/0 data hit 1`. `MOUNT` and `UNMOUNT` clear the faults of the drive.
+`CONFIG SAVE` writes the `faults` key. A snapshot keeps the faults with their counts.
 
 ## Quirks reproduced
 
@@ -105,7 +144,11 @@ The command is in bits 7-5.
 
 `./build/altair_tests vgmdc` checks the decode, each status bit, select, step, write and read back, write protect, the timer, the interrupt, PRDY, snapshot and each property, with real bus cycles on made-up sectors. The real MBOOT ROM also boots a made-up sector on an 8080. A mutation check broke the sector timing, TF, the sync time, the byte time, the sector number, SLTD/, the timer, the step, the stored bytes, the end of a write and the checksum. The suite failed on each one.
 
-Vector's 56K CP/M 2.20 A was checked once by hand, on a `vgzcb` at 4 MHz with `vgfwii` and 56K of RAM. It boots to `A>` with `B` on Monitor 4.0, `builtin:vgmon40`, and with `GF800` on Monitor 4.3. `DIR`, `STAT`, `SAVE`, `PIP` and `ERA` work, and the disk image changed. The tests do not hold a Vector disk.
+The suite also checks the bad sectors: each kind, `count=N`, side 1, `*`, `MOUNT`, the `faults` key and a snapshot. A mutation check broke the fault code in 11 places. The suite failed on 10 of them. The eleventh was the clear at `UNMOUNT`, which no test can see, because an empty drive has no faults and `MOUNT` clears them too.
+
+`acceptance-vgmdc-fault` boots VG08 (`tests/media/vector/VG08.VGI`, from `56K Bootable Disk Images.zip`) on Monitor 4.0, with the console on a Bitstreamer II. A `count=2` `data` fault on `0/0/1` gets 2 hits, and the boot continues to `A>`. A hard `data`, `id` and `missing` fault on the directory, `2/0/0`, each give 100 hits and `Bdos Err On A: Bad Sector`. The image does not change.
+
+Vector's 56K CP/M 2.20 A was checked once by hand, on a `vgzcb` at 4 MHz with `vgfwii` and 56K of RAM. It boots to `A>` with `B` on Monitor 4.0, `builtin:vgmon40`, and with `GF800` on Monitor 4.3. `DIR`, `STAT`, `SAVE`, `PIP` and `ERA` work, and the disk image changed.
 
 All 20 disks of `56K Bootable Disk Images.zip` boot, each checked once (reference section 9). Six use serial port A of a Bitstreamer II at port 02, and these were run with a `vgbsii` beside the `vgzcb`. Both boards decode 04-09 at their default ports, and the bus reports `CONTENTION`. With the `vgzcb` ports at 0C and 18, VG08 boots on Monitor 4.0c and the bus reports none (`docs/boards/vector-zcb.md`, *Beside a Bitstreamer II*).
 

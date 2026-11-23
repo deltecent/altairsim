@@ -32,7 +32,12 @@ On the North Star `mdsa` and `mdsad` (issue #970), the address is `<track>/<side
 `data` fault makes the check character after the data wrong, and the CP/M BIOS finds it. A
 `missing` fault takes away the sync character, so the data never comes. A hard fault on the
 directory of the `mdsad` CP/M disk, `2/0/0`, gives `Bdos Err On A: Bad Sector`. A North Star
-sector has no ID field, so these boards refuse an `id` fault.
+sector has no ID field, so these boards refuse an `id` fault. The Vector Graphic `vgmdc`
+(Micropolis) and `vgdmdc` (Dual-Mode) take faults too (issue #971). The guest checks each
+275-byte slot itself. A `data` fault makes the checksum wrong, an `id` fault makes the track
+byte wrong, and a `missing` fault takes away the sync byte. A hard fault on the directory gives
+`Bdos Err On A: Bad Sector`. The `vgmdc` CP/M 2.20B disk reads it 100 times first, and the
+`vgdmdc` CP/M 2.22 H disk 72 times.
 
 **Fixed: the WD17xx set CRC Error for a sector that it found.** A Read Sector or Write Sector
 can pass a bad ID field on the way to its sector. The chip then set status bit 3, CRC Error,

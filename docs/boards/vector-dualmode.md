@@ -53,8 +53,46 @@ The ports are `port` to `port` + 3. The default base is `C0`. Ports `C4` to `CF`
 |---|---|
 | `port` | Base of the four ports, default `C0`. It must end in 0 |
 | `drive0` to `drive3` | Units for `MOUNT`. Monitor 4.3 boots from `drive1` |
-| `[[board.drive]]` | In a machine file: `unit`, `mount`, `readonly`, `create` |
-| `DEBUG=sector`, `DEBUG=seek` | Trace each transfer, or each head step |
+| `[[board.drive]]` | In a machine file: `unit`, `mount`, `readonly`, `create`, `faults` |
+| `DEBUG=sector`, `DEBUG=seek`, `DEBUG=fault` | Trace each transfer, each head step, or each use of a bad sector |
+
+## Bad sectors: `FAULT` and the `faults` key
+
+A drive can have bad sectors on its disk, to test the retry code of a guest (#971). The faults
+are a table in each drive (`DiskFaults`, `src/host/diskfaults.h`), and the image does not
+change. Give them with `FAULT dm0:driveN`, with the `disk_fault_*` MCP tools, or with the
+`faults` key of a `[[board.drive]]` table. The *User Manual* gives the syntax, in "Simulate a
+bad sector" in the Disks chapter.
+
+The board has no error bit. The guest checks the sync byte, the header, the checksum and the ECC
+syndrome itself. A fault therefore changes the bytes that the board puts in its RAM:
+
+| Kind | What the guest reads in the RAM | When the fault is used |
+|---|---|---|
+| `data` | The data, then a wrong checksum: byte 269 of the slot XOR `FF` | At START of the read |
+| `id` | A wrong track number: byte 1 of the slot XOR `FF` | At START of the read |
+| `missing` | No sync byte, so the board stores nothing. The RAM keeps what it held. | At START of the read |
+| `write` | The board does not write the sector. The old bytes stay in the image, and the guest is not told. | At START of the write |
+
+- **The address** is `<track>/<side>/<sector>`: the track under the head, the side (bit 2 of
+  the `OUT` to the first port), and the hard-sector number, 0 to 15.
+- **A sector gets one kind on a read,** in the order `missing`, `id`, `data`.
+- **Each hit is exact.** It counts one time for each START, at any processor speed.
+- **With ECC enable, a `data` or `id` fault also gives a syndrome that is not 0** in bytes 270
+  to 273. The board changes the byte before it compares the ECC, as for a real bad byte. The CP/M
+  BIOS of VGBOOT reports the fault, and does not correct it.
+- **A `missing` fault leaves old data in the RAM.** If the guest ignores the error, it uses the
+  sector that it read before. For example, after `Bdos Err On A: Bad Sector` on the directory and
+  a key, `DIR` lists the files in another order.
+- **The Monitor's `B` command tries a sector 5 times.** After that, it is back at `Mon>`, and it
+  prints no message. A `count=2` fault on `0/0/1` gets 2 hits, and the boot continues.
+- **The CP/M BIOS reads a bad sector 72 times.** On VGBOOT, 56K CP/M 2.22 H, the directory is at
+  `4/0/0`. A hard `data`, `id` or `missing` fault there gives 72 hits, then
+  `Bdos Err On A: Bad Sector`.
+
+`SET dm0 DEBUG=fault` writes a line each time that a fault is used, for example
+`fault drive1 4/0/0 data hit 1`. `MOUNT` and `UNMOUNT` clear the faults of the drive.
+`CONFIG SAVE` writes the `faults` key. A snapshot keeps the faults with their counts.
 
 ## Quirks reproduced
 
@@ -79,6 +117,10 @@ The ports are `port` to `port` + 3. The default base is `C0`. Ports `C4` to `CF`
 ## Verification
 
 `./build/altair_tests vgdmdc` checks every port with real bus cycles, on made-up sectors. The suite also boots the real Monitor ROM from a made-up disk, with the head on track 3 at the start. The tests do not hold an OASIS byte.
+
+The suite also checks the bad sectors: each kind, the syndrome with ECC enable, the RAM after a `missing` read, `count=N`, side 1, `*`, `MOUNT`, the `faults` key and a snapshot. A mutation check broke the fault code in 14 places, and the suite failed on each one.
+
+`acceptance-vgdmdc-fault` boots VGBOOT (`tests/media/vector/VGBOOT.VGI`) on a Vector 3 with Monitor 4.3 and the Flashwriter II, and reads the screen. A `count=2` `data` fault on `0/0/1` gets 2 hits, and the boot continues to `A>`. A hard `data`, `id` and `missing` fault on the directory, `4/0/0`, each give 72 hits and `Bdos Err On A: Bad Sector`. The image does not change.
 
 OASIS 5.5A was checked once by hand. It boots from `drive1`, and a second disk reads from `drive2`. A `RENAME` on a copy of the disk survives a reboot.
 

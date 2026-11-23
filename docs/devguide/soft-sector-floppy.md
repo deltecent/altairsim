@@ -159,6 +159,16 @@ than the guest's tries. The CP/M BIOS waits for the sector flag by reading the A
 holds the body bit. `loadSector` cannot tell that read from a wait for the body. The North
 Star document has the table of the kinds.
 
+**The Vector Micropolis and Dual-Mode (#971).** `MicropolisBoard` and `DualModeBoard` keep a
+`DiskFaults` in each `Drive`. Neither board looks inside the 275-byte slot. A fault inverts the
+byte that the guest checks: byte 269, the checksum, for `data`, and byte 1, the track, for `id`. On the `vgmdc`, the slot cache stays raw. `readData` inverts the byte as it returns it,
+and counts there. A `missing` fault keeps TF false, and `statusRegister` counts it once a pass
+(`missPass_`), at the first read after the time of TF. `endWrite` uses a `write` fault. On the
+`vgdmdc`, the transfer happens at START, so `readSlot` and `writeSlot` count each fault there. A
+`missing` fault returns before the slot goes to RAM. The `id` and `data` faults go in before the
+ECC compare. With ECC enable, the syndrome is then not 0, as for a real bad byte. The two board
+documents have the table of the kinds. The HDSK is the one disk board that takes no faults.
+
 ## Geometry in real time — the FORMAT path
 
 This is the reusable core. A soft-sector disk's geometry is **not** fixed at mount: sector

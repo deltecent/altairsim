@@ -1,5 +1,6 @@
 #include "boards/vector-micropolis.h"
 
+#include "boards/floppy-drive.h"
 #include "core/bus.h"
 #include "core/clock.h"
 #include "core/roms.h"
@@ -194,6 +195,17 @@ uint8_t MicropolisBoard::statusRegister() {
     if (d->img && d->img->readOnly()) v |= 0x10;
     if (ready()) v |= 0x20;
     if (transferFlag()) v |= 0x80;
+
+    // A missing sector counts once for each pass, at the first poll after TF is due (#971).
+    if (!wrt_ && d->spindle.spinning()) {
+        const uint64_t into = d->spindle.intoSector(*clock_);
+        const uint64_t pass = now() - into;
+        if (into >= tFromUs(kReadTfUs) && pass != missPass_)
+            if (DiskFault* f = faultUnderHead(FaultKind::Missing)) {
+                missPass_ = pass;
+                useFault(*f, d->track, head_, d->spindle.sectorAt(*clock_));
+            }
+    }
     return v;
 }
 
@@ -203,7 +215,25 @@ bool MicropolisBoard::transferFlag() {
     if (!d || !d->spindle.spinning()) return false;
     const uint64_t into = d->spindle.intoSector(*clock_);
     if (wrt_) return into >= tFromUs(kWriteTfUs);
-    return into >= tFromUs(kReadTfUs) && slotUnderHead()[0] != 0;
+    return into >= tFromUs(kReadTfUs) && slotUnderHead()[0] != 0 &&
+           !faultUnderHead(FaultKind::Missing);
+}
+
+// The armed fault of this kind on the sector under the selected head, or null.
+DiskFault* MicropolisBoard::faultUnderHead(FaultKind k) {
+    Drive* d = selected();
+    if (!d || d->faults.empty() || !d->spindle.spinning()) return nullptr;
+    return d->faults.find(d->track, head_, d->spindle.sectorAt(*clock_), k);
+}
+
+void MicropolisBoard::useFault(DiskFault& f, int track, int side, int sector) {
+    DiskFaults::use(f);
+    if (auto* dc = debugChannel(); dc && dc->on(FAULT)) {
+        dbg::line(*dc) << "fault drive" << (int)unit_ << " " << track << "/" << side << "/"
+                       << sector << " " << faultKindName(f.kind) << " hit " << f.hits;
+        if (!f.hard()) dbg::out() << ", " << f.left << " left";
+        dbg::out() << "\n";
+    }
 }
 
 const uint8_t* MicropolisBoard::slotUnderHead() {
@@ -233,7 +263,21 @@ uint8_t MicropolisBoard::readData() {
     const uint64_t k    = into <= sync ? 0 : (into - sync + byte - 1) / byte;
     const uint64_t at   = sync + k * byte;
     holdReady((uint32_t)(at - into));
-    return k < kSlot ? slotUnderHead()[k] : 0;
+    if (k >= kSlot) return 0;
+    uint8_t v = slotUnderHead()[k];
+
+    // A bad spot (#971): the byte reads inverted, and the hit counts as the guest reads it. An id
+    // fault on the sector takes the place of a data fault.
+    if (k == kFaultIdByte || k == kFaultDataByte) {
+        DiskFault* f = faultUnderHead(FaultKind::Id);
+        if (k == kFaultDataByte) f = f ? nullptr : faultUnderHead(FaultKind::Data);
+        if (f) {
+            v ^= 0xFF;
+            const Drive& d = drive_[unit_];
+            useFault(*f, d.track, head_, d.spindle.sectorAt(*clock_));
+        }
+    }
+    return v;
 }
 
 // The sync byte is taken one byte time after TF, and each next byte one byte time later. A write
@@ -268,6 +312,11 @@ void MicropolisBoard::endWrite() {
             say(id + ": drive" + std::to_string(unit_) +
                 " is write-protected, so the guest's writes are discarded");
         }
+        return;
+    }
+    // A bad spot that takes no write (#971). The old bytes stay, and the guest is not told.
+    if (DiskFault* f = d.faults.find(d.track, head_, wrSector_, FaultKind::Write)) {
+        useFault(*f, d.track, head_, wrSector_);
         return;
     }
     size_t n = sizeof wrSlot_;
@@ -332,6 +381,9 @@ void MicropolisBoard::serialize(StateWriter& w) const {
         w.u32((uint32_t)d.track);
         w.boolean(d.roSaid);
     }
+    // The bad sectors and their counts, and the pass a missing hit was counted on (#971).
+    for (const auto& d : drive_) d.faults.serialize(w);
+    w.u64(missPass_);
 }
 
 void MicropolisBoard::deserialize(StateReader& r) {
@@ -351,6 +403,8 @@ void MicropolisBoard::deserialize(StateReader& r) {
         d.track  = (int)r.u32();
         d.roSaid = r.boolean();
     }
+    for (auto& d : drive_) d.faults.deserialize(r);
+    missPass_ = r.u64();
     slotKey_ = -1;
     intChanged();
     rearm();
@@ -409,6 +463,7 @@ bool MicropolisBoard::mount(const std::string& unit, const std::string& path, bo
     d.img    = std::make_unique<DiskImage>(std::move(media));
     d.path   = path;
     d.roSaid = false;
+    d.faults.clearAll();  // the faults were the old diskette's
     probe(d);
     slotKey_ = -1;
 
@@ -430,6 +485,7 @@ bool MicropolisBoard::unmount(const std::string& unit, std::string& err) {
     d.path.clear();
     d.sides = 0;
     d.spindle.stop();
+    d.faults.clearAll();
     slotKey_ = -1;
     rearm();
     return true;
@@ -535,6 +591,7 @@ std::vector<Property> MicropolisBoard::subUnitProperties(const std::string& tabl
         x.kind = Kind::Bool;
         p.push_back(std::move(x));
     }
+    p.push_back(driveFaultsKey());
     return p;
 }
 
@@ -545,7 +602,7 @@ bool MicropolisBoard::addSubUnit(const std::string& table, const KeyValues& kv, 
     }
 
     int         unit = -1;
-    std::string path;
+    std::string path, faultText;
     bool        ro     = false;
     bool        create = false;
     for (const auto& [k, v] : kv) {
@@ -553,13 +610,14 @@ bool MicropolisBoard::addSubUnit(const std::string& table, const KeyValues& kv, 
         else if (k == "mount") path = v;
         else if (k == "readonly") ro = (v == "true" || v == "1" || v == "yes" || v == "on");
         else if (k == "create") create = (v == "true" || v == "1" || v == "yes" || v == "on");
+        else if (k == "faults") faultText = v;
     }
 
     if (unit < 0) {
         err = "[[board.drive]] needs a `unit`";
         return false;
     }
-    if (path.empty()) return true;
+    if (path.empty()) return applyDriveFaults(drive_[(size_t)unit].faults, false, faultText, err);
 
     if (create) {
         std::string     rp = resolvePath(path);
@@ -569,7 +627,17 @@ bool MicropolisBoard::addSubUnit(const std::string& table, const KeyValues& kv, 
             if (!writeHostFile(rp, {}, cerr)) { err = cerr + pathNote(path); return false; }
         }
     }
-    return mount("drive" + std::to_string(unit), path, ro, err);
+    if (!mount("drive" + std::to_string(unit), path, ro, err)) return false;
+    return applyDriveFaults(drive_[(size_t)unit].faults, true, faultText, err);
+}
+
+bool MicropolisBoard::takesFaults(const std::string& unit) const {
+    return driveIndex(unit, kDrives) >= 0;
+}
+
+DiskFaults* MicropolisBoard::faults(const std::string& unit) {
+    const int i = driveIndex(unit, kDrives);
+    return (i >= 0 && drive_[(size_t)i].img) ? &drive_[(size_t)i].faults : nullptr;
 }
 
 // An empty drive writes no table.
@@ -584,6 +652,7 @@ std::vector<Board::SubUnit> MicropolisBoard::subUnits() const {
         su.fields.push_back({"unit", std::to_string(i), false});
         su.fields.push_back({"mount", d.path, true});
         if (d.img->readOnly()) su.fields.push_back({"readonly", "true", false});
+        if (!d.faults.empty()) su.fields.push_back({"faults", d.faults.toText(), true});
         out.push_back(std::move(su));
     }
     return out;
