@@ -6,9 +6,10 @@
 # reads track 0 at boot and checks each sector's checksum: a hard data fault on 0/0/1 and the
 # boot never ends. count=2: two bad checksums, the loader reads again, and the third read is good.
 #
-# The directory starts at 2/0/0. The BIOS tries a sector 100 times. A hard data, id or missing
-# fault there gets 100 hits and DIR gives Bdos Err On A: Bad Sector. Found with FAULT ADD 1/0/*,
-# 2/0/* and 3/0/* and the hit counts; do not move the fault without checking.
+# The directory starts at 2/0/0. The BIOS tries a sector 100 times. A hard data or id fault there
+# gets 100 hits, a missing fault 100 or 101 (the .exp says why), and DIR gives Bdos Err On A: Bad
+# Sector. Found with FAULT ADD 1/0/*, 2/0/* and 3/0/* and the hit counts; do not move the fault
+# without checking.
 #
 # FLAT OUT, WITH NO VIDEO BOARD. At 4 MHz each of the BIOS's 100 tries waits a turn of the disk,
 # 20 seconds for each error. The guest prints nothing on the Flashwriter, so it is removed, and

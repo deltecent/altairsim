@@ -525,8 +525,10 @@ two-sided disk. The sector is 0 to 15, the number of the hole.
 
 On the `vgmdc`, a `data` or `id` fault occurs when the guest reads the bad byte. A `missing`
 fault occurs one time in each turn of the disk. It occurs when the guest reads the status
-register while the bad sector is under the head. On the `vgdmdc`, a fault occurs each time that the guest
-starts a read or a write of the sector. Each CP/M BIOS tries a bad sector more than one time:
+register while the bad sector is under the head. The CP/M BIOS also reads the status register
+one time when it selects the drive. Because of this, the number of hits on a `missing` fault can
+be one more than the number of tries of the guest. On the `vgdmdc`, a fault occurs each time
+that the guest starts a read or a write of the sector. Each CP/M BIOS tries a bad sector more than one time:
 
 | Board | CP/M disk | Directory | Tries before `Bdos Err On A: Bad Sector` |
 |---|---|---|---|
