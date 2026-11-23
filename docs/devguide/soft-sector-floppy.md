@@ -167,7 +167,17 @@ and counts there. A `missing` fault keeps TF false, and `statusRegister` counts 
 `vgdmdc`, the transfer happens at START, so `readSlot` and `writeSlot` count each fault there. A
 `missing` fault returns before the slot goes to RAM. The `id` and `data` faults go in before the
 ECC compare. With ECC enable, the syndrome is then not 0, as for a real bad byte. The two board
-documents have the table of the kinds. The HDSK is the one disk board that takes no faults.
+documents have the table of the kinds.
+
+**The 88-HDSK (#972).** `HdskBoard` keeps a `DiskFaults` in each `Drive`, one for each platter.
+The controller runs a Read Sector or a Write Sector at once, in `sectorAccess()`, so each fault
+is found and counted there. The check comes after the not-ready, illegal-sector and
+write-protect errors, so those errors use no fault. A `missing` or `id` fault sets CSTAT bit 4
+or bit 3 and does not move the sector. A `data` fault on a read copies the sector into the
+buffer and sets bit 2. A `write` fault on a write sets no bit and does not write. Seek uses no
+fault. `docs/boards/mits-88hdsk.md` has the table of the kinds.
+
+**The `icom`, `dualide` and `dualsd` boards take no faults.** Their `takesFaults` is false.
 
 ## Geometry in real time — the FORMAT path
 

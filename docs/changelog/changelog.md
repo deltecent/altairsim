@@ -37,7 +37,11 @@ sector has no ID field, so these boards refuse an `id` fault. The Vector Graphic
 275-byte slot itself. A `data` fault makes the checksum wrong, an `id` fault makes the track
 byte wrong, and a `missing` fault takes away the sync byte. A hard fault on the directory gives
 `Bdos Err On A: Bad Sector`. The `vgmdc` CP/M 2.20B disk reads it 100 times first, and the
-`vgdmdc` CP/M 2.22 H disk 72 times.
+`vgdmdc` CP/M 2.22 H disk 72 times. The MITS `hdsk` takes faults too (issue #972). A fault
+sets the bit of the controller's error byte, CSTAT: bit 2 for `data`, bit 3 for `id` and bit 4
+for `missing`. A `write` fault loses the write, and the guest is not told. The HDBL boot PROM
+and the CP/M BIOS try a bad sector one time. A bad read of `0/0/0` gives `LOAD ERR`. A hard
+fault on the directory, `1/0/0`, gives `Bdos Err On A: Bad Sector`.
 
 **Fixed: `run` over `--mcp` stopped many times during the cold boot of Vector CP/M 2.22 H (issue #976).** At cold boot, the BIOS finds the processor speed. It reads bit 5, the vertical blank, on the Flashwriter II status port. The same port has the key flag. The board counted each status read with no key as a guest that waits for a key. Because of this, each `run` stopped as idle in the speed count, and it took many calls to reach `A>`. The board now counts a status read as a key wait only after the guest polls through two blanking starts. The speed count reads through one. Now one `run` after `B` at `Mon>` reaches `A>`.
 

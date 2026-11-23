@@ -2535,6 +2535,15 @@ void test_cli() {
         fx("BOARDS ADD vgmdc mdc0");
         fx("MOUNT mdc0:drive0 v.vgi");
         CHECK(fx("FAULT mdc0:drive0 ADD 2/0/1 id") == "mdc0:drive0: fault 2/0/1 id\n", "the vgmdc takes an id fault");
+
+        // The 88-HDSK takes them too, on its own error byte (#972).
+        setMediaResolver([](const std::string& path, bool ro, std::string&) {
+            return std::make_unique<MemoryMedia>(path, std::vector<uint8_t>(4988928, 0), ro);
+        });
+        fx("BOARDS ADD hdsk hd0");
+        fx("MOUNT hd0:drive0 h.dsk");
+        CHECK(fx("FAULT hd0:drive0 ADD 405/1/23 missing") == "hd0:drive0: fault 405/1/23 missing\n",
+              "the hdsk takes a missing fault");
         setMediaResolver(openHostFile);
     }
 

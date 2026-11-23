@@ -48,9 +48,25 @@
 // A logical drive is one platter (reference/88-HDSK.md section 3); a physical unit
 // carries up to two, so slot = unit*2 + platter. The bootable CP/M image is one
 // platter in slot 0.
+//
+// BAD SECTORS (#972, host/diskfaults.h). A fault is an overlay on the platter in a drive slot;
+// the image does not change. The address is <cylinder>/<side>/<sector>, as Read/Write Sector
+// names it. The controller reports each fault with its own error byte at CSTAT (A1h,
+// reference/88-HDSK.md section 6), so no bit is new:
+//
+//   kind     Read Sector                          Write Sector
+//   data     the data goes to the buffer, bit 2   no effect (the data CRC is a read check)
+//   id       the buffer is unchanged, bit 3       not written, bit 3 (header CRC)
+//   missing  the buffer is unchanged, bit 4       not written, bit 4 (header has wrong sector)
+//   write    no effect                            not written, and the guest is not told
+//
+// One kind for each access, in the order missing, id, then data or write. A hit counts at the
+// Read or Write Sector command, which runs at once. Not ready and illegal sector come first and
+// use no fault. Seek takes no fault.
 
 #include "core/board.h"
 #include "host/disk.h"
+#include "host/diskfaults.h"
 
 #include <cstdint>
 #include <memory>
@@ -87,6 +103,14 @@ public:
     bool unmount(const std::string& unit, std::string& err) override;
     std::vector<std::string> drainLog() override;
 
+    // `SET hd0 DEBUG=fault` writes a line each time a bad sector is used (#972).
+    std::vector<std::string> debugFlags() const override { return {"fault"}; }
+    enum DebugFlag { FAULT = 0 };
+
+    // Bad sectors. See the header.
+    bool        takesFaults(const std::string& unit) const override;
+    DiskFaults* faults(const std::string& unit) override;
+
     // ---- SNAPSHOT / RESTORE (DESIGN.md 13) ----
     void serialize(StateWriter& w) const override;
     void deserialize(StateReader& r) override;
@@ -115,6 +139,7 @@ private:
     struct Drive {
         std::unique_ptr<DiskImage> img;
         std::string path;
+        DiskFaults  faults;  // the bad sectors of the platter (#972). MOUNT clears them
     };
     std::vector<Drive> drive_;  // size == drives_; slotFor(unit,platter) indexes it
 
@@ -152,6 +177,7 @@ private:
     void beginBufferStream(uint16_t w, bool write);
     bool sectorAccess(int unit, int platter, int side, int cyl, int sector, uint8_t* buf,
                       bool write);
+    void useFault(DiskFault& f, int slot, int cyl, int side, int sector);
     void say(std::string s) { log_.push_back(std::move(s)); }
 
     std::vector<std::string> log_;

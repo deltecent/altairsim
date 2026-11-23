@@ -1,0 +1,36 @@
+# Altair CP/M 2.2 on an 88-HDSK whose platter has a bad sector (#972) -- for hdsk-fault.cmake.
+#
+# `faults` is the drive's bad-sector list. An HDSK address is <cylinder>/<side>/<sector>:
+# cylinder 0-405, side 0-1 of the platter, sector 0-23. The HDBL boot PROM at FC00 reads the
+# Pack Descriptor Page, 0/0/0, first, and tries it only once: a bad read prints LOAD ERR and
+# HDBL stops in a loop. count=2: two boots fail, and the third reads the sector.
+#
+# The directory starts at 1/0/0. The CP/M BIOS tries each sector once: one bad read and the
+# BDOS gives Bdos Err On A: Bad Sector. Found with DEBUG=fault and FAULT's hit counts; do not
+# move the fault without checking.
+#
+# NOTHING WRITES TO THE IMAGE. `readonly = true` protects the disk, and a fault never changes
+# it. The .cmake hashes the image before and after. Its write test mounts a copy instead.
+[machine]
+name = "hdsk-fault"
+base = "default"
+
+[[board]]
+type = "hdsk"
+id   = "hd0"
+port = A0
+
+  [[board.drive]]
+  unit     = 0
+  mount    = "../media/hdsk/HDCPM22v16-48K.DSK"
+  readonly = true
+  faults   = "0/0/0 data count=2"
+
+# The HDBL PROM, beside DBL on the base's memory board.
+[[board]]
+id = "mem0"
+
+  [[board.region]]
+  type  = "rom"
+  at    = FC00
+  mount = "builtin:hdbl"

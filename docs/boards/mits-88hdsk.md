@@ -100,6 +100,45 @@ removable cartridge, which is the shipped image. The console is the base machine
 "default"` plus the controller, the PROM region, and the platter — three additions and a
 `startup = ["RUN FC00"]`.
 
+## Bad sectors: `FAULT` and the `faults` key
+
+A drive can have bad sectors on its platter, to test the retry code of a guest (#972). The
+faults are a table in each drive slot (`DiskFaults`, `src/host/diskfaults.h`), and the image
+does not change. Give them with `FAULT hd0:driveN`, with the `disk_fault_*` MCP tools, or with
+the `faults` key of a `[[board.drive]]` table. The *User Manual* gives the syntax, in "Simulate
+a bad sector" in the Disks chapter.
+
+The controller has its own error byte, CSTAT at port A1 (`reference/88-HDSK.md` §6). A fault
+sets the bit that the controller sets for that error. The CP/M BIOS reads CSTAT and masks bit 7,
+write protect, so each of these bits is an error to it.
+
+| Kind | Read Sector | Write Sector |
+|---|---|---|
+| `data` | The data goes into the buffer. CSTAT bit 2 (`04`), data CRC error. | No effect |
+| `id` | The buffer does not change. CSTAT bit 3 (`08`), header CRC error. | The sector is not written. CSTAT bit 3. |
+| `missing` | The buffer does not change. CSTAT bit 4 (`10`), the header has the wrong sector. | The sector is not written. CSTAT bit 4. |
+| `write` | No effect | The sector is not written. CSTAT is 0, so the guest is not told. |
+
+- **The address** is `<cylinder>/<side>/<sector>`: cylinder 0 to 405, side 0 or 1 of the
+  platter, and sector 0 to 23. One drive slot is one platter.
+- **A sector gets one kind on an access,** in the order `missing`, `id`, then `data` or `write`.
+- **A hit counts at the Read Sector or Write Sector command.** Seek uses no fault.
+- **A drive that is not ready, an illegal sector and a write to a write-protected platter give
+  their own error first.** They use no fault.
+- **HDBL reads the Pack Descriptor Page, `0/0/0`, one time for each boot.** A bad read prints
+  `LOAD ERR`, and HDBL stops in a loop at `BFD9`. A `count=2` fault there makes two boots fail.
+  The third boot reaches `A0>`.
+- **The CP/M BIOS reads a sector one time.** On `HDCPM22v16-48K.DSK`, 48K CP/M 2.2b v1.6, the
+  directory starts at `1/0/0`. A hard `data`, `id` or `missing` fault there gives 1 hit, then
+  `Bdos Err On A: Bad Sector`.
+- **A `write` fault loses the write.** `SAVE 1 NEW.COM` writes the directory sectors `1/0/4`,
+  `1/0/11`, `1/0/18` and `1/0/1`. With `write` faults on them, `SAVE` gives no error. After a
+  warm boot, `NEW.COM` is not in the directory.
+
+`SET hd0 DEBUG=fault` writes a line each time that a fault is used, for example
+`fault drive0 1/0/0 data hit 1`. `MOUNT` and `UNMOUNT` clear the faults of the drive.
+`CONFIG SAVE` writes the `faults` key. A snapshot keeps the faults with their counts.
+
 ## Sources
 
 | Source | Where | Authority |
@@ -112,6 +151,10 @@ removable cartridge, which is the shipped image. The console is the base machine
 
 - `tests/test_hdsk.cpp` — the probe, the `(cyl,side,sector)→offset` mapping pinned three ways,
   the Seek→Read Sector→Read Buffer boot sequence, the Write Buffer→Write Sector→read-back round
-  trip, the power-on `0xFF` status quirk, the error flags, and one-pass handshake termination.
+  trip, the power-on `0xFF` status quirk, the error flags, one-pass handshake termination, and
+  each fault kind on Read Sector and Write Sector, with its CSTAT bit and its count.
+- `tests/acceptance/hdsk-fault.cmake` — HDBL past a `count=2` fault on `0/0/0`, a hard `data`,
+  `id` and `missing` fault on the directory, and `write` faults that lose the directory writes
+  of `SAVE`.
 - `tests/acceptance/media.cmake` — boots `tests/media/hdsk` to `A>` and reads a directory entry
   off the platter, from the fixture's own directory and by path.
