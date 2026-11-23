@@ -16,11 +16,11 @@
 # THE GUEST PRINTS ON THE FLASHWRITER II, so nothing comes back through `run`. The test reads the
 # screen with DUMP, as vg3.cmake does, and turns the bytes into text.
 #
-# THE BOOT IS RUN TO AN ADDRESS, NOT TO IDLE. At cold boot the BIOS times the processor against
-# the Flashwriter's vertical blanking, a loop that polls the keyboard status port. `run` sees
-# that as a guest waiting at a prompt and stops (#976). So the boot runs with the idle stop off, to the
-# BIOS's console input entry, D486 (the CONIN jump at D309). After A> the idle stop is on again:
-# each DIR then stops at the error, where the BDOS waits for a key.
+# THE BOOT IS ONE RUN, TO IDLE (#976). At cold boot the BIOS times the processor against the
+# Flashwriter's vertical blanking, a loop that polls the keyboard status port. That loop is not a
+# key wait, so `run` must not stop in it: the one run after B stops idle in the console input,
+# with A> on the screen. Each DIR then stops at the error, where the BDOS waits
+# for a key.
 #
 # EACH ERROR IS DISMISSED WITH NO FAULT ON THE DISK. After a key the BDOS goes on with DIR. The
 # fault is cleared first, so DIR lists the files and comes back to A>.
@@ -37,8 +37,6 @@ set(dsk "${SRC}/tests/media/vector/VGBOOT.VGI")
 set(work "${BIN}/vgdmdc-fault-work")
 file(REMOVE_RECURSE "${work}")
 file(MAKE_DIRECTORY "${work}")
-
-set(conin 54406)   # D486, the BIOS's console input
 
 # One tools/call line. `args` is the JSON object of the tool's arguments.
 set(session "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n")
@@ -100,9 +98,7 @@ endfunction()
 
 # 1. The boot, past two bad reads of 0/0/1. The Monitor stops idle at Mon>; B then runs to A>.
 call(2 run "{\"from\":0,\"timeout_ms\":20000}")
-monitor(3 "SET cpu0 IDLE=false")
-call(4 run "{\"input\":\"B\",\"stop_at\":${conin},\"timeout_ms\":60000}")
-monitor(5 "SET cpu0 IDLE=true")
+call(4 run "{\"input\":\"B\",\"timeout_ms\":60000}")
 monitor(6 "FAULT dm0:drive1")
 monitor(7 "DUMP F000-F77F")
 
@@ -142,9 +138,15 @@ if(NOT rc EQUAL 0)
   fail("`altairsim vgdmdc-fault.toml --mcp` exited ${rc}, expected 0")
 endif()
 
-# 1. The boot reached the BIOS's console input, with the banner and A> on the screen.
+# 1. One run after B reached the BIOS's console input, with the banner and A> on the screen.
 stopped(2 idle)
-stopped(4 stop-at)
+stopped(4 idle)
+# The console input is D47F-D489 in the BIOS, which calls the Monitor's status routine through
+# its jump at E003, to E13C-E140.
+reply(4 r)
+if(NOT r MATCHES "\"pc\":(54399|5440[0-9]|57347|5766[0-4])[,}]")
+  fail("the run after B did not stop in the console input, D47F-D489, E003 or E13C-E140 (#976): ${r}")
+endif()
 reply(6 r)
 if(NOT r MATCHES "0/0/1 data count=2 +2 +0")
   fail("FAULT does not show the count=2 fault used twice with none left: ${r}")

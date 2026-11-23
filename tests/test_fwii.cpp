@@ -414,9 +414,19 @@ void test_fwii() {
         // finding its keyboard empty, about once in 32 instructions. A once-a-slice look
         // from pump() is far below that, and the machine holds a host core at the prompt.
         Rig g;
+        g.status();  // line 0: the display is on
+        g.ns = lineNs(240);
+        g.status();  // the first blanking start
+        g.ns = lineNs(262);
+        g.status();  // the next field
+        g.ns = lineNs(262 + 240);
+        g.status();  // the second blanking start: from here on, a key wait
+        g.ns = lineNs(2 * 262);  // the display again, for the status values below
         const uint64_t before = g.kbd->hungry();
+        const uint64_t polls  = g.fw->emptyPolls();
         for (int i = 0; i < 10; ++i) g.status();
         CHECK(g.kbd->hungry() == before + 10, "each status read asks the line");
+        CHECK(g.fw->emptyPolls() == polls + 10, "and each counts as the guest waiting");
 
         g.key("x");
         const uint64_t held = g.kbd->hungry();
@@ -430,6 +440,60 @@ void test_fwii() {
         CHECK(g.kbd->hungry() == ready, "and a line with a byte on it is not empty");
         g.fw->pump();
         CHECK(g.status() == kKey, "the next pump latches it");
+    }
+
+    SECTION("Flashwriter II -- a guest that times the raster is not waiting for a key (#976)");
+    {
+        // Vector CP/M 2.22 H times the processor at cold boot: it waits for the display,
+        // then for the blank, then counts through the blank. Bit 5 is on the keyboard status
+        // port, so each of those reads finds no key. One blanking start is not a key wait.
+        Rig g;
+        auto poll = [&](uint64_t line, int n) {
+            g.ns = lineNs(line);
+            for (int i = 0; i < n; ++i) g.status();
+        };
+        poll(250, 100);  // in the blank: wait for the display
+        poll(262, 100);  // the display: wait for the blank
+        poll(262 + 240, 100);  // count through the blank
+        CHECK(g.fw->emptyPolls() == 0, "the speed loop's reads are not a key wait");
+        CHECK(g.kbd->hungry() == 0, "and they do not ask the line");
+
+        poll(2 * 262, 1);
+        poll(2 * 262 + 240, 1);  // the second blanking start
+        const uint64_t polls = g.fw->emptyPolls();
+        CHECK(polls == 1, "a guest still polling at the second blanking start is waiting");
+        poll(2 * 262 + 250, 5);
+        CHECK(g.fw->emptyPolls() == polls + 5, "and each read after it counts");
+        (void)g.data();
+        g.status();
+        CHECK(g.fw->emptyPolls() == polls + 6, "a data read with no key does not start over");
+
+        g.key("B");
+        CHECK(g.data() == 'B', "a key is read");
+        poll(3 * 262, 10);
+        poll(3 * 262 + 240, 10);
+        CHECK(g.fw->emptyPolls() == polls + 6, "and the count of blanking starts starts over");
+        poll(4 * 262, 1);
+        poll(4 * 262 + 240, 1);
+        CHECK(g.fw->emptyPolls() == polls + 7, "until two more have passed");
+
+        // The Monitor reads the port before the boot. A gap of more than 2000 T-states in the
+        // reads ends that run of them, so its blanking start is not added to the loop's.
+        Rig h;
+        auto hpoll = [&](uint64_t line) {
+            h.ns = lineNs(line);
+            h.status();
+        };
+        hpoll(0);
+        hpoll(240);  // one blanking start
+        h.m.clock.advance(2001);
+        hpoll(262);
+        hpoll(262 + 240);
+        CHECK(h.fw->emptyPolls() == 0, "a gap in the reads starts the count over");
+        h.m.clock.advance(2000);
+        hpoll(2 * 262);
+        hpoll(2 * 262 + 240);
+        CHECK(h.fw->emptyPolls() == 1, "and a gap of 2000 T-states does not");
     }
 
     SECTION("Flashwriter II -- the picture is 80 by 24 cells of 8 by 10 dots, lines doubled");

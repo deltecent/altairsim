@@ -133,6 +133,17 @@ private:
     bool     kbHave_ = false;  // the service-request flip-flop, shown as "a key waits"
     uint64_t kbRx_   = 0;      // keystrokes handed to the guest -- the idle-traffic signal
     uint64_t kbEmptyPolls_ = 0;  // status reads that found no key (emptyPolls)
+
+    // A KEY WAIT, OR A RASTER WAIT? (#976) The status byte carries both, so the guest's
+    // reads count as a key wait only once it has polled through two blanking starts with no
+    // key. Host bookkeeping for the idle signal: the guest reads the same byte either way.
+    // A gap of more T-states than kPollGapT between two status reads ends a run of them. A
+    // poll loop reads the port every few dozen.
+    static constexpr int      kWaitBlankStarts = 2;
+    static constexpr uint64_t kPollGapT        = 2000;
+    int      kbBlankStarts_ = 0;      // bit 5 falls seen by empty status reads in this run
+    bool     kbLastActive_  = false;  // bit 5 (display active) at the last status read
+    uint64_t kbLastPollT_   = 0;      // the T-state of the last status read
 };
 
 } // namespace altair
