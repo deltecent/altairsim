@@ -12,7 +12,14 @@
 #      the same 100 hits.
 #   4. A hard missing fault there instead: the sector has no sync byte, so the transfer flag
 #      never comes. The BIOS times out, and DIR gives the same error. A missing hit counts once
-#      for each turn that the BIOS waits through, so it also shows 100.
+#      for each turn of the disk in which the guest reads the status: 100 or 101 (#979).
+#
+# WHY A MISSING FAULT CAN SHOW 101. The BIOS's select routine (D88C) reads the status register
+# one time before the first try. If 2/0/0 is under the head past the time TF is due at that
+# read, that turn counts too, and the first try waits for a later turn: 101 hits. When the
+# select read comes depends on when DIR is typed, which is wall time, so about one run in 16
+# gives 101. The 100 tries are the wait loop at D99D. A data or id hit counts only when the
+# guest reads the bad byte, so those two stay at 100.
 #
 # The guest's own code finds every fault: the BIOS adds up the checksum, compares the header,
 # and times out waiting for the sector. So this test proves the BIOS sees the fault, not only
@@ -56,13 +63,14 @@ expect {
 expect -ex "altairsim> "
 
 # Steps 2 to 4: one hard fault on the directory, DIR, and the hit count. The BIOS tries 100
-# times, and each try reads the faulty byte or waits one turn for the sector: 100 hits.
+# times, and each try reads the faulty byte or waits one turn for the sector: 100 hits. `counts`
+# is the hit counts that pass: a missing fault also accepts 101, for the select read above.
 #
 # THE ERROR BEFORE IS DISMISSED FIRST, WITH NO FAULT ON THE DISK. After a Return the BDOS goes
 # on with DIR, and its status reads can come while 2/0/0 passes. A missing hit counts on a
 # status read past the time TF is due, so such a read would add a hit that is not one of the
 # 100 tries. The fault goes on after A>, so the count is DIR's tries alone.
-proc dirFault {kind first} {
+proc dirFault {kind first counts} {
     if {!$first} {
         send "FAULT mdc0:drive0 CLEAR ALL\r"
         expect -ex "altairsim> "
@@ -102,16 +110,21 @@ proc dirFault {kind first} {
     }
     send "FAULT mdc0:drive0\r"
     expect {
-        -re "2/0/0 $kind +100 " {}
-        -re "2/0/0 $kind +\[0-9\]+ " { puts "FAIL: the hard $kind fault was not hit once for each of the BIOS's 100 tries"; exit 1 }
+        -re "2/0/0 $kind +(\[0-9\]+) " {}
         timeout { puts "FAIL: FAULT did not list the hard $kind fault"; exit 1 }
+    }
+    set hits $expect_out(1,string)
+    if {[lsearch -exact $counts $hits] < 0} {
+        puts "FAIL: the hard $kind fault got $hits hits, not [join $counts { or }]:\
+              one for each of the BIOS's 100 tries"
+        exit 1
     }
     expect -ex "altairsim> "
 }
 
-dirFault data    1
-dirFault id      0
-dirFault missing 0
+dirFault data    1 {100}
+dirFault id      0 {100}
+dirFault missing 0 {100 101}
 
 set after [exec shasum $dsk]
 if {$before ne $after} {
