@@ -1,5 +1,7 @@
 #include "boards/sd-versafloppy.h"
 
+#include "core/debuglog.h"
+
 #include "core/bus.h"
 #include "core/clock.h"
 #include "core/statefile.h"
@@ -497,6 +499,8 @@ bool VersaFloppyBoard::mount(const std::string& unit, const std::string& path, b
     d.path   = path;
     d.roSaid = false;
     d.drv.mount(d.img.get(), ro);
+    d.drv.setDebug([this] { return (const dbg::Channel*)debugChannel(); }, kFaultDebugBit,
+                   "drive" + std::to_string(i));
     d.drv.setHeadTrack(0);
     // Both VersaFloppy generations format via Write Track (VF-I the four FM codes, VF-II all ten).
     // The recorded density and the per-track byte budget come from the chip's data rate and the
@@ -563,6 +567,7 @@ std::vector<Property> VersaFloppyBoard::subUnitProperties(const std::string& tab
         p.push_back(std::move(x));
     }
     p.push_back(mediaKey());
+    p.push_back(driveFaultsKey());
     return p;
 }
 
@@ -604,6 +609,7 @@ bool VersaFloppyBoard::addSubUnit(const std::string& table, const KeyValues& kv,
 
     int         unit = -1;
     std::string path, media;
+    std::string faults;
     bool        ro = false;
 
     // loadSubUnit() has already refused an undeclared key, a `media` not in vfFormats(), and
@@ -614,6 +620,7 @@ bool VersaFloppyBoard::addSubUnit(const std::string& table, const KeyValues& kv,
     for (const auto& [k, v] : kv) {
         if (k == "unit") unit = std::stoi(v);
         else if (k == "mount") path = v;
+        else if (k == "faults") faults = v;
         else if (k == "readonly") {
             Value bv;
             std::string e;
@@ -631,12 +638,17 @@ bool VersaFloppyBoard::addSubUnit(const std::string& table, const KeyValues& kv,
         return false;
     }
 
+    if (path.empty() && !faults.empty()) {
+        err = "`faults` needs a disk: give `mount` in the same table";
+        return false;
+    }
     if (path.empty()) {
         drive_[(size_t)unit].forced = media;
         return true;
     }
     // Always passed, empty too: a table with no `media` is a disk the size decides.
-    return mountWith("drive" + std::to_string(unit), path, ro, {{"media", media}}, err);
+    if (!mountWith("drive" + std::to_string(unit), path, ro, {{"media", media}}, err)) return false;
+    return applyDriveFaults(drive_[(size_t)unit].drv, faults, err);
 }
 
 std::vector<Board::SubUnit> VersaFloppyBoard::subUnits() const {
@@ -652,6 +664,7 @@ std::vector<Board::SubUnit> VersaFloppyBoard::subUnits() const {
         if (d.img) {
             su.fields.push_back({"mount", d.path, true});
             if (d.img->readOnly()) su.fields.push_back({"readonly", "true", false});
+            if (!d.drv.faults().empty()) su.fields.push_back({"faults", d.drv.faults().toText(), true});
         }
         out.push_back(std::move(su));
     }
@@ -668,7 +681,10 @@ void VersaFloppyBoard::serialize(StateWriter& w) const {
     Board::serialize(w);
     w.u8(control_);
     w.u32((uint32_t)drive_.size());
-    for (const Drive& d : drive_) w.u32((uint32_t)d.drv.headTrackRaw());
+    for (const Drive& d : drive_) {
+        w.u32((uint32_t)d.drv.headTrackRaw());
+        d.drv.faults().serialize(w);  // the bad sectors and their counts (#966)
+    }
     chip_->serialize(w);
 }
 
@@ -677,13 +693,27 @@ void VersaFloppyBoard::deserialize(StateReader& r) {
     control_ = r.u8();
     uint32_t n = r.u32();
     for (uint32_t i = 0; i < n; ++i) {
-        int head = (int)r.u32();
-        if (i < drive_.size()) drive_[i].drv.setHeadTrack(head);
+        int        head = (int)r.u32();
+        DiskFaults spare;
+        if (i < drive_.size()) {
+            drive_[i].drv.setHeadTrack(head);
+            drive_[i].drv.faults().deserialize(r);
+        } else {
+            spare.deserialize(r);
+        }
     }
     chip_->deserialize(r);
     selectFromControl();  // re-attach the selected drive and re-apply side/density
     refresh();            // re-drive pin 73 from the restored chip state
 }
+
+bool VersaFloppyBoard::takesFaults(const std::string& unit) const { return driveIndex(unit, drives_) >= 0; }
+
+DiskFaults* VersaFloppyBoard::faults(const std::string& unit) {
+    const int i = driveIndex(unit, drives_);
+    return (i >= 0 && drive_[(size_t)i].img) ? &drive_[(size_t)i].drv.faults() : nullptr;
+}
+
 
 } // namespace altair
 

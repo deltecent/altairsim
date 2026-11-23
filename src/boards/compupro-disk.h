@@ -91,6 +91,12 @@ public:
     std::vector<UnitDef> units() const override;
     bool mount(const std::string& unit, const std::string& path, bool ro, std::string& err) override;
     bool unmount(const std::string& unit, std::string& err) override;
+
+    // Bad sectors on a mounted disk (#966): FAULT, the machine file's `faults`, and a `fault`
+    // debug flag that writes one line each time one is used.
+    bool        takesFaults(const std::string& unit) const override;
+    DiskFaults* faults(const std::string& unit) override;
+    std::vector<std::string> debugFlags() const override { return {"fault"}; }
     std::vector<Property> mountKeys(const std::string& unit) const override;
     bool mountWith(const std::string& unit, const std::string& path, bool ro, const KeyValues& keys,
                    std::string& err) override;

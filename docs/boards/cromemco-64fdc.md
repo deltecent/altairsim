@@ -50,6 +50,27 @@ and `readAux()` to set D6. Everything else is the shared `CromemcoFdcBoard` base
 Identical to the 16FDC (`docs/boards/cromemco-16fdc.md` → *How it is simulated*), with the 8K ROM
 window and no port-04 ¬RESTORE. The board type is `64fdc`; `builtin:rdos312` is the boot PROM.
 
+## Bad sectors: `FAULT` and the `faults` key
+
+A drive can have bad sectors on its disk, to test the retry code of a guest (#966). The faults
+are an overlay in the drive (`DiskImageDrive`, `src/host/diskfaults.h`), and the image does not
+change. Give them with `FAULT <id>:driveN`, with the `disk_fault_*` MCP tools, or with the
+`faults` key of a `[[board.drive]]` table. The *User Manual* gives the syntax, in "Simulate a
+bad sector" in the Disks chapter.
+
+The WD17xx reports each fault with the status that it gives for a damaged disk:
+
+| Kind | What the guest reads |
+|---|---|
+| `data` | S3 CRC Error. The data still transfers. |
+| `id` | S4 Record Not Found and S3 CRC Error |
+| `missing` | S4 Record Not Found |
+| `write` | S5 Write Fault. The drive writes nothing. |
+
+`SET <id> DEBUG=fault` writes a line each time that a fault occurs. The `fault` flag is off
+until you turn it on. `CONFIG SAVE` writes the `faults` key, and a snapshot keeps the faults
+with their counts. Read Track ignores the faults and returns the track as it is on the disk.
+
 ## Limitations and deliberate departures
 
 - **Only the boot-drive switches can be set.** RDOS 3.12 reads switches 2–5 for the boot device

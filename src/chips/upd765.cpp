@@ -472,11 +472,13 @@ bool Upd765::findSector(FloppyDrive::SectorId& out) {
         if (id.lengthCode != n_) continue;
         if (!id.idCrcOk) {
             st1_ |= kSt1De;
+            d->sectorNotFound(r_);
             return false;
         }
         out = id;
         return true;
     }
+    d->sectorNotFound(r_);
     if (!seen) {
         // No address mark at this density: the index hole twice, and nothing (§5 MA).
         st1_ |= kSt1Ma;

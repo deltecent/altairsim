@@ -411,6 +411,8 @@ add_library(altair_core STATIC
   # HostFile). openHostMedia() is the resolver both mains install (src/host/cardimg.h).
   src/host/cardimg.cpp
   src/host/disk.cpp
+  # The bad sectors of a mounted diskette, an overlay that never touches the image (#966).
+  src/host/diskfaults.cpp
   # A video board's frame, OUT of the seam: resolved through its palette to a PPM image
   # and to a one-character-per-pixel text grid, so a test can diff a whole picture and a
   # person can open what the board drew (src/host/framedump.h). Pure functions over a
@@ -920,6 +922,7 @@ add_executable(altair_tests
   tests/test_wd17xx.cpp
   tests/test_upd765.cpp
   tests/test_floppy_drive.cpp
+  tests/test_diskfaults.cpp
   tests/test_bitserial.cpp
   tests/test_i8257.cpp
   tests/test_bt453.cpp
@@ -1955,6 +1958,15 @@ if(EXPECT_EXECUTABLE)
                    -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/tarbell.exp
                    $<TARGET_FILE:altairsim>)
   set_tests_properties(acceptance-tarbell PROPERTIES
+                       LABELS acceptance TIMEOUT 90
+                       WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+  # Bad sectors (#966): a count fault that the CP/M BIOS retries past, then a hard one.
+  add_test(NAME acceptance-tarbell-fault
+           COMMAND ${EXPECT_EXECUTABLE}
+                   -f ${CMAKE_CURRENT_SOURCE_DIR}/tests/acceptance/tarbell-fault.exp
+                   $<TARGET_FILE:altairsim>)
+  set_tests_properties(acceptance-tarbell-fault PROPERTIES
                        LABELS acceptance TIMEOUT 90
                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 

@@ -18,6 +18,7 @@
 #include "core/version.h"
 #include "host/console.h"
 #include "host/cardimg.h"  // createCardImage -- MOUNT ... CREATE authors a blank card (img + .geo)
+#include "host/diskfaults.h"  // FAULT -- the bad sectors of a mounted disk (#966)
 #include "host/display.h"
 #include "host/endpoint.h"
 #include "host/filter.h"        // FilterStream -- peeled to reach the --mcp scripted console
@@ -943,7 +944,7 @@ Completions Monitor::complete(const std::string& line) {
 
     // ---- the other target-taking commands: word 1 is a board id or id:unit ----
     if (wordIdx == 1) {
-        if (name == "MOUNT" || name == "UNMOUNT") {
+        if (name == "MOUNT" || name == "UNMOUNT" || name == "FAULT") {
             completeTarget(frag, UnitUse::Mount, /*wantPseudo=*/false, /*bareIdComplete=*/false);
         } else if (name == "CONNECT" || name == "DISCONNECT") {
             completeTarget(frag, UnitUse::Connect, /*wantPseudo=*/false, /*bareIdComplete=*/false);
@@ -1340,6 +1341,10 @@ void Monitor::showMounts(std::ostream& out) {
             r.unit  = b->id + ":" + u.name;
             r.kind  = unitKindName(u.kind);
             r.holds = u.state + roNote(u);
+            // A drive with bad sectors says so, so the operator does not wonder why it fails.
+            if (const DiskFaults* f = b->faults(u.name); f && !f->empty())
+                r.holds += "  (" + std::to_string(f->list().size()) +
+                           (f->list().size() == 1 ? " fault" : " faults") + ")";
             wUnit   = std::max(wUnit, r.unit.size());
             wKind   = std::max(wKind, r.kind.size());
             rows.push_back(std::move(r));
@@ -1364,6 +1369,46 @@ void Monitor::showMounts(std::ostream& out) {
         out << buf << r.holds << "\n";
     }
     out << "\n  Paths are AS WRITTEN.  SHOW PATHS says what they are relative to.\n";
+}
+
+// ---------------------------------------------------------------------------
+// FAULT's table (#966): one row per fault, with HITS and LEFT. `only` null = every drive.
+// ---------------------------------------------------------------------------
+void Monitor::showFaults(std::ostream& out, Board* only, const std::string& unit) {
+    struct Row { std::string unit, spec, hits, left; };
+    std::vector<Row> rows;
+    size_t wUnit = 4, wSpec = 5;
+    for (const auto& b : m_.boards()) {
+        if (only && b.get() != only) continue;
+        for (const auto& u : b->units()) {
+            if (only && u.name != unit) continue;
+            const DiskFaults* f = b->faults(u.name);
+            if (!f) continue;
+            for (const DiskFault& e : f->list()) {
+                Row r;
+                r.unit = b->id + ":" + u.name;
+                r.spec = e.spec();
+                r.hits = std::to_string(e.hits);
+                r.left = e.hard() ? "-" : std::to_string(e.left);
+                wUnit  = std::max(wUnit, r.unit.size());
+                wSpec  = std::max(wSpec, r.spec.size());
+                rows.push_back(std::move(r));
+            }
+        }
+    }
+    if (rows.empty()) {
+        out << (only ? "  " + only->id + ":" + unit + ": no faults\n" : std::string("  (no faults)\n"));
+        return;
+    }
+    char buf[512];
+    std::snprintf(buf, sizeof buf, "  %-*s  %-*s  %5s  %5s", (int)wUnit, "UNIT", (int)wSpec, "FAULT",
+                  "HITS", "LEFT");
+    out << buf << "\n";
+    for (const auto& r : rows) {
+        std::snprintf(buf, sizeof buf, "  %-*s  %-*s  %5s  %5s", (int)wUnit, r.unit.c_str(), (int)wSpec,
+                      r.spec.c_str(), r.hits.c_str(), r.left.c_str());
+        out << buf << "\n";
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -4830,6 +4875,71 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
         flush(out);
         return true;
     }
+    // ---------------- FAULT: bad sectors on a mounted disk (#966) ----------------
+    if (cmd == "FAULT") {
+        const char* usage =
+            "FAULT [<id>:<unit> [LIST | ADD <t>/<h>/<s> <kind> [count=N] | CLEAR <t>/<h>/<s> [<kind>] | "
+            "CLEAR ALL]]";
+        if (a.size() == 1) {
+            showFaults(out, nullptr, "");
+            return true;
+        }
+        Board*  b;
+        UnitDef u;
+        if (!subunit(a[1], b, u, UnitUse::Mount, out)) {
+            failed_ = true;
+            return true;
+        }
+        const std::string at = b->id + ":" + u.name;
+        if (!b->takesFaults(u.name)) {
+            out << at << ": the " << b->type() << " board does not take faults on its "
+                << unitKindName(u.kind) << "\n";
+            failed_ = true;
+            return true;
+        }
+        DiskFaults* f = b->faults(u.name);
+        if (!f) {
+            out << at << ": no disk is mounted -- a fault is on a disk\n";
+            failed_ = true;
+            return true;
+        }
+        if (a.size() == 2 || (a.size() == 3 && is(a[2], "LIST"))) {
+            showFaults(out, b, u.name);
+            return true;
+        }
+        std::string spec;
+        for (size_t i = 3; i < a.size(); ++i) spec += (spec.empty() ? "" : " ") + a[i];
+        std::string err;
+        if (is(a[2], "ADD") && a.size() >= 4) {
+            if (!f->add(spec, err)) {
+                out << at << ": " << err << "\n";
+                failed_ = true;
+                return true;
+            }
+            DiskFault parsed;
+            DiskFaults::parse(spec, parsed, err);
+            out << at << ": fault " << parsed.spec() << "\n";
+            return true;
+        }
+        if (is(a[2], "CLEAR") && a.size() == 4 && is(a[3], "ALL")) {
+            f->clearAll();
+            out << at << ": no faults\n";
+            return true;
+        }
+        if (is(a[2], "CLEAR") && a.size() >= 4) {
+            if (!f->clear(spec, err)) {
+                out << at << ": " << err << "\n";
+                failed_ = true;
+                return true;
+            }
+            out << at << ": cleared " << spec << "\n";
+            return true;
+        }
+        out << "usage: " << usage << "\n";
+        failed_ = true;
+        return true;
+    }
+
     if (cmd == "UNMOUNT") {
         if (!need(2, "UNMOUNT <id>:<unit>")) return true;
         Board* b;

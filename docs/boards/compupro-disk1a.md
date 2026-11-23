@@ -193,6 +193,27 @@ The `[[board.drive]]` table takes these keys:
 | The 765 checks MF against the recorded density of the track | A read at the wrong density ends with Missing Address Mark (ST1 MA), as on the hardware |
 | Status bit 1 (index) stops when the motor is off | A guest that reads the index pulse sees a drive with its motor stopped as a drive that does not turn |
 
+## Bad sectors: `FAULT` and the `faults` key
+
+A drive can have bad sectors on its disk, to test the retry code of a guest (#966). The faults
+are an overlay in the drive (`DiskImageDrive`, `src/host/diskfaults.h`), and the image does not
+change. Give them with `FAULT <id>:driveN`, with the `disk_fault_*` MCP tools, or with the
+`faults` key of a `[[board.drive]]` table. The *User Manual* gives the syntax, in "Simulate a
+bad sector" in the Disks chapter.
+
+The µPD765 reports each fault with the status that it gives for a damaged disk:
+
+| Kind | What the guest reads |
+|---|---|
+| `data` | ST0 AT, ST1 DE, ST2 DD. The data still transfers. |
+| `id` | ST0 AT, ST1 DE |
+| `missing` | ST0 AT, ST1 ND |
+| `write` | ST0 AT and EC. The drive writes nothing. |
+
+`SET <id> DEBUG=fault` writes a line each time that a fault occurs. The `fault` flag is off
+until you turn it on. `CONFIG SAVE` writes the `faults` key, and a snapshot keeps the faults
+with their counts.
+
 ## Limitations and deliberate departures
 
 - **One 5.25″ format is tested.** A CP/M 2.2Q disk built from CompuPro's 1985 sources (two sides,

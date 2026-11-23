@@ -1,5 +1,7 @@
 #include "boards/cromemco-fdc.h"
 
+#include "core/debuglog.h"
+
 #include "core/bus.h"
 #include "core/clock.h"
 #include "core/roms.h"
@@ -729,6 +731,8 @@ bool CromemcoFdcBoard::mount(const std::string& unit, const std::string& path, b
     d.img  = std::move(img);
     d.path = path;
     d.drv.mount(d.img.get(), ro);
+    d.drv.setDebug([this] { return (const dbg::Channel*)debugChannel(); }, kFaultDebugBit,
+                   "drive" + std::to_string(i));
     d.drv.setHeadTrack(0);
     d.drv.setFormatting(true);        // both densities format via Write Track
     d.drv.setRevsPerSecond(revsPerSec);  // 8" = 6 rev/s, 5.25" = 5 -- the Write-Track budget
@@ -788,6 +792,7 @@ std::vector<Property> CromemcoFdcBoard::subUnitProperties(const std::string& tab
         x.aliases = {"writeprotect"};
         p.push_back(std::move(x));
     }
+    p.push_back(driveFaultsKey());
     return p;
 }
 
@@ -799,10 +804,12 @@ bool CromemcoFdcBoard::addSubUnit(const std::string& table, const KeyValues& kv,
 
     int         unit = -1;
     std::string path;
+    std::string faults;
     bool        ro = false;
     for (const auto& [k, v] : kv) {
         if (k == "unit") unit = std::stoi(v);
         else if (k == "mount") path = v;
+        else if (k == "faults") faults = v;
         else if (k == "readonly") {
             Value bv;
             std::string e;
@@ -816,8 +823,13 @@ bool CromemcoFdcBoard::addSubUnit(const std::string& table, const KeyValues& kv,
         return false;
     }
 
-    if (path.empty()) return true;
-    return mount("drive" + std::to_string(unit), path, ro, err);
+    if (path.empty()) {
+        if (faults.empty()) return true;
+        err = "`faults` needs a disk: give `mount` in the same table";
+        return false;
+    }
+    if (!mount("drive" + std::to_string(unit), path, ro, err)) return false;
+    return applyDriveFaults(drive_[(size_t)unit].drv, faults, err);
 }
 
 std::vector<Board::SubUnit> CromemcoFdcBoard::subUnits() const {
@@ -831,6 +843,7 @@ std::vector<Board::SubUnit> CromemcoFdcBoard::subUnits() const {
         su.fields.push_back({"unit", std::to_string(i), false});
         su.fields.push_back({"mount", d.path, true});
         if (d.img->readOnly()) su.fields.push_back({"readonly", "true", false});
+        if (!d.drv.faults().empty()) su.fields.push_back({"faults", d.drv.faults().toText(), true});
         out.push_back(std::move(su));
     }
     return out;
@@ -862,7 +875,10 @@ void CromemcoFdcBoard::serialize(StateWriter& w) const {
     w.u8(control_);
     w.boolean(armed_);
     w.u32((uint32_t)drive_.size());
-    for (const Drive& d : drive_) w.u32((uint32_t)d.drv.headTrackRaw());
+    for (const Drive& d : drive_) {
+        w.u32((uint32_t)d.drv.headTrackRaw());
+        d.drv.faults().serialize(w);  // the bad sectors and their counts (#966)
+    }
     chip_->serialize(w);
     uart_.serialize(w);
 }
@@ -877,8 +893,14 @@ void CromemcoFdcBoard::deserialize(StateReader& r) {
     armed_    = r.boolean();
     uint32_t n = r.u32();
     for (uint32_t i = 0; i < n; ++i) {
-        int head = (int)r.u32();
-        if (i < drive_.size()) drive_[i].drv.setHeadTrack(head);
+        int        head = (int)r.u32();
+        DiskFaults spare;
+        if (i < drive_.size()) {
+            drive_[i].drv.setHeadTrack(head);
+            drive_[i].drv.faults().deserialize(r);
+        } else {
+            spare.deserialize(r);
+        }
     }
     chip_->deserialize(r);
     uart_.deserialize(r);
@@ -886,5 +908,13 @@ void CromemcoFdcBoard::deserialize(StateReader& r) {
     refresh();         // re-drive the wires from the restored chip state
     decodeChanged();   // armed_ may have changed the ROM decode
 }
+
+bool CromemcoFdcBoard::takesFaults(const std::string& unit) const { return driveIndex(unit, drives_) >= 0; }
+
+DiskFaults* CromemcoFdcBoard::faults(const std::string& unit) {
+    const int i = driveIndex(unit, drives_);
+    return (i >= 0 && drive_[(size_t)i].img) ? &drive_[(size_t)i].drv.faults() : nullptr;
+}
+
 
 } // namespace altair

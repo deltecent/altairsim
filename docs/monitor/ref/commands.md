@@ -1008,6 +1008,43 @@ DO examples/basic4k/basic4k.ini       ; run it from anywhere
 ```
 
 
+### FAULT — `FA[ULT]`
+
+```
+FAULT [<id>:<u> [LIST | ADD <t>/<h>/<s> <kind> [count=N] | CLEAR <t>/<h>/<s> [<kind>] | CLEAR ALL]]
+```
+Makes a sector of a mounted disk bad. Use it to test the retry code of a guest.
+The disk image does not change. The faults are in the drive, and UNMOUNT removes
+them.
+
+<t>/<h>/<s> is the track, the head and the sector. The sector is the number that
+the guest asks for. Use * for all tracks, heads or sectors.
+<kind> is one of these:
+
+```
+data     The data field has a CRC error. The guest still gets the data.
+id       The ID field has a CRC error. The controller does not find the sector.
+missing  The sector has no ID field. The controller does not find the sector.
+write    The drive does not write the sector. The controller reports a fault.
+```
+
+With no count, the sector fails each time. With count=N, the sector fails N
+times. After that, the sector is good.
+
+FAULT with no unit lists the faults of all the drives. HITS is the number of
+times that a fault occurred. LEFT is the number of failures before the sector is
+good. SET <id> DEBUG=fault writes a line each time that a fault occurs.
+
+```
+FAULT fdc0:drive0 ADD 2/0/1 data count=2  ; two CRC errors, then good
+FAULT fdc0:drive0 ADD 5/*/* id            ; all of track 5, each time
+FAULT fdc0:drive0                         ; the faults of one drive
+FAULT fdc0:drive0 CLEAR 2/0/1
+FAULT fdc0:drive0 CLEAR ALL
+SET fdc0 DEBUG=fault                      ; a line for each fault
+```
+
+
 ### MACHINE — `MA[CHINE]`
 
 ```

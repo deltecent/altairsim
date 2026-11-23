@@ -12,6 +12,24 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**Bad sectors on a disk, to test retry code: `FAULT` (issue #966).** `FAULT` makes a sector of
+a mounted disk bad, for example `FAULT fdc0:drive0 ADD 2/0/1 data count=2`. The kinds are
+`data` and `id` (a CRC error), `missing` (no ID field) and `write` (the drive does not write).
+With `count=N`, the sector fails N times and is then good. With no count, it fails each time.
+The controller reports each fault with the status bits of its chip, and the disk image does not
+change. `FAULT` lists each fault with the number of times it occurred. `SET <id> DEBUG=fault`
+writes a line for each fault. The `faults` key of a drive puts faults in a machine file, and a
+snapshot keeps them. The MCP tools are `disk_fault_add`, `disk_fault_list` and
+`disk_fault_clear`. The `tarbell`, `tarbelldd`, `16fdc`, `64fdc`, `versafloppy`, `jadedd`,
+`disk1` and `disk1a` controllers take faults.
+
+**Fixed: the WD17xx set CRC Error for a sector that it found.** A Read Sector or Write Sector
+can pass a bad ID field on the way to its sector. The chip then set status bit 3, CRC Error,
+also when it found the sector after that. A BIOS reads bit 3 alone as a CRC error in the data, so a
+good sector read as bad. The chip now sets bit 3 only together with bit 4, Record Not Found, as
+the WD177X status table says. A disk image has no bad ID fields, so a guest met this only
+through `FAULT`.
+
 **The PAiA SS-100 speech synthesizer board, `ss100` (issue #420).** The board has a Votrax
 SC-01-A chip. The guest writes phoneme codes to port `30` and the control word to port `31`.
 The board requests an interrupt when the chip is ready for the next phoneme. The

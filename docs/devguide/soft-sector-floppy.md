@@ -59,6 +59,11 @@ the chip/drive split is spelled out there and in `src/chips/floppy.h` at length.
   select lands; the model gives the new drive all of them.
   The one deadline a wait-synced chip keeps is the index pulse that ends a `Write Track`. See
   "The `trackImageBytes(rate)` budget" below.
+- **S3 CRC Error on a sector search comes only with S4 Record Not Found.** `findSector` passes
+  each ID field on the way to the sector that it wants. A bad ID field that it passes sets S3
+  only if the search then fails (the WD177X status table). If the chip finds the sector, a bad
+  ID field on another sector does not matter. A BIOS reads S3 alone as a data CRC error, so a
+  wrong S3 makes a good sector look bad.
 
 ## The drive: `DiskImageDrive` over `DiskImage`
 
@@ -69,8 +74,9 @@ the chip/drive split is spelled out there and in `src/chips/floppy.h` at length.
 - **The ID fields come from the ID list, or are made up** (`sectorIdAt`). A format in this
   session keeps its ID fields in the drive's ID list (see "The ID list" below). A track with no
   list gets IDs made up from its `TrackFormat`. C is the physical head position, R counts up from
-  `startSector` (1 on a soft-sector board), and the mark is normal. The CRCs always check,
-  because an image carries no bad bits.
+  `startSector` (1 on a soft-sector board), and the mark is normal. The CRCs check, because
+  an image carries no bad bits. Only a fault from the drive's fault table makes one fail (see
+  "Bad sectors: the fault overlay" below).
 - **`DiskImage` is CHS with per-track geometry.** Each `(track, head)` slot carries a
   `TrackFormat{density, sectors, sectorSize, startSector}`; offsets are a **running sum** over
   the slots (`rebuild()`), so a disk whose tracks differ in size — the mixed-density disk — is
@@ -82,6 +88,46 @@ the chip/drive split is spelled out there and in `src/chips/floppy.h` at length.
   sector fails after `setTrackFormat` has changed the image. The boards that hold this drive
   sync only on unmount, and a killed process never gets to the unmount (#900). A board does not need to
   add its own per-write sync.
+
+## Bad sectors: the fault overlay
+
+`FAULT`, the `disk_fault_*` MCP tools and the `faults` key of a drive make a sector bad, to test
+the retry code of a guest (#966). A raw `.DSK` has no CRCs to damage (DESIGN.md §7.3). The
+faults are a table in the drive, `DiskImageDrive::faults()`, a `DiskFaults` from
+`src/host/diskfaults.h`. The image bytes never change.
+
+The drive applies the table at its seam with the chip, so the chip code does not change:
+
+| Kind | Where the drive applies it | Where a hit is counted |
+|---|---|---|
+| `data` | `sectorIdAt` gives `dataCrcOk = false`. The data still transfers. | `readData` |
+| `id` | `sectorIdAt` gives `idCrcOk = false` | `sectorNotFound` |
+| `missing` | `sectorIdAt` returns false for that index | `sectorNotFound` |
+| `write` | `writeData` returns false and writes nothing | `writeData` |
+
+**`FloppyDrive::sectorNotFound(int sector)` is the one new seam.** The chip calls it when a
+Type II command (WD17xx) or a data command (µPD765) ends with "not found". The chip reads every
+ID field on a track for each command. A count in `sectorIdAt` would wear a fault down on
+commands for other sectors. The drive counts the hit only if the sector is on the track. The
+default does nothing. The call is bookkeeping, and the guest cannot see it.
+
+**A `count=N` fault is armed while `left > 0`.** `DiskFaults::find` returns only an armed fault,
+and `DiskFaults::use` counts a hit and decrements `left`. A hard fault (no count) is always
+armed. `hits` counts every use, so a test can check how many times a guest tried.
+
+**Read Track and the deleted-mark list do not use the table.** They read through `idAt` and the
+raw image. Read Track returns the track as it is on the disk.
+
+**The debug line.** Each board declares the `fault` debug flag and gives each drive a channel
+getter with `setDebug`. The getter is lazy, because the channel is made at `Bus::attach`, after
+the drives exist. `useFault` writes one line through `dbg::line`, only when `ch->on(bit)` is true.
+
+**Where the table lives.** `mount` and `eject` clear the table, because the faults are for that
+disk. A board saves the table as the `faults` key (`driveFaultsKey`, `applyDriveFaults`), and
+serializes it next to the head position for `SNAPSHOT`. `Board::takesFaults` and
+`Board::faults` let the monitor and the MCP server find the table of a unit. When
+`takesFaults` is false, `FAULT` says that the board does not take faults. When it is true and
+`faults` returns `nullptr`, the drive is empty.
 
 ## Geometry in real time — the FORMAT path
 

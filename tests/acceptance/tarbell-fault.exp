@@ -1,0 +1,75 @@
+#!/usr/bin/expect -f
+#
+# BAD SECTORS REACH A REAL BIOS (#966). The Tarbell #1011 boots CP/M 2.2 off a disk whose
+# machine file puts a fault on the first directory sector:
+#
+#   1. count=2: the BIOS meets two CRC errors, retries, and CP/M still reaches A>.
+#      FAULT then shows the fault used twice and worn off.
+#   2. The same sector made hard: DIR cannot read the directory, and the BDOS says
+#      `Bdos Err On A: Bad Sector` -- the error a real disk with a bad sector gives.
+#
+# IT HAS TO BE AN EXPECT TEST: step 2 types at the monitor and at A>, which a pipe cannot do.
+#
+# THE DISK MUST NOT MOVE. A fault is an overlay on the drive; the image never changes. The
+# fixture is write-protected too, and shasummed before and after.
+#
+# usage: expect -f tarbell-fault.exp <altairsim>
+#
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set dsk "tests/media/tarbell/CPM22b15-48K-SSSD.DSK"
+
+set before [exec shasum $dsk]
+
+spawn $exe tests/acceptance/tarbell-fault.toml
+
+# 1. Two CRC errors on the directory sector, and the BIOS's retry gets past them.
+expect {
+    -ex "A>" {}
+    -ex "Bad Sector" { puts "FAIL: the BIOS gave up on a fault that wears off after 2 errors"; exit 1 }
+    eof     { puts "FAIL: the machine died before the A> prompt"; exit 1 }
+    timeout { puts "FAIL: CP/M never reached A> past the count=2 fault"; exit 1 }
+}
+
+send "\005"
+expect {
+    -ex "altairsim> " {}
+    timeout { puts "FAIL: Ctrl-E did not reach the monitor"; exit 1 }
+}
+send "FAULT fdc0:drive0\r"
+expect {
+    -re {2/0/1 data count=2 +2 +0} {}
+    timeout { puts "FAIL: FAULT does not show the fault used twice with none left"; exit 1 }
+}
+expect -ex "altairsim> "
+
+# 2. The same sector, hard: the directory cannot be read.
+send "FAULT fdc0:drive0 ADD 2/0/1 data\r"
+expect {
+    -ex "fdc0:drive0: fault 2/0/1 data" {}
+    timeout { puts "FAIL: FAULT ADD did not replace the fault"; exit 1 }
+}
+expect -ex "altairsim> "
+send "RUN\r"
+sleep 0.5
+send "DIR\r"
+expect {
+    -ex "Bad Sector" {}
+    -ex "STAT" { puts "FAIL: DIR read the directory through a hard fault"; exit 1 }
+    eof     { puts "FAIL: the machine died running DIR"; exit 1 }
+    timeout { puts "FAIL: DIR did not report a bad sector"; exit 1 }
+}
+
+set after [exec shasum $dsk]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. A fault must never touch the disk image:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    exit 1
+}
+
+puts "OK: CP/M retried past a count=2 fault to A>, a hard fault gave Bdos Err On A: Bad Sector,\
+      and the disk image is byte-identical."
+exit 0

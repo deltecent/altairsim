@@ -398,6 +398,134 @@ TNFS carries only **single-file images**: a floppy, a minidisk, an 8 MB `fdc8mb`
 cassette tape. The card images of the CompactFlash and SD boards have a second file (`.img` with
 `.geo`), and you cannot mount them over TNFS.
 
+## Simulate a bad sector: `FAULT`
+
+`FAULT` makes a sector of a mounted disk bad. Use it to test the retry code and the error
+messages of a guest. The disk image does not change. The faults are in the drive, beside the
+image.
+
+These controllers take faults: `tarbell`, `tarbelldd`, `16fdc`, `64fdc`, `versafloppy`,
+`jadedd`, `disk1` and `disk1a`. Another controller refuses the command:
+
+```
+altairsim> FAULT dsk0:drive0 ADD 2/0/1 data
+dsk0:drive0: the dcdd board does not take faults on its disk
+```
+
+### Give a fault
+
+A fault is a sector address, a kind and an optional count:
+
+```
+<track>/<head>/<sector> <kind> [count=N]
+```
+
+- The track, the head and the sector are decimal numbers. Use `*` for all tracks, all heads or
+  all sectors.
+- The sector is the number that the guest asks for. On most soft-sector controllers, the first
+  sector of a track is 1.
+- With no count, the fault is **hard**. The sector fails each time.
+- With `count=N`, the sector fails N times. After that, the sector is good. A test with a count
+  shows that a retry gets past the error.
+
+| Kind | What the controller sees |
+|---|---|
+| `data` | The data field has a CRC error. The guest still gets the data. |
+| `id` | The ID field has a CRC error. The controller does not find the sector. |
+| `missing` | The sector has no ID field. The controller does not find the sector. |
+| `write` | The drive does not write the sector. The controller reports a write fault. |
+
+The controller reports each fault with the status bits of its chip. The `disk1` and `disk1a` have
+a µPD765. The other controllers have a WD17xx.
+
+| Kind | WD17xx status | µPD765 result |
+|---|---|---|
+| `data` | CRC Error (bit 3) | ST0 AT, ST1 DE, ST2 DD |
+| `id` | Record Not Found and CRC Error (bits 4 and 3) | ST0 AT, ST1 DE |
+| `missing` | Record Not Found (bit 4) | ST0 AT, ST1 ND |
+| `write` | Write Fault (bit 5) | ST0 AT and EC |
+
+1. Mount the disk.
+2. Add the fault. This one gives two CRC errors on track 2, head 0, sector 1:
+
+   ```
+   altairsim> FAULT fdc0:drive0 ADD 2/0/1 data count=2
+   fdc0:drive0: fault 2/0/1 data count=2
+   ```
+
+3. Run the guest.
+4. Type `FAULT` to see the faults of all the drives:
+
+   ```
+   altairsim> FAULT
+     UNIT         FAULT                HITS   LEFT
+     fdc0:drive0  2/0/1 data count=2      2      0
+   ```
+
+`HITS` is the number of times that the fault occurred. `LEFT` is the number of failures before
+the sector is good. `LEFT` is `-` for a hard fault. On this disk, CP/M reads the sector at its
+first `A>` prompt. The BIOS got two CRC errors, read the sector a third time, and continued.
+
+A second `ADD` with the same address and kind replaces the fault, and sets its counts again.
+`SHOW MOUNTS` shows the number of faults beside each disk:
+
+```
+altairsim> SHOW MOUNTS
+  UNIT         KIND  HOLDS
+  fdc0:drive0  disk  cpm22.dsk  (2 faults)
+```
+
+### Remove a fault
+
+| Command | What it removes |
+|---|---|
+| `FAULT fdc0:drive0 CLEAR 2/0/1` | each fault at that address |
+| `FAULT fdc0:drive0 CLEAR 2/0/1 data` | the `data` fault at that address |
+| `FAULT fdc0:drive0 CLEAR ALL` | each fault of the drive |
+
+`CLEAR` matches the address as you wrote it. `CLEAR 10/*/*` removes the fault `10/*/*`. It does
+not remove a fault on one sector of track 10.
+
+`MOUNT` and `UNMOUNT` remove the faults of the drive, because the faults are for the disk in it.
+
+### See each fault as it occurs
+
+Turn on the `fault` debug flag of the controller:
+
+```
+altairsim> SET fdc0 DEBUG=fault
+```
+
+The controller then writes a line each time that a fault occurs. The line starts with the
+address of the instruction that the processor ran:
+
+```
+AEC8  fdc0: fault drive0 2/0/1 data hit 1, 1 left
+AEC8  fdc0: fault drive0 2/0/1 data hit 2, 0 left
+```
+
+The flag writes nothing until you turn it on. `SET fdc0 NODEBUG=fault` turns it off. The flag
+changes only the lines. The faults occur and count in the same way with the flag off.
+
+### Faults in the machine file
+
+The `faults` key of a drive gives its faults. Put a `;` between two faults:
+
+```toml
+[[board]]
+type = "tarbell"
+id   = "fdc0"
+
+  [[board.drive]]
+  unit   = 0
+  mount  = "cpm22.dsk"
+  faults = "2/0/1 data count=2; 10/*/* write"
+```
+
+The machine starts with the faults on the disk. `CONFIG SAVE` writes the `faults` key of each
+drive that has faults. A snapshot keeps the faults and their counts, and `RESTORE` gives them
+back.
+
 ## Look at what is in the machine
 
 `SHOW` on the controller lists its drives and the disk in each one. `BOARDS` lists every board

@@ -2453,6 +2453,71 @@ void test_cli() {
         std::filesystem::remove(tapPath, ec);
     }
 
+    // FAULT -- bad sectors on a mounted disk (#966). The monitor half: the command, its list,
+    // its errors, the SHOW MOUNTS marker, and FA as its short form.
+    SECTION("cli: FAULT adds, lists and clears the bad sectors of a mounted disk");
+    {
+        setMediaResolver([](const std::string& path, bool ro, std::string&) {
+            return std::make_unique<MemoryMedia>(path, std::vector<uint8_t>(256256, 0xE5), ro);
+        });
+        Machine            fm;
+        Monitor            fmon(fm);
+        std::ostringstream fsink;
+        fmon.exec("BOARDS ADD tarbell fdc0", fsink);
+        fmon.exec("BOARDS ADD acr acr0", fsink);
+
+        CHECK(resolveCommand("FA") && std::string(resolveCommand("FA")->name) == "FAULT", "FA is FAULT");
+        CHECK(std::string(resolveCommand("FI")->name) == "FILL", "...and FI is still FILL");
+
+        auto fx = [&](const std::string& line) {
+            std::ostringstream o;
+            fmon.exec(line, o);
+            return o.str();
+        };
+        CHECK(fx("FAULT") == "  (no faults)\n", "no faults anywhere");
+        std::string o = fx("FAULT fdc0:drive0 ADD 2/0/1 data");
+        CHECK(o.find("no disk is mounted") != std::string::npos && fmon.failed(), "an empty drive: refused");
+
+        fx("MOUNT fdc0:drive0 a.dsk");
+        o = fx("FA fdc0:drive0 ADD 2/0/1 DATA count=2");
+        CHECK(o == "fdc0:drive0: fault 2/0/1 data count=2\n", "ADD says what it added");
+        fx("FAULT fdc0:drive0 ADD 5/*/* id");
+        o = fx("FAULT");
+        CHECK(o.find("UNIT") != std::string::npos && o.find("HITS") != std::string::npos &&
+                  o.find("LEFT") != std::string::npos,
+              "the list has a header");
+        CHECK(o.find("2/0/1 data count=2      0      2") != std::string::npos, "a count fault: 0 hits, 2 left");
+        CHECK(o.find("5/*/* id                0      -") != std::string::npos, "a hard fault: no LEFT");
+        CHECK(fx("FAULT fdc0:drive0") == fx("FAULT fdc0:drive0 LIST"), "LIST is the same as no word");
+        CHECK(fx("SHOW MOUNTS").find("(2 faults)") != std::string::npos, "SHOW MOUNTS marks the drive");
+
+        o = fx("FAULT fdc0:drive0 ADD 2/0/1 nonsense");
+        CHECK(o.find("bad fault kind") != std::string::npos, "a bad kind: the parser's reason");
+        o = fx("FAULT fdc0:drive0 ADD 2/0/1");
+        CHECK(o.find("bad fault '2/0/1'") != std::string::npos, "no kind: the parser's reason");
+        o = fx("FAULT fdc0:drive0 ZAP");
+        CHECK(o.find("usage: FAULT") != std::string::npos, "an unknown word: usage");
+        o = fx("FAULT acr0:tape ADD 0/0/1 data");
+        CHECK(o == "acr0:tape: the acr board does not take faults on its tape\n", "a tape recorder: refused");
+
+        o = fx("FAULT fdc0:drive0 CLEAR 5/*/*");
+        CHECK(o == "fdc0:drive0: cleared 5/*/*\n", "CLEAR one address");
+        o = fx("FAULT fdc0:drive0 CLEAR 9/0/1");
+        CHECK(o.find("no fault at 9/0/1") != std::string::npos, "CLEAR what is not there: refused");
+        CHECK(fx("SHOW MOUNTS").find("(1 fault)") != std::string::npos, "one fault, singular");
+        o = fx("FAULT fdc0:drive0 CLEAR ALL");
+        CHECK(o == "fdc0:drive0: no faults\n" && fx("FAULT") == "  (no faults)\n", "CLEAR ALL");
+        CHECK(fx("SHOW MOUNTS").find("fault") == std::string::npos, "...and SHOW MOUNTS says nothing");
+
+        fx("FAULT fdc0:drive0 ADD 1/0/1 write");
+        fx("UNMOUNT fdc0:drive0");
+        fx("MOUNT fdc0:drive0 a.dsk");
+        CHECK(fx("FAULT fdc0:drive0") == "  fdc0:drive0: no faults\n", "a new disk brings no faults");
+
+        CHECK(fx("SHOW DEBUG").find("fault") != std::string::npos, "SHOW DEBUG lists the fault flag");
+        setMediaResolver(openHostFile);
+    }
+
     // -----------------------------------------------------------------------
     // A VERB EXISTS ONLY WHILE THE CARD THAT BRINGS IT IS IN A SLOT (core/board.h).
     //

@@ -31,10 +31,13 @@
 // list, the payloads and the IBM standard gaps. Only the gap lengths are made up.
 
 #include "chips/floppy.h"
+#include "host/diskfaults.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -42,14 +45,26 @@ namespace altair {
 
 class DiskImage;
 class Clock;
+namespace dbg { class Channel; }
 
 class DiskImageDrive : public FloppyDrive {
 public:
     // The board owns the DiskImage and points the drive at it on mount (nullptr = an empty
     // drive, which reads NOT READY -- exactly what a bare drive with no diskette does). It
     // stays valid until the board unmounts or replaces it.
-    void mount(DiskImage* img, bool writeProtect) { img_ = img; wp_ = writeProtect; ids_.clear(); }
-    void eject() { img_ = nullptr; wp_ = false; ids_.clear(); }
+    // A new diskette brings no bad sectors with it: mount and eject clear the fault table.
+    void mount(DiskImage* img, bool writeProtect) {
+        img_ = img;
+        wp_  = writeProtect;
+        ids_.clear();
+        faults_.clearAll();
+    }
+    void eject() {
+        img_ = nullptr;
+        wp_  = false;
+        ids_.clear();
+        faults_.clearAll();
+    }
     bool loaded() const { return img_ != nullptr; }
 
     // The card's drive-select latch chose a side; the DiskImage head index follows it.
@@ -86,6 +101,25 @@ public:
     int  headTrackRaw() const { return head_; }
     void setHeadTrack(int t) { head_ = t < 0 ? 0 : t; }
 
+    // THE BAD SECTORS OF THE DISKETTE IN THIS DRIVE (host/diskfaults.h, #966). An overlay: the
+    // image bytes never change. sectorIdAt reports a bad ID or data CRC, or leaves a missing ID
+    // field out; writeData refuses a bad write. One fault is used up (and counted) when the
+    // chip reads the sector's data, writes it, or gives up looking for it (sectorNotFound).
+    // The address is the physical track under the head, the selected side and the sector ID.
+    DiskFaults&       faults() { return faults_; }
+    const DiskFaults& faults() const { return faults_; }
+
+    // The card's debug channel, its `fault` flag and this drive's unit name. Each use of a
+    // fault writes one line -- ONLY while the operator has the flag on (SET <id> DEBUG=fault).
+    // The fault works the same with the flag off; the flag decides the line and nothing else.
+    // `ch` is asked at each use, because a card gets its channel when it enters a backplane,
+    // after its drives are built (Board::ensureDebugChannel).
+    void setDebug(std::function<const dbg::Channel*()> ch, unsigned bit, std::string unit) {
+        dbg_    = std::move(ch);
+        dbgBit_ = bit;
+        unit_   = std::move(unit);
+    }
+
     // ---- the FloppyDrive pins and seams ----
     bool ready() const override;
     bool writeProtected() const override;
@@ -99,6 +133,7 @@ public:
     bool sectorIdAt(int index, SectorId& out) const override;
     bool readData(const SectorId& id, uint8_t* buf, size_t* n) override;
     bool writeData(const SectorId& id, const uint8_t* buf, size_t n) override;
+    void sectorNotFound(int sector) override;
 
     // ---- FORMAT: the Write Track command lands here (see setFormatting) ----
     // trackImageBytes(rate) is 0 (WRITE FAULT) unless a disk is loaded AND the card enabled
@@ -125,6 +160,10 @@ private:
     // track formatted (an empty drive, or a track range the image never declared).
     bool trackFmt(struct TrackFormat& out) const;
 
+    // The ID field at `index` from the image and the recorded list, with no faults on it.
+    // sectorIdAt() is this plus the faults; the drive's own track work uses this.
+    bool idAt(int index, SectorId& out) const;
+
     // THE ID FIELDS A FORMAT WROTE, kept for the session. A raw image holds payloads only, so
     // the ID fields a Write Track (or the 765's Format a Track) laid down -- their order round
     // the track, the C, H, R and N bytes as written, and which data mark each sector has --
@@ -140,6 +179,14 @@ private:
     // track's TrackFormat counts, so a list can never disagree with the image's geometry.
     const std::vector<RecordedId>* recordedIds() const;
     std::map<std::pair<int, int>, std::vector<RecordedId>> ids_;
+
+    // Use a fault: count it, wear it down, and write the debug line if the flag is on.
+    void useFault(DiskFault& f, int sector);
+
+    DiskFaults         faults_;
+    std::function<const dbg::Channel*()> dbg_;  // the card's channel, or null
+    unsigned            dbgBit_ = 0;
+    std::string         unit_;
 
     DiskImage* img_  = nullptr;  // NON-OWNING: the board owns it
     int        head_ = 0;        // where the head physically is
@@ -159,5 +206,18 @@ private:
     // index() reads false -- the default for every card that does not opt in.
     const Clock* clk_ = nullptr;
 };
+
+// ---- THE CARD SIDE OF THE FAULTS (#966), shared by every card that holds these drives ----
+
+// The `faults` key of a [[board.drive]] table: the drive's fault list, entries split by ";".
+struct Property;
+Property driveFaultsKey();
+
+// Apply a `faults` key to a drive the table just mounted. An empty text is no faults. A fault
+// list on a drive with no disk is refused: the faults belong to a diskette.
+bool applyDriveFaults(DiskImageDrive& d, const std::string& text, std::string& err);
+
+// The debug flag every such card offers for its drives' faults: `fault`, bit 0 of the channel.
+constexpr unsigned kFaultDebugBit = 0;
 
 } // namespace altair

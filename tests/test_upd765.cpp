@@ -880,4 +880,114 @@ void test_upd765() {
         auto s = b.results();
         CHECK(s.size() == 7 && s[1] == 0x80, "...to the same end");
     }
+
+    SECTION("uPD765 -- bad sectors on a disk image (DiskImageDrive faults, #966)");
+    {
+        std::vector<uint8_t> bytes(256256, 0);
+        for (size_t i = 0; i < bytes.size(); ++i) bytes[i] = (uint8_t)(i / 128 % 26 + 1);
+        auto         owned = std::make_unique<MemoryMedia>("t.dsk", bytes);
+        MemoryMedia* m     = owned.get();
+        DiskImage    img(std::move(owned));
+        img.init(77, 1, false);
+        img.initFormat(0, 76, 0, 0, Density::SD, 26, 128, 1);
+        DiskImageDrive dd;
+        dd.mount(&img, false);
+
+        Clock  clk;
+        Upd765 f("fdc");
+        clk.setHz(2000000);
+        f.attachClock(&clk);
+        f.wiring.drive = [&dd](int us) -> FloppyDrive* { return us == 0 ? &dd : nullptr; };
+        f.wiring.head  = [&dd](int, int hd) { dd.setSide(hd); };
+        f.powerOn();
+        auto results = [&] {
+            std::vector<uint8_t> out;
+            for (int k = 0; k < 16; ++k) {
+                const uint8_t msr = f.readMsr();
+                if ((msr & (Upd765::kMsrRqm | Upd765::kMsrDio)) != (Upd765::kMsrRqm | Upd765::kMsrDio)) break;
+                out.push_back(f.readData());
+            }
+            return out;
+        };
+        auto run = [&](uint64_t t) {
+            const uint64_t end = clk.now() + t;
+            while (clk.now() < end) {
+                uint64_t e = f.nextEdge();
+                clk.advance((e && e > clk.now() && e < end) ? e - clk.now() : end - clk.now());
+                f.poll();
+            }
+        };
+        while (f.intPin()) {
+            f.writeData(0x08);
+            results();
+        }
+        for (uint8_t v : {0x03, 0xD1, 0x02}) f.writeData(v);  // Specify, DMA
+
+        // One sector, R = EOT, FM: a clean read ends AT with EN (past EOT, no TC).
+        auto read = [&](uint8_t r, std::vector<uint8_t>& data) {
+            for (uint8_t v : {(uint8_t)0x06, (uint8_t)0x00, (uint8_t)0, (uint8_t)0, r, (uint8_t)0, r,
+                              (uint8_t)7, (uint8_t)128})
+                f.writeData(v);
+            run(4000);
+            data.clear();
+            for (int k = 0; k < 1000 && f.drq(); ++k) {
+                uint8_t v = 0;
+                if (f.dackRead(v)) data.push_back(v);
+            }
+            return results();
+        };
+        auto write = [&](uint8_t r, uint8_t fill) {
+            for (uint8_t v : {(uint8_t)0x05, (uint8_t)0x00, (uint8_t)0, (uint8_t)0, r, (uint8_t)0, r,
+                              (uint8_t)7, (uint8_t)128})
+                f.writeData(v);
+            run(4000);
+            for (int k = 0; k < 1000 && f.drq(); ++k) f.dackWrite(fill);
+            return results();
+        };
+        std::string          err;
+        std::vector<uint8_t> data;
+
+        auto s = read(3, data);
+        CHECK(s.size() == 7 && s[0] == 0x40 && s[1] == Upd765::kSt1En && s[2] == 0 && data.size() == 128,
+              "no faults: a clean read");
+
+        dd.faults().add("0/0/3 data count=2", err);
+        s = read(3, data);
+        CHECK(s[0] == 0x40 && (s[1] & Upd765::kSt1De) && (s[2] & Upd765::kSt2Dd), "data fault: AT, DE, DD");
+        CHECK(data.size() == 128 && data[0] == 3, "...and the data still arrived");
+        s = read(3, data);
+        CHECK((s[1] & Upd765::kSt1De) && (s[2] & Upd765::kSt2Dd), "second read: DE, DD again");
+        s = read(3, data);
+        CHECK(s[1] == Upd765::kSt1En && s[2] == 0, "third read: clean -- the retry recovered");
+        CHECK(dd.faults().list()[0].hits == 2, "two hits");
+
+        dd.faults().clearAll();
+        dd.faults().add("0/0/4 id", err);
+        bool all = true;
+        for (int i = 0; i < 4; ++i) {
+            s   = read(4, data);
+            all = all && s[0] == 0x40 && s[1] == Upd765::kSt1De && (s[2] & Upd765::kSt2Dd) == 0 && data.empty();
+        }
+        CHECK(all, "hard id fault: AT, DE without DD, no data -- every time");
+        CHECK(dd.faults().list()[0].hits == 4, "four hits");
+        s = read(9, data);
+        CHECK(s[1] == Upd765::kSt1En && data.size() == 128 && data[0] == 9, "another sector reads clean");
+
+        dd.faults().clearAll();
+        dd.faults().add("0/0/6 missing count=1", err);
+        s = read(6, data);
+        CHECK(s[0] == 0x40 && s[1] == Upd765::kSt1Nd, "missing: AT, ND");
+        s = read(6, data);
+        CHECK(s[1] == Upd765::kSt1En && data[0] == 6, "...then found");
+        CHECK(dd.faults().list()[0].hits == 1, "one hit");
+
+        dd.faults().clearAll();
+        dd.faults().add("0/0/7 write count=1", err);
+        s = write(7, 0xAA);
+        CHECK((s[0] & 0xD0) == 0x50, "write fault: AT, EC");
+        CHECK(m->bytes()[6 * 128] == 7, "...and nothing reached the image");
+        s = write(7, 0xAA);
+        CHECK(s[0] == 0x40 && s[1] == Upd765::kSt1En, "second write: taken");
+        CHECK(m->bytes()[6 * 128] == 0xAA, "...and it is in the image");
+    }
 }

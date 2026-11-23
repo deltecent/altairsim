@@ -2363,6 +2363,56 @@ void test_mcp() {
               "mount on an unknown board is an error, not a silent no-op");
     }
 
+    SECTION("MCP: disk_fault_add, _list and _clear -- bad sectors on a mounted disk (#966)");
+    {
+        setMediaResolver([](const std::string& path, bool ro, std::string&) {
+            return std::make_unique<MemoryMedia>(path, std::vector<uint8_t>(256256, 0xE5), ro);
+        });
+        Machine m;
+        if (!loadAltmon(m)) return;
+        std::ostringstream add;
+        Monitor(m).exec("BOARDS ADD tarbell fdc0", add);
+        std::ostringstream s;
+        int id = 0;
+        auto req = [&](const std::string& params) {
+            s << R"({"jsonrpc":"2.0","id":)" << ++id
+              << R"(,"method":"tools/call","params":)" << params << "}\n";
+        };
+        req(R"({"name":"disk_fault_add","arguments":{"id":"fdc0","unit":"drive0","fault":"2/0/1 data"}})");
+        req(R"({"name":"mount","arguments":{"id":"fdc0","unit":"drive0","path":"a.dsk"}})");
+        req(R"({"name":"disk_fault_add","arguments":{"id":"fdc0","unit":"Drive0","fault":"2/0/1 DATA count=2"}})");
+        req(R"({"name":"disk_fault_add","arguments":{"id":"fdc0","unit":"drive0","fault":"5/*/* id"}})");
+        req(R"({"name":"disk_fault_add","arguments":{"id":"fdc0","unit":"drive0","fault":"5/0/1 nonsense"}})");
+        req(R"({"name":"disk_fault_list","arguments":{}})");
+        req(R"({"name":"disk_fault_clear","arguments":{"id":"fdc0","unit":"drive0","fault":"5/*/*"}})");
+        req(R"({"name":"disk_fault_list","arguments":{"id":"fdc0","unit":"drive0"}})");
+        req(R"({"name":"disk_fault_clear","arguments":{"id":"fdc0","unit":"drive0","all":true}})");
+        req(R"({"name":"disk_fault_list","arguments":{}})");
+        req(R"({"name":"disk_fault_add","arguments":{"id":"sio0","unit":"a","fault":"0/0/1 data"}})");
+        auto rep = runScript(m, s.str());
+        auto isErr = [&](int i) { return rep[(size_t)i].at("result").has("isError"); };
+        auto data  = [&](int i) -> const Json& { return rep[(size_t)i].at("result").at("structuredContent"); };
+
+        CHECK(isErr(1), "a fault on an empty drive is an error");
+        CHECK(!isErr(3) && data(3).at("fault").str() == "2/0/1 data count=2" && data(3).at("unit").str() == "drive0",
+              "add reports the fault as it reads back, on the board's unit name");
+        CHECK(isErr(5) && rep[5].at("result").at("content").items().at(0).at("text").str().find("fault kind") !=
+                              std::string::npos,
+              "a bad fault: an error with the parser's reason");
+        const Json& all = data(6).at("faults");
+        CHECK(all.items().size() == 2, "list: both faults");
+        CHECK(all.items().at(0).at("fault").str() == "2/0/1 data count=2" && all.items().at(0).at("hits").num() == 0 &&
+                  all.items().at(0).at("left").num() == 2 && !all.items().at(0).at("hard").boolean(),
+              "a count fault: hits, left, not hard");
+        CHECK(all.items().at(1).at("hard").boolean() && !all.items().at(1).has("left") &&
+                  all.items().at(1).at("kind").str() == "id",
+              "a hard fault: no left");
+        CHECK(!isErr(7) && data(8).at("faults").items().size() == 1, "clear one address, then list one drive");
+        CHECK(!isErr(9) && data(10).at("faults").items().empty(), "clear all");
+        CHECK(isErr(11), "a serial port takes no faults");
+        setMediaResolver(openHostFile);
+    }
+
     SECTION("MCP: mount takes media, for a blank disk that needs it (#777)");
     {
         setMediaResolver(openHostFile);

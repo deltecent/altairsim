@@ -140,6 +140,27 @@ read loop takes 56 T-states a byte, so at 2 MHz under `real` the chip sets **Los
 prints its error — as the hardware would. Run the PIO build at `clock_hz = 4000000` under `real`. The
 DMA build does not care: the 8257 takes each byte on its own DRQ.
 
+## Bad sectors: `FAULT` and the `faults` key
+
+A drive can have bad sectors on its disk, to test the retry code of a guest (#966). The faults
+are an overlay in the drive (`DiskImageDrive`, `src/host/diskfaults.h`), and the image does not
+change. Give them with `FAULT <id>:driveN`, with the `disk_fault_*` MCP tools, or with the
+`faults` key of a `[[board.drive]]` table. The *User Manual* gives the syntax, in "Simulate a
+bad sector" in the Disks chapter.
+
+The WD17xx reports each fault with the status that it gives for a damaged disk:
+
+| Kind | What the guest reads |
+|---|---|
+| `data` | S3 CRC Error. The data still transfers. |
+| `id` | S4 Record Not Found and S3 CRC Error |
+| `missing` | S4 Record Not Found |
+| `write` | S5 Write Fault. The drive writes nothing. |
+
+`SET <id> DEBUG=fault` writes a line each time that a fault occurs. The `fault` flag is off
+until you turn it on. `CONFIG SAVE` writes the `faults` key, and a snapshot keeps the faults
+with their counts. Read Track ignores the faults and returns the track as it is on the disk.
+
 ## Limitations
 
 - **Format-time DMA is not modelled.** The 8257 moves **sectors** (the `Read`/`Write` data path the
