@@ -208,6 +208,7 @@ The boards are in groups, in the same order as the sections below.
 | `icom` | iCOM FD3712/FD3812: an 8″ floppy controller with its own boot PROM. Boots CP/M and FDOS |
 | `disk1` | CompuPro Disk 1: an 8″ floppy controller with DMA, its own boot EPROM and a bit-banged serial line. Boots CompuPro CP/M 2.2N |
 | `disk1a` | CompuPro Disk 1A: an 8″ floppy controller with DMA and its own boot EPROM. Boots CompuPro CP/M |
+| `mdriveh` | CompuPro M-Drive/H: a 512K RAM disk on two I/O ports. CompuPro CP/M 2.2N uses it as drive `M:` |
 | `mdsa` | North Star MDS-A: a single-density 5¼″ floppy controller in memory, with its own boot PROM. Boots CP/M and North Star DOS |
 | `mdsad` | North Star MDS-A-D: the double-density version, for one-sided and two-sided disks |
 | `16fdc` | Cromemco 16FDC: a floppy controller with a console UART and the RDOS 2.52 boot PROM. Boots CDOS |
@@ -2113,8 +2114,52 @@ These things are not part of the board:
 
 - **The board runs 8″ drives only.** A Disk 1 ran 5.25″ drives only after a change to the
   board's parts and wiring. The board refuses a 5.25″ disk image.
-- **The M-Drive/H RAM disk is not part of the machine.** The 2.2N BIOS reports
-  `0 M-Drive/H` and continues.
+- **This machine file has no M-Drive/H RAM disk.** The 2.2N BIOS reports `0 M-Drive/H` and
+  continues. To add one, see the `mdriveh` section below.
+
+### `mdriveh`: CompuPro M-Drive/H
+
+The **CompuPro M-Drive/H** (1982) is a RAM disk. Each board holds 512K of RAM. The board
+decodes two I/O ports and no memory. The guest writes a 22-bit address to the address port,
+and then reads or writes bytes at the data port.
+
+| Port | OUT | IN |
+|---|---|---|
+| `C6` | Writes the byte at the address, then adds 1 to the address | Reads the byte at the address, then adds 1 to the address |
+| `C7` | Loads one byte of the address. Three OUTs load it, high byte first | Not decoded. The bus reads `FF` |
+
+The `port` property sets the base, and it must be even. Up to eight boards decode the same two
+ports, and together they make one 4 MB disk. One `mdriveh` entry is the whole set, and
+`boards = N` gives it N boards. An address on a board that is not there reads `FF`. The
+CompuPro BIOS counts the boards with this behavior.
+
+A bus reset keeps the RAM. The files on the RAM disk stay through a `RESET` and a reboot.
+`POWER` fills the RAM again, per `fill` and `seed`, and the files are lost.
+
+CompuPro CP/M 2.2N, on the `disk1` floppy controller, uses the board as drive `M:`. To add
+one board to the `disk1.toml` machine file above, add this entry:
+
+```toml
+[[board]]
+type = "mdriveh"
+id   = "md0"
+```
+
+At cold boot the BIOS counts the boards, and its program `MFORM` formats drive `M:`:
+
+```
+CompuPro Systems 64K CP/M 2.2N
+1 M-Drive/H
+
+FORMATTING MEMORY DRIVE
+
+A>
+```
+
+`M:` is a 508K drive with one board, and a 2016K drive with eight. After a `RESET`, `MFORM`
+finds `M:` formatted and does not format it again. To give the set eight boards, type
+`SET md0 boards=8` and then `POWER`.
+
 
 ### `mdsa` and `mdsad`: North Star MDS-A and MDS-A-D
 

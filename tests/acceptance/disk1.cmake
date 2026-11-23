@@ -21,7 +21,11 @@
 #   5. FORMAT 3.1c formats a blank two-sided disk in drive B (cpm22n-format.toml, which sets
 #      `media = "8ds"`), and STAT reads it as an empty 1200K drive. A blank with no `media` is
 #      refused at mount (issue #777). Before #755, a blank read one-sided, and FORMAT stopped
-#      with Drive Format Error.
+#      with Drive Format Error;
+#   6. the M-Drive/H (cpm22n-mdrive.toml): the BIOS counts 1 board and its MFORM formats M:,
+#      PIP copies STAT.COM to M: and it runs from there. After a bus RESET the BIOS finds M:
+#      formatted and the file still there. With `boards = 8` and POWER it counts 8 boards, and
+#      M: is a new, empty 2016K drive.
 #
 # The guest writes, so the test works on a copy of tests/media/compupro, never the tracked
 # image.
@@ -211,7 +215,70 @@ if(NOT r MATCHES "1200: Kilobyte Drive  Capacity")
   fail("STAT B:DSK: did not report the 1200K two-sided drive")
 endif()
 
+# 6. The M-Drive/H. RESET keeps its contents; POWER loses them. A fresh copy of the disk.
+file(COPY "${SRC}/tests/media/compupro/CPM22N.DSK" DESTINATION "${example}")
+set(session "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n")
+call(2 run "{\"from\":0,\"until\":\"A>\",\"timeout_ms\":20000}")
+cmd(3 "PIP M:=STAT.COM")
+cmd(4 "M:STAT M:DSK:")
+call(5 monitor "{\"command\":\"RESET\"}")
+call(6 run "{\"from\":0,\"until\":\"A>\",\"timeout_ms\":20000}")
+cmd(7 "DIR M:")
+call(8 monitor "{\"command\":\"SET md0 boards=8\"}")
+call(9 monitor "{\"command\":\"POWER\"}")
+call(10 run "{\"from\":0,\"until\":\"A>\",\"timeout_ms\":20000}")
+cmd(11 "STAT M:DSK:")
+cmd(12 "DIR M:")
+file(WRITE "${example}/in-mdrive.jsonl" "${session}")
+execute_process(
+  COMMAND           "${SIM}" cpm22n-mdrive.toml --mcp
+  WORKING_DIRECTORY "${example}"
+  INPUT_FILE        "${example}/in-mdrive.jsonl"
+  OUTPUT_VARIABLE   out
+  ERROR_VARIABLE    err
+  RESULT_VARIABLE   rc
+  TIMEOUT           60
+)
+if(NOT rc EQUAL 0)
+  fail("`altairsim cpm22n-mdrive.toml --mcp` exited ${rc}, expected 0")
+endif()
+foreach(id 2 3 4 6 7 10 11 12)
+  reply(${id} r)
+  if(NOT r MATCHES "\"stopped\":\"match\"")
+    fail("M-Drive/H: run ${id} did not come back to A>")
+  endif()
+endforeach()
+reply(2 r)
+if(NOT r MATCHES "1 M-Drive/H" OR NOT r MATCHES "FORMATTING MEMORY DRIVE")
+  fail("the BIOS did not count 1 M-Drive/H and format M:")
+endif()
+reply(4 r)
+if(NOT r MATCHES "M: Drive Characteristics" OR NOT r MATCHES "508: Kilobyte Drive  Capacity")
+  fail("STAT.COM did not run from M: and report the 508K drive")
+endif()
+reply(6 r)
+if(NOT r MATCHES "1 M-Drive/H" OR r MATCHES "FORMATTING")
+  fail("after RESET the BIOS formatted M: again: the board lost its contents")
+endif()
+reply(7 r)
+if(NOT r MATCHES "M: STAT     COM")
+  fail("after RESET, DIR M: did not list STAT.COM")
+endif()
+reply(10 r)
+if(NOT r MATCHES "8 M-Drive/H" OR NOT r MATCHES "FORMATTING MEMORY DRIVE")
+  fail("with boards = 8 and POWER, the BIOS did not count 8 boards and format M:")
+endif()
+reply(11 r)
+if(NOT r MATCHES "2016: Kilobyte Drive  Capacity")
+  fail("STAT M:DSK: did not report the 2016K drive of 8 boards")
+endif()
+reply(12 r)
+if(NOT r MATCHES "NO FILE")
+  fail("after POWER, M: was not empty")
+endif()
+
 file(REMOVE_RECURSE "${work}")
 message(STATUS "disk1: the boot EPROM loaded CompuPro CP/M 2.2N; DIR, STAT, and a PIP "
                "copy that ran and was erased. Routine 6 booted it on the System Support 1. "
-               "FORMAT 3.1c formatted a blank two-sided disk.")
+               "FORMAT 3.1c formatted a blank two-sided disk. The M-Drive/H kept M: over a "
+               "RESET and counted 8 boards.")

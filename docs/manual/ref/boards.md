@@ -48,6 +48,7 @@ and within a group the boards are in **alphabetical order**.
 | [`hdsk`](#hdsk) | MITS 88-HDSK Datakeeper: Pertec hard disk controller |
 | [`icom`](#icom) | iCOM FD3712/FD3812: 8" floppy controller with boot PROM |
 | [`jadedd`](#jadedd) | Jade Double D: double-density controller, own Z80 |
+| [`mdriveh`](#mdriveh) | CompuPro M-Drive/H: 512K RAM disk on two I/O ports |
 | [`mds`](#mds) | MITS 88-MDS: 5.25" minidisk controller |
 | [`mdsa`](#mdsa) | North Star MDS-A: single-density 5.25" floppy controller |
 | [`mdsad`](#mdsad) | North Star MDS-A-D: double-density 5.25" floppy controller |
@@ -583,6 +584,21 @@ Jade Double D Rev C: an intelligent double-density floppy controller with its ow
 | `phantom` | bool | `false` | `true` \| `false` | The PHAN* jumper. On: the board pulls PHANTOM* while the host reads the window, so the window can overlap RAM that honors PHANTOM* |
 | `interrupt` | enum | `none` | `none` \| `vi0` \| `vi1` \| `vi2` \| `vi3` \| `vi4` \| `vi5` \| `vi6` \| `vi7` | The VI line the board pulls when its Z80 has halted (none by default) *(interrupt strap)* |
 | `size` | enum | `8` | `8` \| `5` | The CLOCK SELECT jumper. 8: 8-inch drives, Z80 at 4 MHz, FD1791 at 2 MHz. 5: 5.25-inch drives, Z80 at 2 MHz, FD1791 at 1 MHz |
+
+
+### `mdriveh`
+
+CompuPro M-Drive/H (board 197B): a solid-state disk of 512K dynamic RAM per board, reached through two I/O ports at BASE, BASE+1 (default C6, C7). Three OUTs to BASE+1 load a 22-bit address, high byte first; each IN or OUT at BASE moves one byte and counts the address up. One entry is the whole set of up to 8 boards (`boards`); an address on a board that is not there reads FF. Neither reset changes the RAM; POWER refills it
+
+#### Board properties
+
+| Key | Kind | Default | Legal | Meaning |
+|---|---|---|---|---|
+| `port` | int | `0xC6` | `0x0` .. `0xFE` | Base address (S1-1..7 = A7-A1). The data port is BASE, the address port BASE+1 (default C6) |
+| `boards` | int | `1` | `1` .. `8` | How many 512K boards share the ports, 1-8. They take the cascade numbers 0 to boards-1 (S1-8..10), so they fill the address space from 0 without a gap |
+| `fill` | enum | `random` | `zero` \| `random` | RAM contents at power-on: zero \| random (real RAM is not zeroed) |
+| `seed` | int | `1` | any | seed for fill=random -- the same seed fills RAM the same way at every POWER, so a run is repeatable |
+| `address` | int | — | — | the 22-bit address counter -- the guest loads it with three OUTs to BASE+1 **(show-only — not a key you may set)** |
 
 
 ### `mds`

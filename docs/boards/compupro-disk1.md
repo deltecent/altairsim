@@ -189,8 +189,10 @@ with their counts.
 - **No wait states and no DMA priority** (switches S1-1 and S1-5 to S1-8). The machine has one
   bus master and no slow memory.
 - **A16–A23.** The counter counts all 24 bits, but this is a 64 K bus (DESIGN.md §4.0).
-- **No M-Drive/H.** The CP/M 2.2N BIOS looks for an M-Drive/H RAM disk, finds 0 boards, and
-  continues. The cold-boot program `MFORM` prints `DRIVE SPECIFIED IS NOT A MEMORY DRIVE`.
+- **No M-Drive/H in `disk1.toml`.** The CP/M 2.2N BIOS looks for an M-Drive/H RAM disk,
+  finds 0 boards, and continues. The cold-boot program `MFORM` prints
+  `DRIVE SPECIFIED IS NOT A MEMORY DRIVE`. The `mdriveh` board is the RAM disk
+  (`compupro-mdriveh.md`), and `tests/media/compupro/cpm22n-mdrive.toml` adds it.
 
 ## Verification
 

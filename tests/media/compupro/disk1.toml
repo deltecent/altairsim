@@ -28,8 +28,10 @@
 # THE SYSTEM SUPPORT 1 at 50-5F is the clock, timer and interrupt board. ACTIVE.LIB on the 2.2N
 # disk sets SYSUP1 (System Support 1 present). Its serial channel is not connected.
 #
-# THE M-DRIVE/H is not emulated. The 2.2N BIOS finds 0 boards, and its cold-boot MFORM prints
-# "DRIVE SPECIFIED IS NOT A MEMORY DRIVE". CP/M runs from the floppy.
+# THE M-DRIVE/H is not part of this machine. The 2.2N BIOS finds 0 boards, and its cold-boot
+# MFORM prints "DRIVE SPECIFIED IS NOT A MEMORY DRIVE". CP/M runs from the floppy.
+# cpm22n-mdrive.toml adds one (`[[board]] type = "mdriveh"`); the BIOS then prints
+# "1 M-Drive/H" and "FORMATTING MEMORY DRIVE", and drive M: is a 508K RAM disk.
 #
 # THE TERMINAL ignores bit 7. CompuPro's FORMAT.COM sets bit 7 of the last character of each
 # message, and the terminals of the time printed the character without it. `strip7out` is the
