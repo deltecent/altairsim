@@ -134,6 +134,7 @@ const struct {
     {"jadedd", test_jadedd},
     {"disk1", test_disk1},
     {"disk1a", test_disk1a},
+    {"mdriveh", test_mdriveh},
     {"cromemco_fdc", test_cromemco_fdc},
     {"spindle", test_spindle},
     {"dcdd", test_dcdd},

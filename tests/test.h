@@ -96,6 +96,7 @@ void test_tarbell();
 void test_jadedd();
 void test_disk1();
 void test_disk1a();
+void test_mdriveh();
 void test_cromemco_fdc();
 void test_spindle();
 void test_dcdd();

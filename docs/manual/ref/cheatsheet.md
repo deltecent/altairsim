@@ -157,6 +157,7 @@ Type the part before the bracket.
 | `hdsk` | MITS 88-HDSK Datakeeper: Pertec hard disk controller |
 | `icom` | iCOM FD3712/FD3812: 8" floppy controller with boot PROM |
 | `jadedd` | Jade Double D: double-density controller, own Z80 |
+| `mdriveh` | CompuPro M-Drive/H: 512K RAM disk on two I/O ports |
 | `mds` | MITS 88-MDS: 5.25" minidisk controller |
 | `mdsa` | North Star MDS-A: single-density 5.25" floppy controller |
 | `mdsad` | North Star MDS-A-D: double-density 5.25" floppy controller |

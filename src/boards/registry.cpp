@@ -2,6 +2,7 @@
 
 #include "boards/compupro-disk1.h"
 #include "boards/compupro-disk1a.h"
+#include "boards/compupro-mdriveh.h"
 #include "boards/compupro-ss1.h"
 #include "boards/scitronics-rtc100.h"
 #include "boards/cromemco-16fdc.h"
@@ -97,6 +98,7 @@ std::vector<BoardType> boardTypes() {
         {"jadedd", "Jade Double D: double-density controller, own Z80", "Jade Double D Rev C: an intelligent double-density floppy controller with its own Z80A, 2 K RAM and WD FD1791. The host loads a program (Jade's DCM2) through a 1 K window at E000-FC00 and talks to it through one port (40-43, default 43). Up to 4 drives"},
         {"disk1", "CompuPro Disk 1: uPD765A floppy controller with DMA", "CompuPro Disk 1 (1981), the Disk 1A's predecessor: an NEC uPD765A floppy controller for 8\" drives, single and double density, up to 4 drives. Four ports at BASE+0..3 (default C0): 765 status, 765 data, board status / DMA address, and a bit-banged serial line on D7. All data moves by DMA. Carries a 2716 boot EPROM whose selected 256-byte routine answers at 0000 over PHANTOM* until the guest switches it off; any reset turns it back on"},
         {"disk1a", "CompuPro Disk 1A: uPD765A floppy controller with DMA", "CompuPro Disk 1A: an NEC uPD765A floppy controller for 8\" and 5.25\" drives, single and double density, up to 4 drives. Four ports at BASE+0..3 (default C0): 765 status / drive select, 765 data, board status / DMA address, motor control. All data moves by DMA. Carries a boot EPROM whose selected 512-byte routine answers at 0000 over PHANTOM* until the guest switches it off; any reset turns it back on"},
+        {"mdriveh", "CompuPro M-Drive/H: 512K RAM disk on two I/O ports", "CompuPro M-Drive/H (board 197B): a solid-state disk of 512K dynamic RAM per board, reached through two I/O ports at BASE, BASE+1 (default C6, C7). Three OUTs to BASE+1 load a 22-bit address, high byte first; each IN or OUT at BASE moves one byte and counts the address up. One entry is the whole set of up to 8 boards (`boards`); an address on a board that is not there reads FF. Neither reset changes the RAM; POWER refills it"},
         {"16fdc", "Cromemco 16FDC: floppy controller + console UART, RDOS 2.52", "Cromemco 16FDC: WD FD1793 soft-sector floppy (single + double density), up to 4 drives. Disk registers at 30-34, a TMS 5501 console UART at 00-09 (unit 'tty'), and a 4K RDOS 2.52 boot PROM at C000 (OUT 40H banks it out, RESET restores it). Boots CDOS"},
         {"64fdc", "Cromemco 64FDC: floppy controller + console UART, RDOS 3.12", "Cromemco 64FDC: the 16FDC's 1983 successor -- same FD1793 + TMS 5501, carrying an 8K RDOS 3.12 boot PROM at C000-DFFF (OUT 40H banks it out, RESET restores it). Boots CDOS"},
         {"acr", "MITS 88-ACR: audio cassette interface", "MITS 88-ACR: cassette. An 88-SIO B + an FSK modem, unit 'tape'. Brings the WIND/REWIND/EXTRACT verbs and a tape counter"},
@@ -195,6 +197,7 @@ std::unique_ptr<Board> makeBoard(const std::string& typeName) {
     if (type == "ss1") return std::make_unique<Ss1Board>();
     if (type == "disk1") return std::make_unique<CompuProDisk1Board>();
     if (type == "disk1a") return std::make_unique<CompuProDisk1aBoard>();
+    if (type == "mdriveh") return std::make_unique<MDriveHBoard>();
     if (type == "rtc100") return std::make_unique<Rtc100Board>();
     if (type == "hostbridge") return std::make_unique<HostBridgeBoard>();
     if (type == "pb1") return std::make_unique<Pb1Board>();

@@ -12,6 +12,12 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**The CompuPro M-Drive/H RAM disk: the `mdriveh` board.** The board holds 512K of RAM on two
+I/O ports, `C6` and `C7`. The `boards` property gives a set of 1 to 8 boards on the same ports.
+CompuPro CP/M 2.2N on the `disk1` controller uses it as drive `M:`. At cold boot, the BIOS
+prints `1 M-Drive/H` and formats the drive. The files on `M:` stay through a bus `RESET`, and
+`POWER` loses them.
+
 **Bad sectors on a disk, to test retry code: `FAULT` (issue #966).** `FAULT` makes a sector of
 a mounted disk bad, for example `FAULT fdc0:drive0 ADD 2/0/1 data count=2`. The kinds are
 `data` and `id` (a CRC error), `missing` (no ID field) and `write` (the drive does not write).

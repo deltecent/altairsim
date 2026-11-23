@@ -1,0 +1,12 @@
+# CompuPro CP/M 2.2N with an M-Drive/H, for acceptance-disk1 (tests/acceptance/disk1.cmake).
+#
+# The `cpm22n.toml` machine beside this file, with one M-Drive/H board at its standard ports
+# C6-C7. The 2.2N BIOS counts the boards at cold boot, and its MFORM formats drive M:.
+
+[machine]
+name = "disk1-cpm22n-mdrive"
+base = "cpm22n.toml"
+
+[[board]]
+type = "mdriveh"
+id   = "md0"
