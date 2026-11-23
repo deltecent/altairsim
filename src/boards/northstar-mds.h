@@ -43,6 +43,7 @@
 #include "core/board.h"
 #include "core/spindle.h"
 #include "host/disk.h"
+#include "host/diskfaults.h"
 
 #include <cstdint>
 #include <memory>
@@ -82,9 +83,26 @@ public:
     std::vector<MapEntry> memMap() const override;
 
     // `SET fd0 DEBUG=seek` traces head steps; `DEBUG=sector` traces each sector read or
-    // written. The bit order IS the enum, so they sit together.
-    std::vector<std::string> debugFlags() const override { return {"sector", "seek"}; }
-    enum DebugFlag { SECTOR = 0, SEEK = 1 };
+    // written; `DEBUG=fault` writes a line each time a bad sector is used (#970). The bit
+    // order IS the enum, so they sit together.
+    std::vector<std::string> debugFlags() const override { return {"sector", "seek", "fault"}; }
+    enum DebugFlag { SECTOR = 0, SEEK = 1, FAULT = 2 };
+
+    // BAD SECTORS (#970, host/diskfaults.h). The address is <track>/<side>/<sector>: the track
+    // under the head, the side, and the hole count 0..9. The image never changes.
+    //   data     the check character after the data is wrong; the data is intact. The board
+    //            never checks it -- the guest does. Counted when the guest reads it.
+    //   missing  no sync character, so body mode never comes. Counted once a pass, when the
+    //            board looks for the sync (the guest reads the body bit after body time).
+    //            The board cannot tell why the guest read it: on both boards the A-status that
+    //            holds the body bit also holds SF, and the CP/M BIOS polls it to wait for the
+    //            sector flag. Such a pass counts too, so a hit count can be one more than the
+    //            guest's tries.
+    //   write    the sector is not written, and the guest is not told. Counted at the end
+    //            of the data, where the sector would have gone to the image.
+    //   id       REFUSED: a North Star sector has no ID field (DiskFaults::refuse).
+    bool        takesFaults(const std::string& unit) const override;
+    DiskFaults* faults(const std::string& unit) override;
 
     std::vector<UnitDef> units() const override;
     bool mount(const std::string& unit, const std::string& path, bool ro, std::string& err) override;
@@ -118,6 +136,7 @@ protected:
         const NsFormat* fmt    = nullptr;  // null: a blank diskette, not yet written
         int             track  = 0;
         bool            roSaid = false;    // "write-protected, discarding" -- said once
+        DiskFaults      faults;            // the bad sectors of the diskette (#970); MOUNT clears them
     };
 
     // ---- WHAT A BOARD MUST SAY ABOUT ITSELF ----------------------------------
@@ -212,6 +231,7 @@ private:
     bool probe(Drive&, std::string& err) const;
     void applyFormat(Drive&, const NsFormat&) const;
     bool loadSector(const Rotation& r);
+    void useFault(DiskFault& f, int track, int side, int sector);
 
     const char* romName_;
     uint16_t    romOrigin_;
@@ -253,6 +273,7 @@ private:
     int      rdLen_      = 0;
     int      rdPos_      = 0;
     bool     bodyForced_ = false;
+    int      rdFault_    = -1;  // the FaultKind on the loaded sector (#970), or -1
 
     // The write stream. Begin-write arms it; the bytes then arrive as zeros, the sync
     // character(s), the data, and the check character.

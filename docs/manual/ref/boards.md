@@ -626,6 +626,7 @@ North Star MDS-A: single-density 5.25" hard-sector floppy, up to 3 drives. No po
 | `readonly` | bool | `true` \| `false` | Write-protect the diskette. The guest sees it in the WP status bit *(also `writeprotect`)* |
 | `media` | enum | `sd` | Force the format instead of probing the image's size |
 | `create` | bool | `true` \| `false` | Make the disk file (empty) if it is not there, then mount it -- a blank diskette for the guest to format |
+| `faults` | string | text | Bad sectors on the disk: <track>/<head>/<sector> <kind> [count=N], with a ';' between two faults. The kind is data, id, missing or write. With no count, the sector fails each time. The image does not change |
 
 #### Board properties
 
@@ -653,6 +654,7 @@ North Star MDS-A-D: double-density 5.25" hard-sector floppy (single, double and 
 | `readonly` | bool | `true` \| `false` | Write-protect the diskette. The guest sees it in the WP status bit *(also `writeprotect`)* |
 | `media` | enum | `sd` \| `dd` \| `quad` | Force the format instead of probing the image's size |
 | `create` | bool | `true` \| `false` | Make the disk file (empty) if it is not there, then mount it -- a blank diskette for the guest to format |
+| `faults` | string | text | Bad sectors on the disk: <track>/<head>/<sector> <kind> [count=N], with a ';' between two faults. The kind is data, id, missing or write. With no count, the sector fails each time. The image does not change |
 
 #### Board properties
 

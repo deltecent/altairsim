@@ -1,0 +1,31 @@
+# A North Star MDS-A-D whose CP/M disk has a bad sector (#970) -- for northstar-fault.exp.
+#
+# `faults` is the drive's bad-sector list. A North Star address is <track>/<side>/<sector>: the
+# track under the head, the side, and the hole count 0-9. Track 0 holds the CP/M image. The
+# boot PROM reads sector 0/0/0 but never its check character, so the PROM is not hit. The BIOS
+# reads track 0 again at cold start, and its read of 0/0/0 compares the check character.
+# count=2: two bad check characters, the BIOS tries again, and the third read is good.
+#
+# The directory starts at 2/0/0. A hard data fault there gets 10 hits (the BIOS's tries) and DIR
+# gives Bdos Err On A: Bad Sector. A missing fault there gives the same error. Found with
+# SET fd0 DEBUG=sector,fault; do not move the fault without checking.
+#
+# NOTHING WRITES TO THE IMAGE. `writeprotect = true` protects the disk, and a fault never changes
+# it. The .exp shasums the image before and after.
+[machine]
+name    = "northstar-fault"
+base    = "northstardd"
+startup = ["RUN E800"]
+
+[[board]]
+type = "mdsad"
+id   = "fd0"
+
+  [[board.drive]]
+  unit         = 0
+  mount        = "../media/northstar/CPM223DQ-48K-SSDD.NSI"
+  writeprotect = true
+  faults       = "0/0/0 data count=2"
+
+[console]
+bsdel = "bs"

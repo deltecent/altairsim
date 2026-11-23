@@ -62,7 +62,8 @@ public:
     // Parse one spec. False with `err` set on a bad one.
     static bool parse(const std::string& spec, DiskFault& out, std::string& err);
 
-    // Add a fault. One with the same address and kind is REPLACED, counters and all.
+    // Add a fault. One with the same address and kind is REPLACED, counters and all. A kind the
+    // drive has refused (refuse()) fails with the reason.
     bool add(const std::string& spec, std::string& err);
     void add(const DiskFault& f);
 
@@ -71,6 +72,11 @@ public:
     // False with `err` set if the spec is bad or names no fault.
     bool clear(const std::string& spec, std::string& err);
     void clearAll() { list_.clear(); }
+
+    // A kind this drive's medium cannot have, and why. A North Star sector has no ID field, so
+    // its drives refuse `id` (#970). add() and fromText() then fail with `why`. clearAll() and
+    // deserialize() keep the refusals: they belong to the drive, not to the diskette.
+    void refuse(FaultKind k, std::string why) { refused_[(int)k] = std::move(why); }
 
     // The first ARMED fault of this kind that covers the sector, or null.
     DiskFault*       find(int t, int h, int s, FaultKind k);
@@ -93,6 +99,7 @@ public:
 
 private:
     std::vector<DiskFault> list_;
+    std::string            refused_[4];  // by FaultKind: empty = taken
 };
 
 } // namespace altair

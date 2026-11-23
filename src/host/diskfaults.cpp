@@ -137,6 +137,10 @@ bool DiskFaults::parse(const std::string& spec, DiskFault& out, std::string& err
 bool DiskFaults::add(const std::string& spec, std::string& err) {
     DiskFault f;
     if (!parse(spec, f, err)) return false;
+    if (const std::string& why = refused_[(int)f.kind]; !why.empty()) {
+        err = "bad fault '" + trim(spec) + "': " + why;
+        return false;
+    }
     add(f);
     return true;
 }
@@ -203,6 +207,7 @@ std::string DiskFaults::toText() const {
 
 bool DiskFaults::fromText(const std::string& text, std::string& err) {
     DiskFaults next;
+    for (int k = 0; k < 4; ++k) next.refused_[k] = refused_[k];
     size_t     at = 0;
     while (at <= text.size()) {
         size_t semi = text.find(';', at);

@@ -2372,6 +2372,8 @@ void test_mcp() {
         if (!loadAltmon(m)) return;
         std::ostringstream add;
         Monitor(m).exec("BOARDS ADD tarbell fdc0", add);
+        Monitor(m).exec("BOARDS ADD mdsa fd0", add);  // the MDS-A takes a file of any size
+        Monitor(m).exec("MOUNT fd0:drive0 n.nsi", add);
         std::ostringstream s;
         int id = 0;
         auto req = [&](const std::string& params) {
@@ -2389,6 +2391,7 @@ void test_mcp() {
         req(R"({"name":"disk_fault_clear","arguments":{"id":"fdc0","unit":"drive0","all":true}})");
         req(R"({"name":"disk_fault_list","arguments":{}})");
         req(R"({"name":"disk_fault_add","arguments":{"id":"sio0","unit":"a","fault":"0/0/1 data"}})");
+        req(R"({"name":"disk_fault_add","arguments":{"id":"fd0","unit":"drive0","fault":"2/0/1 id"}})");
         auto rep = runScript(m, s.str());
         auto isErr = [&](int i) { return rep[(size_t)i].at("result").has("isError"); };
         auto data  = [&](int i) -> const Json& { return rep[(size_t)i].at("result").at("structuredContent"); };
@@ -2410,6 +2413,9 @@ void test_mcp() {
         CHECK(!isErr(7) && data(8).at("faults").items().size() == 1, "clear one address, then list one drive");
         CHECK(!isErr(9) && data(10).at("faults").items().empty(), "clear all");
         CHECK(isErr(11), "a serial port takes no faults");
+        CHECK(isErr(12) && rep[12].at("result").at("content").items().at(0).at("text").str().find("no ID field") !=
+                                std::string::npos,
+              "a North Star drive refuses an id fault, with the reason (#970)");
         setMediaResolver(openHostFile);
     }
 

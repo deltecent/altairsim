@@ -405,12 +405,12 @@ messages of a guest. The disk image does not change. The faults are in the drive
 image.
 
 These controllers take faults: `tarbell`, `tarbelldd`, `16fdc`, `64fdc`, `versafloppy`,
-`jadedd`, `disk1`, `disk1a`, `dcdd`, `mds`, and `fdcplus` at drive type 5. Another controller
-refuses the command:
+`jadedd`, `disk1`, `disk1a`, `dcdd`, `mds`, `mdsa`, `mdsad`, and `fdcplus` at drive type 5.
+Another controller refuses the command:
 
 ```
-altairsim> FAULT fd0:drive0 ADD 2/0/1 data
-fd0:drive0: the mdsa board does not take faults on its disk
+altairsim> FAULT mdc0:drive0 ADD 2/0/1 data
+mdc0:drive0: the vgmdc board does not take faults on its disk
 ```
 
 ### Give a fault
@@ -491,6 +491,25 @@ side t mod 2. CP/M tracks 144 to 148 are on side 0 of cylinders 72 to 76.
 The CP/M BIOS for the 1.5 MB floppy reads a bad track 12 times. The directory is on CP/M track
 1, which is `0/1/0`. A hard `data` fault there gives 12 hits and then
 `Bdos Err On A: Bad Sector`.
+
+The North Star `mdsa` and `mdsad` have no error bit. The guest computes the check character
+after the data of a sector and compares it with the one that it reads. A North Star sector has
+no ID field, so these boards refuse an `id` fault. The address is `<track>/<side>/<sector>`. The
+side is 0, or 1 on a two-sided diskette. The sector is 0 to 9, the number of the hole.
+
+| Kind | What the guest reads on an `mdsa` or an `mdsad` |
+|---|---|
+| `data` | The data, then a wrong check character |
+| `id` | Refused: `a North Star sector has no ID field` |
+| `missing` | No sync character, so the data of the sector never comes |
+| `write` | The drive does not write the sector, and the board does not tell the guest. The old bytes stay on the disk. |
+
+A `data` fault occurs when the guest reads the check character. A `missing` fault occurs one time
+in each turn of the disk in which the guest waits for the data. The CP/M BIOS reads the same
+status byte to wait for the next sector. Because of this, the number of hits on a
+`missing` fault can be one more than the number of tries of the guest. The CP/M 2.23 BIOS of
+`CPM223DQ-48K-SSDD.NSI` reads a bad sector 10 times. Its directory is at `2/0/0`. A hard `data`
+fault there gives 10 hits and then `Bdos Err On A: Bad Sector`.
 
 These steps test a retry on a soft-sector controller, `fdc0`:
 
