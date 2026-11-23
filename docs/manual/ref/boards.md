@@ -44,7 +44,7 @@ and within a group the boards are in **alphabetical order**.
 | [`disk1a`](#disk1a) | CompuPro Disk 1A: uPD765A floppy controller with DMA |
 | [`dualide`](#dualide) | S100Computers IDE-AB: two CompactFlash sockets for CP/M 3 |
 | [`dualsd`](#dualsd) | S100Computers Dual SD: two microSD sockets for CP/M 3 |
-| [`fdcplus`](#fdcplus) | FarmTek FDC+: serial drive (drive types 6, 7) |
+| [`fdcplus`](#fdcplus) | FarmTek FDC+: 1.5 MB floppy (drive type 5), serial drive (6, 7) |
 | [`hdsk`](#hdsk) | MITS 88-HDSK Datakeeper: Pertec hard disk controller |
 | [`icom`](#icom) | iCOM FD3712/FD3812: 8" floppy controller with boot PROM |
 | [`jadedd`](#jadedd) | Jade Double D: double-density controller, own Z80 |
@@ -483,7 +483,7 @@ S100Computers Dual SD: two microSD sockets (drives 0/1) presented as raw 512-byt
 
 ### `fdcplus`
 
-FarmTek FDC+ in serial-drive mode: an 88-DCDD/88-MDS-compatible controller with no drive at all -- a drive server on unit 'line' holds the images and the card fetches a whole track at a time. drivetype=7 (8", incl. the 8 MB drive) or 6 (Minidisk), read at power-on. Four ports at BASE+0..3 (08 or 80)
+FarmTek FDC+. drivetype=5 is the 1.5 MB floppy: one 10,240-byte sector a track, from the disk images in drive0..drive3. drivetype=7 (8", with the 8 MB drive) and 6 (Minidisk) are the serial drive, which is compatible with the 88-DCDD/88-MDS. A drive server on unit 'line' holds the images, and the board fetches a whole track at a time. The drive type is read at power-on. Four ports at BASE+0..3 (08 or 80)
 
 **Units:** `line` (serial, CONNECT), `drive0` (disk, MOUNT), `drive1` (disk, MOUNT), `drive2` (disk, MOUNT), `drive3` (disk, MOUNT)
 
@@ -494,6 +494,7 @@ FarmTek FDC+ in serial-drive mode: an 88-DCDD/88-MDS-compatible controller with 
 | `unit` | int | `0` .. `3` | Which drive: 0-3. Drive type 5 only |
 | `mount` | string | text | The 1.5 MB disk image to put in it. Relative to THIS FILE. |
 | `readonly` | bool | `true` \| `false` | Write-protect the disk. The drive tells the card, and the card tells the 8080: status bit 4 *(also `writeprotect`)* |
+| `faults` | string | text | Bad sectors on the disk: <track>/<head>/<sector> <kind> [count=N], with a ';' between two faults. The kind is data, id, missing or write. With no count, the sector fails each time. The image does not change |
 
 #### Board properties
 

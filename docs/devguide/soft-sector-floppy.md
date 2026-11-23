@@ -139,6 +139,14 @@ read. A `write` fault makes `flushWrite` write nothing. `applyDriveFaults` has a
 that takes a `DiskFaults&`, so these boards use the same `faults` key rule. The 88-DCDD document
 has the table of the kinds.
 
+**The FDC+ at drive type 5 (#969).** `FdcPlusHdf` keeps a `DiskFaults` in each `Drive`. The
+firmware has error bits, so a fault sets the bit that the firmware sets for that error.
+`startRead` uses an `id` or a `missing` fault. `finishRead` uses a `data` fault, when the
+firmware checks the sum, and `fillTo` inverts byte 64 of the track. `finishWrite` uses a `write`
+fault and writes nothing. The address is the head position, `<cylinder>/<side>/0`, kept when the
+transfer starts. The serial drive (`line`) takes no faults, because its disks are files on the
+drive server. The FDC+ document has the table of the kinds.
+
 ## Geometry in real time — the FORMAT path
 
 This is the reusable core. A soft-sector disk's geometry is **not** fixed at mount: sector

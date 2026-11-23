@@ -21,6 +21,7 @@ constexpr uint8_t dsNRDA   = 0x80;
 constexpr uint8_t dsINIT   = 0xF5;  // "move head asserted, b3 cleared"
 
 // ---- The I/O status register (IN base+3), asserted HIGH ----
+constexpr uint8_t iosCKSUM_ERR = 0x01;  // only a fault sets it: an image has no bad sums
 constexpr uint8_t iosTRACK_ERR = 0x02;
 constexpr uint8_t iosEOS_ERR   = 0x04;
 constexpr uint8_t iosDONE      = 0x80;
@@ -281,6 +282,21 @@ void FdcPlusHdf::startRead(uint64_t) {
     done_      = 0;
     xferTrack_ = headTrack();
     noSync_    = !formatted(xferTrack_);
+    xferCyl_   = sel_ >= 0 ? drive_[(size_t)sel_].cyl : 0;
+    xferSide_  = top() ? 1 : 0;
+    xferFault_ = -1;
+    if (noSync_) return;  // nothing on the track to spoil
+
+    // A BAD SPOT (#969). One kind a read: missing, then id, then data -- the worst first.
+    if (DiskFault* f = findFault(FaultKind::Missing)) {
+        noSync_ = true;  // the firmware hunts for a sync byte that is not there
+        useFault(*f);
+    } else if (DiskFault* g = findFault(FaultKind::Id)) {
+        xferFault_ = (int)FaultKind::Id;  // fillTo() raises the track error
+        useFault(*g);
+    } else if (findFault(FaultKind::Data)) {
+        xferFault_ = (int)FaultKind::Data;  // used at the checksum, in finishRead()
+    }
 }
 
 // The bytes that have come off the disk by t: the sync byte, then one every 16 us, into the
@@ -291,10 +307,13 @@ void FdcPlusHdf::fillTo(uint64_t t) {
     const uint64_t el = (t - holeAt_) * 1000000 / (uint64_t)clock_->hz();
     if (el < kDataUs) return;
     const int n = (int)std::min<uint64_t>(kTrackBytes, (el - kDataUs) / kByteUs);
-    if (done_ == 0 && ((xferTrack_ ^ curTrack_) & 0x7F)) ioStatus_ |= iosTRACK_ERR;
+    if (done_ == 0 && (((xferTrack_ ^ curTrack_) & 0x7F) || xferFault_ == (int)FaultKind::Id))
+        ioStatus_ |= iosTRACK_ERR;
     if (n <= done_) return;
     drive_[(size_t)sel_].img->readAt((uint64_t)xferTrack_ * kTrackBytes + (uint64_t)done_,
                                      &mem_[kBootImage + (size_t)done_], (size_t)(n - done_));
+    if (xferFault_ == (int)FaultKind::Data && done_ <= kFaultDataByte && kFaultDataByte < n)
+        mem_[kBootImage + kFaultDataByte] ^= 0xFF;  // the bad spot: the sum cannot match
     if (done_ < 5 && n >= 5) status_ &= (uint8_t)~dsNRDA;
     done_ = n;
     wr_   = kBootImage + (size_t)n;
@@ -304,6 +323,11 @@ void FdcPlusHdf::finishRead() {
     fillTo(holeAt_ + us(kDataUs + kByteUs * (kTrackBytes + 2)));
     ioStatus_ |= iosDONE;
     phase_ = Phase::Loop;
+    if (xferFault_ == (int)FaultKind::Data) {  // the firmware's sum does not match the disk's
+        ioStatus_ |= iosCKSUM_ERR;
+        if (DiskFault* f = findFault(FaultKind::Data)) useFault(*f);
+    }
+    xferFault_ = -1;
 }
 
 // initWrite. ENWD, and the 8080 fills the buffer while the drive writes zeros to the end of
@@ -315,6 +339,9 @@ void FdcPlusHdf::startWrite(uint64_t) {
     ioStatus_  = 0x00;
     done_      = 0;
     xferTrack_ = headTrack();
+    xferCyl_   = sel_ >= 0 ? drive_[(size_t)sel_].cyl : 0;
+    xferSide_  = top() ? 1 : 0;
+    xferFault_ = findFault(FaultKind::Write) ? (int)FaultKind::Write : -1;
 }
 
 // The bytes the disk has taken by t, as they were in the buffer at that moment: a 8080 that
@@ -337,6 +364,14 @@ void FdcPlusHdf::finishWrite() {
     writeFlag_ = false;
     ioStatus_ |= iosDONE;
     phase_ = Phase::Loop;
+    if (xferFault_ == (int)FaultKind::Write) {  // the drive does not take it (#969)
+        xferFault_ = -1;
+        if (DiskFault* f = findFault(FaultKind::Write)) {
+            useFault(*f);
+            return;
+        }
+    }
+    xferFault_ = -1;
     if (sel_ < 0 || xferTrack_ < 0) return;
     auto& d = drive_[(size_t)sel_];
     if (!d.img || d.img->readOnly()) return;
@@ -454,6 +489,7 @@ bool FdcPlusHdf::mount(int i, std::unique_ptr<MediaFile> m, const std::string& p
     if (d.img) d.img->sync();
     d.img  = std::move(m);
     d.path = path;
+    d.faults.clearAll();  // the faults were the old disk's
     if (sel_ == i) {  // the write-protect line is the drive's, and it changed
         if (d.img->readOnly()) status_ &= (uint8_t)~dsWP;
         else status_ |= dsWP;
@@ -470,8 +506,29 @@ bool FdcPlusHdf::unmount(int i, std::string& err) {
     d.img->sync();
     d.img.reset();
     d.path.clear();
+    d.faults.clearAll();
     if (sel_ == i) status_ |= dsWP;
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// BAD SPOTS (#969) -- see the header.
+// ---------------------------------------------------------------------------
+DiskFaults* FdcPlusHdf::faults(int i) {
+    if (i < 0 || i >= kDrives || !drive_[(size_t)i].img) return nullptr;
+    return &drive_[(size_t)i].faults;
+}
+
+DiskFault* FdcPlusHdf::findFault(FaultKind k) {
+    if (sel_ < 0) return nullptr;
+    auto& d = drive_[(size_t)sel_];
+    if (d.faults.empty()) return nullptr;
+    return d.faults.find(xferCyl_, xferSide_, 0, k);
+}
+
+void FdcPlusHdf::useFault(DiskFault& f) {
+    DiskFaults::use(f);
+    if (faultHook_) faultHook_(sel_, xferCyl_, xferSide_, f);
 }
 
 // ---------------------------------------------------------------------------
@@ -509,6 +566,10 @@ void FdcPlusHdf::serialize(StateWriter& w) const {
     w.boolean(moving_);
     w.u64(settleAt_);
     w.boolean(settling_);
+    for (const auto& d : drive_) d.faults.serialize(w);  // the bad spots and their counts (#969)
+    w.u8((uint8_t)(xferFault_ + 1));
+    w.u8((uint8_t)xferCyl_);
+    w.u8((uint8_t)xferSide_);
 }
 
 void FdcPlusHdf::deserialize(StateReader& r) {
@@ -544,6 +605,15 @@ void FdcPlusHdf::deserialize(StateReader& r) {
     moving_     = r.boolean();
     settleAt_   = r.u64();
     settling_   = r.boolean();
+    for (auto& d : drive_) {
+        DiskFaults table;
+        table.deserialize(r);
+        d.faults = d.img ? std::move(table) : DiskFaults{};  // a fault belongs to a disk
+    }
+    const int k = (int)r.u8() - 1;
+    xferFault_  = k >= 0 && k <= (int)FaultKind::Write ? k : -1;
+    xferCyl_    = std::min((int)r.u8(), kCylinders - 1);
+    xferSide_   = r.u8() & 1;
     // A transfer from a disk that is not in the drive now cannot go on.
     if ((phase_ == Phase::Reading || phase_ == Phase::Writing) &&
         (sel_ < 0 || !drive_[(size_t)sel_].img)) {

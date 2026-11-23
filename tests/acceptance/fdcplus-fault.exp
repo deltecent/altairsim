@@ -1,0 +1,91 @@
+#!/usr/bin/expect -f
+#
+# BAD SPOTS REACH THE FDC+ 1.5 MB FLOPPY (#969). The FDC+ at drive type 5 boots CP/M 2.2 off a
+# disk whose machine file puts a fault on track 0:
+#
+#   1. count=2: the firmware sets CHECKSUM ERROR two times, the boot loader HDFBL starts again,
+#      and CP/M still reaches A>. FAULT then shows the fault used two times and worn off.
+#   2. A hard fault on the directory track (cylinder 0, the top side): the BIOS tries 12 times,
+#      DIR cannot read the directory, and the BDOS says `Bdos Err On A: Bad Sector`. FAULT shows
+#      the 12 hits.
+#
+# The fault sets a status bit the firmware already has, and the guest's own code reads it. So
+# this test proves the loader and the BIOS see the fault, not only the board.
+#
+# IT HAS TO BE AN EXPECT TEST: step 2 types at the monitor and at A>, which a pipe cannot do.
+#
+# THE DISK MUST NOT MOVE. A fault is an overlay on the drive; the image never changes. The
+# fixture is write-protected too, and shasummed before and after.
+#
+# usage: expect -f fdcplus-fault.exp <altairsim>
+#
+set timeout 60
+log_user 0
+
+set exe [lindex $argv 0]
+set dsk "tests/media/cpm/CPM22-48K-HDF.dsk"
+
+set before [exec shasum $dsk]
+
+spawn $exe tests/acceptance/fdcplus-fault.toml
+
+# 1. Two checksum errors on track 0, and the boot loader's retry gets past them.
+expect {
+    -ex "A>" {}
+    eof     { puts "FAIL: the machine died before the A> prompt"; exit 1 }
+    timeout { puts "FAIL: CP/M never reached A> past the count=2 fault"; exit 1 }
+}
+
+send "\005"
+expect {
+    -ex "altairsim> " {}
+    timeout { puts "FAIL: Ctrl-E did not reach the monitor"; exit 1 }
+}
+send "FAULT fdc0:drive0\r"
+expect {
+    -re {0/0/0 data count=2 +2 +0} {}
+    timeout { puts "FAIL: FAULT does not show the fault used twice with none left"; exit 1 }
+}
+expect -ex "altairsim> "
+
+# 2. A hard fault on the directory track: the directory cannot be read.
+send "FAULT fdc0:drive0 ADD 0/1/0 data\r"
+expect {
+    -ex "fdc0:drive0: fault 0/1/0 data" {}
+    timeout { puts "FAIL: FAULT ADD did not add the fault"; exit 1 }
+}
+expect -ex "altairsim> "
+send "RUN\r"
+sleep 0.5
+send "DIR\r"
+expect {
+    -ex "Bad Sector" {}
+    -ex "STAT" { puts "FAIL: DIR read the directory through a hard fault"; exit 1 }
+    eof     { puts "FAIL: the machine died running DIR"; exit 1 }
+    timeout { puts "FAIL: DIR did not report a bad sector"; exit 1 }
+}
+
+# One hit for each read the BIOS made: its 12 tries, no more and no fewer.
+send "\005"
+expect {
+    -ex "altairsim> " {}
+    timeout { puts "FAIL: Ctrl-E did not reach the monitor after the error"; exit 1 }
+}
+send "FAULT fdc0:drive0\r"
+expect {
+    -re {0/1/0 data +12 } {}
+    -re {0/1/0 data +[0-9]+ } { puts "FAIL: the hard fault was not hit once for each of the BIOS's 12 tries"; exit 1 }
+    timeout { puts "FAIL: FAULT did not list the hard fault"; exit 1 }
+}
+
+set after [exec shasum $dsk]
+if {$before ne $after} {
+    puts "FAIL: THE IMAGE CHANGED. A fault must never touch the disk image:"
+    puts "  before: $before"
+    puts "  after:  $after"
+    exit 1
+}
+
+puts "OK: HDFBL retried past a count=2 fault to A>, a hard fault on the directory track gave\
+      Bdos Err On A: Bad Sector after the BIOS's 12 tries, and the disk image is byte-identical."
+exit 0

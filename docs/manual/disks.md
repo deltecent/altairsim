@@ -405,7 +405,8 @@ messages of a guest. The disk image does not change. The faults are in the drive
 image.
 
 These controllers take faults: `tarbell`, `tarbelldd`, `16fdc`, `64fdc`, `versafloppy`,
-`jadedd`, `disk1`, `disk1a`, `dcdd` and `mds`. Another controller refuses the command:
+`jadedd`, `disk1`, `disk1a`, `dcdd`, `mds`, and `fdcplus` at drive type 5. Another controller
+refuses the command:
 
 ```
 altairsim> FAULT fd0:drive0 ADD 2/0/1 data
@@ -473,6 +474,25 @@ altairsim> FAULT
   UNIT         FAULT        HITS   LEFT
   dsk0:drive0  2/0/0 data     12      -
 ```
+
+The `fdcplus` takes faults at drive type 5, the 1.5 MB floppy, on `drive0` to `drive3`. Its
+`line` unit refuses faults, because the drive server holds those disks. A track of the 1.5 MB
+floppy is one sector of 10,240 bytes, so the address is `<cylinder>/<side>/0`. The bottom side
+is 0 and the top side is 1. CP/M track t, from 0 to 143, is on cylinder t/2 (rounded down),
+side t mod 2. CP/M tracks 144 to 148 are on side 0 of cylinders 72 to 76.
+
+| Kind | What the `fdcplus` reports at drive type 5 |
+|---|---|
+| `data` | Byte 64 of the track is wrong. The I/O status has Checksum Error (bit 0). |
+| `id` | The I/O status has Track Error (bit 1). The guest still gets the data. |
+| `missing` | The I/O status has End of Sector Too Soon (bit 2), at the next index hole. |
+| `write` | The drive does not write the track. The board reports that the write is done. |
+
+The CP/M BIOS for the 1.5 MB floppy reads a bad track 12 times. The directory is on CP/M track
+1, which is `0/1/0`. A hard `data` fault there gives 12 hits and then
+`Bdos Err On A: Bad Sector`.
+
+These steps test a retry on a soft-sector controller, `fdc0`:
 
 1. Mount the disk.
 2. Add the fault. This one gives two CRC errors on track 2, head 0, sector 1:
