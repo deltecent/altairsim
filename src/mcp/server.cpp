@@ -178,7 +178,9 @@ Json toolList() {
                                     "(raw bytes; add a trailing \\r to submit a CP/M line). "
                                     "Control bytes go through untouched -- write one as the JSON "
                                     "escape it is: \\u0003 is ^C, \\u001a is ^Z, \\u001b is ESC. "
-                                    "\\x03 is NOT JSON and arrives as the characters x03.");
+                                    "\\x03 is NOT JSON and arrives as the characters x03. "
+                                    "Each character from \\u0000 to \\u00ff is one byte "
+                                    "(\\u00f0 is F0); a character above \\u00ff is refused.");
         p["until"]      = strSchema("Optional: stop as soon as this substring appears in the "
                                     "output (e.g. a prompt like \"A0>\").");
         p["timeout_ms"] = intSchema("Wall-clock ceiling for this call in ms (default 2000, max "
@@ -247,7 +249,9 @@ Json toolList() {
                               "`start` left it running, when it reads them itself. Control "
                               "bytes go through untouched -- write one as the JSON escape it is: "
                               "\\u0003 is ^C, \\u001a is ^Z, \\u001b is ESC. \\x03 is NOT JSON "
-                              "and arrives as the characters x03.");
+                              "and arrives as the characters x03. Each character from "
+                              "\\u0000 to \\u00ff is one byte (\\u00f0 is F0); a character "
+                              "above \\u00ff is refused.");
         list.push(tool("send", "Type at the guest console without running it.", p, {"text"}));
     }
     list.push(tool("recv",
@@ -1095,6 +1099,42 @@ bool sliceStops(StopReason w) {
     }
 }
 
+// Console text to the bytes the guest reads (#985). A JSON string arrives as UTF-8, so
+// "ð" is C3 B0 here -- but a console line carries bytes, and the output side already
+// writes a guest byte F0 as ð. So each character up to U+00FF is that one byte. A
+// character above U+00FF is no byte at all and is refused. A byte that is not part of a
+// valid UTF-8 sequence goes through as itself.
+bool consoleBytes(const std::string& s, std::string& out, std::string& err) {
+    out.clear();
+    const size_t n = s.size();
+    for (size_t i = 0; i < n;) {
+        const unsigned char c   = (unsigned char)s[i];
+        const int           len = (c >= 0xF0) ? 4 : (c >= 0xE0) ? 3 : (c >= 0xC0) ? 2 : 1;
+        bool ok = len > 1 && i + (size_t)len <= n;
+        for (int k = 1; ok && k < len; ++k)
+            if (((unsigned char)s[i + k] & 0xC0) != 0x80) ok = false;
+        if (!ok) {
+            out += (char)c;
+            ++i;
+            continue;
+        }
+        unsigned long cp = c & (0x7Fu >> len);
+        for (int k = 1; k < len; ++k) cp = (cp << 6) | ((unsigned char)s[i + k] & 0x3F);
+        if (cp > 0xFF) {
+            char b[160];
+            std::snprintf(b, sizeof b,
+                          "character %zu is U+%04lX, which is not one byte: a console "
+                          "character is \\u0000 to \\u00ff, one byte each",
+                          out.size() + 1, cp);
+            err = b;
+            return false;
+        }
+        out += (char)cp;
+        i += (size_t)len;
+    }
+    return true;
+}
+
 // A HALTED PROCESSOR (#770), as the monitor's RUN and STEP treat it: `from` would move a
 // PC that the front panel cannot move, and a run of a halt that nothing can end would only
 // count idle T-states. Returns the refusal, or empty when the call may go on.
@@ -1554,7 +1594,9 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         std::string err;
         ScriptedStream* con = console(m, sess, err);
         if (!con) return textResult(err, true);
-        con->feed(args.at("text").str());
+        std::string bytes;
+        if (!consoleBytes(args.at("text").str(), bytes, err)) return textResult(err, true);
+        con->feed(bytes);
         return textResult("(typed)");
     }
 
@@ -1592,9 +1634,12 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         if (args.has("input") && !con) return textResult(err, true);
         if (std::string h = haltRefusal(m, cpu, args.has("from")); !h.empty())
             return textResult(h, true);
+        std::string input;  // #985: refused before anything moves
+        if (args.has("input") && !consoleBytes(args.at("input").str(), input, err))
+            return textResult(err, true);
 
         if (args.has("from")) cpu->setPc((uint16_t)args.at("from").integer());
-        if (args.has("input")) con->feed(args.at("input").str());
+        if (args.has("input")) con->feed(input);
         m.bus.resetUnclaimedWarnings();  // as `run` and RUN do (#580)
         m.pump();  // #933: answer a waiting caller before the first slice, as `run` does
 
@@ -1670,9 +1715,12 @@ Json callTool(Machine& m, McpSession& sess, const std::string& name, const Json&
         const long long stopAt = args.has("stop_at") ? args.at("stop_at").integer() : -1;
         if (args.has("stop_at") && (stopAt < 0 || stopAt > 0xFFFF))
             return textResult("`stop_at` must be an address from 0 to 65535", true);
+        std::string input;  // #985: refused before anything moves, as stop_at is
+        if (args.has("input") && !consoleBytes(args.at("input").str(), input, err))
+            return textResult(err, true);
 
         if (args.has("from")) cpu->setPc((uint16_t)args.at("from").integer());
-        if (args.has("input")) con->feed(args.at("input").str());
+        if (args.has("input")) con->feed(input);
 
         // Re-arm the unclaimed-port de-dup for this run, as runMachine does for a RUN, so
         // an absent port reported by the last run is reported again by this one (#580).

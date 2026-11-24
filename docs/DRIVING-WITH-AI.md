@@ -293,9 +293,14 @@ the guest untouched, control characters included, and every line in the machine 
 clean. Write a control byte as the JSON escape it is: `\u0003` for ^C, `\u001a` for ^Z,
 `\u001b` for ESC.
 
+**A byte from 80 to FF is `\u0080` to `\u00ff`.** Each character from `\u0000` to `\u00ff`
+reaches the guest as one byte: `\u00f0` is the byte F0, not its two UTF-8 bytes. The server
+refuses a character above `\u00ff`, because it is not one byte.
+
 ```
 send {text: "\u0003"}                        # break a running MBASIC program
 run  {input: "\u001a", until: "A>"}          # ^Z ends a PIP copy from the console
+send {text: "\u00f0A\u00ff"}                 # the three bytes F0 41 FF
 ```
 
 **If your client sends the argument text as written**, a `\r` or a `\u0003` in `input` reaches
