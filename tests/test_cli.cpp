@@ -182,6 +182,39 @@ void test_cli() {
             CHECK(got == "SEND\r\n", ("the caller got \"" + got + "\", from the first byte").c_str());
         }
     }
+
+    SECTION("HISTORY -- a four-byte Z80 instruction reads back as DISASM shows it (#983)");
+    {
+        // The instruction ring kept three bytes of each instruction, so the fourth byte of
+        // a Z80 instruction read back as 0: an operand became 00 (DD 36), the high byte of
+        // an address became 00 (DD 21, ED 4B), and in DD CB d op the operation itself was
+        // lost (BIT 0,(IX+05) read as RLC). Each HISTORY line must hold the mnemonic that
+        // DISASM gives for the same address.
+        Machine m;
+        Monitor mon(m);
+        std::ostringstream sink;
+        mon.exec("BOARDS ADD z80 cpu0", sink);
+        mon.exec("BOARDS ADD memory mem0", sink);
+        // LD IX,1234 runs first, so (IX+05) is 1239 -- in RAM, and clear of the code.
+        mon.exec("REGION ADD mem0 type=ram at=0 size=8K", sink);
+        mon.exec("DEPOSIT 0 DD 21 34 12 DD 36 05 7B ED 4B 34 12 DD CB 05 46 76", sink);
+        std::ostringstream hist;
+        mon.exec("RUN 0", sink);
+        mon.exec("HISTORY 5", hist);
+        const std::string h = hist.str();
+        struct Row { const char* at; const char* want; };
+        for (const Row& r : {Row{"0", "LD IX,1234"}, Row{"4", "LD (IX+05),7B"},
+                             Row{"8", "LD BC,(1234)"}, Row{"C", "BIT 0,(IX+05)"}}) {
+            std::ostringstream dis;
+            mon.exec(std::string("DISASM ") + r.at + " 1", dis);
+            CHECK(dis.str().find(r.want) != std::string::npos,
+                  (std::string("DISASM ") + r.at + " gives " + r.want).c_str());
+            CHECK(h.find(r.want) != std::string::npos,
+                  (std::string("HISTORY shows ") + r.want + "\n" + h).c_str());
+        }
+        CHECK(h.find("RLC") == std::string::npos, "no DD CB instruction reads as RLC");
+    }
+
     SECTION("command abbreviation -- table order IS the ranking; first match wins");
 
     // ---- Patrick's ranking, 2026-07-11. These eight are listed first. ----

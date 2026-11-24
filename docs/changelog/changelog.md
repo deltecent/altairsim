@@ -12,6 +12,14 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**`HISTORY` shows a four-byte Z80 instruction correctly (issue #983).** `HISTORY` kept only
+three bytes of each instruction. It showed the fourth byte of a Z80 instruction as `00`, with
+no error. For example, `DD 36 05 7B` was shown as `LD (IX+05),00`, and `ED 4B 34 12` as
+`LD BC,(0034)`. In a `DD CB` or `FD CB` instruction the fourth byte is the operation, so the
+instruction itself was wrong: `DD CB 05 46` was shown as `*RLC (IX+05),B`, not
+`BIT 0,(IX+05)`. The processor ran each instruction correctly. `HISTORY` now keeps four bytes
+of each instruction, and each line shows the same instruction as `DISASM`.
+
 **The CompuPro M-Drive/H RAM disk: the `mdriveh` board.** The board holds 512K of RAM on two
 I/O ports, `C6` and `C7`. The `boards` property gives a set of 1 to 8 boards on the same ports.
 CompuPro CP/M 2.2N on the `disk1` controller uses it as drive `M:`. At cold boot, the BIOS
