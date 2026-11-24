@@ -2633,6 +2633,42 @@ void test_cli() {
               "pull the card and REWIND goes with it");
     }
 
+    SECTION("cli: BOARDS ADD with a bad property adds no board (#984)");
+    {
+        Machine mb;
+        Monitor monb(mb);
+        auto add = [&](const std::string& cmd) {
+            Monitor fresh(mb);  // failed() is sticky: one Monitor per command
+            std::ostringstream o;
+            fresh.exec(cmd, o);
+            return std::make_pair(fresh.failed(), o.str());
+        };
+
+        auto [badKeyFailed, badKey] = add("BOARDS ADD 2sio sx bogus=1");
+        CHECK(badKeyFailed, "BOARDS ADD with an unknown key fails");
+        CHECK(badKey.find("sx: not added") != std::string::npos &&
+                  badKey.find("2sio added") == std::string::npos,
+              "BOARDS ADD with an unknown key says the board is not added");
+        CHECK(!mb.find("sx"), "BOARDS ADD with an unknown key leaves no board behind");
+
+        auto [noEqFailed, noEq] = add("BOARDS ADD 2sio sy junk");
+        CHECK(noEqFailed, "BOARDS ADD with a word that has no '=' fails");
+        CHECK(noEq.find("junk: not a key=value property") != std::string::npos &&
+                  noEq.find("sy: not added") != std::string::npos,
+              "BOARDS ADD names the word that has no '=' and adds nothing");
+        CHECK(!mb.find("sy"), "BOARDS ADD with a word that has no '=' leaves no board behind");
+
+        CHECK(add("BOARDS ADD 2sio sw port=0x40 bogus=1").first && !mb.find("sw"),
+              "a good property before a bad one does not keep the board");
+
+        auto [goodFailed, good] = add("BOARDS ADD 2sio sx port=0x20");
+        CHECK(!goodFailed && good == "sx: 2sio added\n" && mb.find("sx"),
+              "the id is free again, and a good property adds the board");
+        std::ostringstream show;
+        monb.exec("SHOW sx", show);
+        CHECK(show.str().find("0x20") != std::string::npos, "the good property was set");
+    }
+
     // -----------------------------------------------------------------------
     // NAMING A CARD: CASE-BLIND, AND THE INDEX IS OPTIONAL (cli/monitor.cpp).
     //

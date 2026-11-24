@@ -3697,15 +3697,23 @@ bool Monitor::exec(const std::string& line, std::ostream& out) {
                 failed_ = true;
                 return true;
             }
+            // A board is added whole or not at all. One bad word -- a key the board
+            // does not have, a value it refuses, or a word that is not key=value --
+            // takes the board out again, so no half-set board is left on the bus.
             for (size_t i = 4; i < a.size(); ++i) {
                 size_t eq = a[i].find('=');
-                if (eq == std::string::npos) continue;
-                std::string k = a[i].substr(0, eq), v = a[i].substr(eq + 1);
                 std::string e2;
-                if (!setProperty(*b, k, v, e2)) {
-                    out << e2 << "\n";
-                    failed_ = true;
+                if (eq == std::string::npos || eq == 0) {
+                    e2 = a[i] + ": not a key=value property";
+                } else {
+                    std::string k = a[i].substr(0, eq), v = a[i].substr(eq + 1);
+                    if (setProperty(*b, k, v, e2)) continue;
                 }
+                std::string id = b->id, e3;
+                m_.remove(id, e3);
+                out << e2 << "\n" << id << ": not added\n";
+                failed_ = true;
+                return true;
             }
             out << b->id << ": " << b->type() << " added\n";
             return true;
