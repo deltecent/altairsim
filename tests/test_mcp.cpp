@@ -2616,6 +2616,79 @@ void test_mcp() {
               "a free-running guest sending on port B never naps");
     }
 
+    SECTION("MCP: console text is one byte per character up to U+00FF (#985)");
+    {
+        Machine m;
+        if (!loadAltmon(m)) return;
+        LiveMcp mcp(m);
+
+        // 0000: reset the console 2SIO and set 8N1, then store each byte it receives from
+        // 1000 on, for ever.
+        mcp.call("mem_deposit", R"({"addr":0,"bytes":")"
+                                R"(3E 03 D3 10 3E 15 D3 10 21 00 10 DB 10 0F D2 0B 00 )"
+                                R"(DB 11 77 23 C3 0B 00"})");
+        // What the guest stored at 1000..1003, after the store area is cleared first.
+        auto clear = [&] { mcp.call("mem_fill", R"({"lo":4096,"hi":4099,"byte":0})"); };
+        auto read  = [&] {
+            std::string s;
+            const Json  d = mcp.data("mem_dump", R"({"lo":4096,"hi":4099})");
+            for (const Json& b : d.at("bytes").items()) {
+                char h[4];
+                std::snprintf(h, sizeof h, "%02X ", (unsigned)b.integer());
+                s += h;
+            }
+            return s;
+        };
+        const std::string want = "F0 41 FF 00 ";
+
+        clear();
+        mcp.call("send", R"({"text":"ðAÿ"})");
+        mcp.call("run", R"({"from":0,"timeout_ms":200})");
+        CHECK(read() == want, ("send: \\u00f0A\\u00ff reaches the guest as F0 41 FF (got " +
+                               read() + ")").c_str());
+
+        clear();
+        mcp.call("run", R"({"from":0,"timeout_ms":200,"input":"ðAÿ"})");
+        CHECK(read() == want, ("run input: \\u00f0A\\u00ff reaches the guest as F0 41 FF (got " +
+                               read() + ")").c_str());
+
+        clear();
+        mcp.call("start", R"({"from":0,"input":"ðAÿ"})");
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        mcp.call("stop");
+        CHECK(read() == want, ("start input: \\u00f0A\\u00ff reaches the guest as F0 41 FF "
+                               "(got " + read() + ")").c_str());
+
+        // The same characters unescaped in the JSON, and a lone byte that is not UTF-8.
+        clear();
+        mcp.call("send", "{\"text\":\"\xC3\xB0" "A" "\xC3\xBF\"}");
+        mcp.call("run", R"({"from":0,"timeout_ms":200})");
+        CHECK(read() == want, "an unescaped character up to U+00FF is one byte too");
+        clear();
+        mcp.call("send", "{\"text\":\"\xF0" "A" "\xFF\"}");
+        mcp.call("run", R"({"from":0,"timeout_ms":200})");
+        CHECK(read() == want, "a byte that is not UTF-8 goes through as itself");
+
+        // Above U+00FF is no byte: refused, and the call changes nothing.
+        clear();
+        mcp.call("mem_deposit", R"({"addr":256,"bytes":"C3 00 01"})");  // JMP 0100: PC is 0100
+        mcp.call("run", R"({"from":256,"timeout_ms":200})");
+        const long long pc = mcp.data("regs").at("pc").integer();
+        const Json sent = mcp.call("send", R"({"text":"AĀ"})");
+        CHECK(LiveMcp::isError(sent), "send refuses a character above U+00FF");
+        CHECK(sent.at("content").items().at(0).at("text").str().find("U+0100") !=
+                  std::string::npos,
+              "the refusal names the character");
+        CHECK(LiveMcp::isError(mcp.call("run", R"({"from":0,"input":"AĀ"})")),
+              "run refuses a character above U+00FF");
+        CHECK(LiveMcp::isError(mcp.call("start", R"({"from":0,"input":"AĀ"})")),
+              "start refuses a character above U+00FF");
+        CHECK(!mcp.data("status").at("running").boolean(), "the refused start ran nothing");
+        CHECK(mcp.data("regs").at("pc").integer() == pc, "the refused calls did not move PC");
+        mcp.call("run", R"({"from":0,"timeout_ms":200})");
+        CHECK(read() == "00 00 00 00 ", "the refused calls typed nothing, not even the A");
+    }
+
     SECTION("MCP: a paced free run keeps to its crystal and still answers at once; EOF ends "
             "the session (#602)");
     {

@@ -391,6 +391,8 @@ are the most important:
   send a string such as `"0xFF00"`, the server refuses the call and tells you the number to
   send.
 - A control byte is a JSON `\uXXXX` escape: `\u0003` is `Ctrl-C`. `\x03` is not JSON.
+- Each character from `\u0000` to `\u00ff` is one byte to the guest: `\u00f0` is the byte
+  `F0`. The server refuses a character above `\u00ff`.
 - Some clients send the text as you write it, and do not make a JSON escape from it. With such
   a client, use the `TYPE` command through the `monitor` tool. `TYPE` has its own escapes:
   `\r`, `\"`, `\^C` for `Ctrl-C` and `\xHH` for a byte. `HELP TYPE` gives the full list.

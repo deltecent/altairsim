@@ -12,6 +12,14 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**Under `--mcp`, a console character from 80 to FF reaches the guest as one byte (issue
+#985).** The MCP `send` tool, and the `input` of `run` and `start`, sent each character as its
+UTF-8 bytes. A character from `\u0080` to `ÿ` became two bytes, with no error. For
+example, `send` with the text `ðAÿ` gave the guest `C3 B0 41 C3 BF`, so a guest that
+reads 8-bit keyboard codes read the wrong keys. Now each character from `\u0000` to `ÿ`
+is one byte, and the same text gives `F0 41 FF`. The server refuses a character above
+`ÿ`, and the call changes nothing.
+
 **`BOARDS ADD` adds no board when a setting is bad (issue #984).** `BOARDS ADD` added the
 board first and then set each `<key>=<value>`. When a key or a value was bad, the monitor
 showed the error, but the board stayed in the machine with its default settings. The monitor
