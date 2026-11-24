@@ -22,7 +22,7 @@ You can do everything by hand that a machine file does to a board.
 | `BOARDS` | what is in the backplane |
 | `SHOW BOARDS` | the board types that you can add, one line each |
 | `SHOW BOARD <type>` | the description and settings of one type (add `UNITS` for only the units) |
-| `BOARDS ADD <type> <id>` | add a board |
+| `BOARDS ADD <type> <id> [<key>=<value> ...]` | add a board, and set its settings |
 | `BOARDS REMOVE <id>` | remove a board |
 | `SHOW <id>` | the settings of one board in the machine, with the values that it accepts |
 | `SET <id> <key>=<value>` | change one setting |
@@ -31,6 +31,15 @@ You can do everything by hand that a machine file does to a board.
 altairsim> BOARDS ADD virtc vi0
 altairsim> SET vi0 rtc_source=line
 altairsim> SHOW vi0
+```
+
+`BOARDS ADD` adds a board only when every setting is correct. A bad key, a bad value or a word
+with no `=` is an error. The monitor shows the error and adds no board:
+
+```
+altairsim> BOARDS ADD 2sio sx bogus=1
+sx has no property 'bogus'. Valid properties: port
+sx: not added
 ```
 
 **The keys at the prompt are the keys in a machine file.** `SET cpu0 clock_hz=2000000` at the

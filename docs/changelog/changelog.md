@@ -12,6 +12,14 @@ register, the bit or the command that was wrong.
 
 ## Unreleased
 
+**`BOARDS ADD` adds no board when a setting is bad (issue #984).** `BOARDS ADD` added the
+board first and then set each `<key>=<value>`. When a key or a value was bad, the monitor
+showed the error, but the board stayed in the machine with its default settings. The monitor
+also showed `added`. A word with no `=` was ignored with no error. For example,
+`BOARDS ADD 2sio sx bogus=1` added `sx` on ports `10`–`13`, the same ports as `sio0`. Now a
+bad key, a bad value or a word with no `=` removes the board again, and the monitor shows
+`sx: not added`.
+
 **`HISTORY` shows a four-byte Z80 instruction correctly (issue #983).** `HISTORY` kept only
 three bytes of each instruction. It showed the fourth byte of a Z80 instruction as `00`, with
 no error. For example, `DD 36 05 7B` was shown as `LD (IX+05),00`, and `ED 4B 34 12` as
