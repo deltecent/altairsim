@@ -601,8 +601,8 @@ RunResult Debugger::run(uint64_t maxSteps, bool clearPending) {
             }
             slot->pc = cpu->pc();
             cpu->captureRegs(slot->regs);
-            slot->nbytes = 3;
-            m_.bus.peekBytes(slot->pc, slot->bytes.data(), 3);
+            slot->nbytes = kMaxInsnBytes;
+            m_.bus.peekBytes(slot->pc, slot->bytes.data(), kMaxInsnBytes);
         }
 
         // A fresh instruction: forget any conditional cycle matches recorded for the last

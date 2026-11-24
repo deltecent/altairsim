@@ -286,10 +286,16 @@ public:
     // lamps and what they are called; this only carries their numbers, so it never learns
     // what an 8080 is. Formatting lives in the monitor (it needs the disassembler, the
     // symbol table and the operator's number base), so there is no formatInsn() here.
+    //
+    // kMaxInsnBytes is the longest instruction of any core: 3 for the 8080 and 8085, 4 for
+    // the Z80 (the DD/FD/ED/CB-prefixed forms, such as DD 36 d n and DD CB d op). Every
+    // record holds that many, whatever the core, so a decoder never sees a byte the
+    // record did not keep (#983: with 3, a Z80 operand or opcode read back as 0).
+    static constexpr int kMaxInsnBytes = 4;
     struct InsnRec {
         uint16_t pc = 0;
-        std::vector<uint32_t> regs;      // one value per RegDef, in registers() order
-        std::array<uint8_t, 3> bytes{};  // opcode + up to two operand bytes at pc
+        std::vector<uint32_t> regs;                  // one value per RegDef, in registers() order
+        std::array<uint8_t, kMaxInsnBytes> bytes{};  // the bytes at pc, opcode first
         uint8_t nbytes = 0;
     };
 
