@@ -40,7 +40,8 @@ to every standard Altair terminal until you STOP/RESET:
 ## Use it
 
 This machine file is the `default` machine with this PROM in the socket instead of
-[`dbl`](../DBL). Save it as `cdbl.toml`:
+[`dbl`](../DBL). `MOUNT` reads a relative path from the folder of the machine file. Save
+the machine file as `cdbl.toml` in the top folder of the repository, next to `examples/`:
 
 ```toml
 [machine]

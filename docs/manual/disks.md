@@ -583,7 +583,12 @@ A second `ADD` with the same address and kind replaces the fault, and sets its c
 ```
 altairsim> SHOW MOUNTS
   UNIT         KIND  HOLDS
-  fdc0:drive0  disk  cpm22.dsk  (2 faults)
+  fdc0:drive0  disk  cpm22.dsk  (1 fault)
+  fdc0:drive1  disk  (empty)
+  fdc0:drive2  disk  (empty)
+  fdc0:drive3  disk  (empty)
+
+  Paths are AS WRITTEN.  SHOW PATHS says what they are relative to.
 ```
 
 ### Remove a fault
