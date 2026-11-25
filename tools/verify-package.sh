@@ -55,10 +55,14 @@
 # -- a failed boot is a finding, not a script error -- so failures are handled explicitly and
 # tallied, and the script's own exit status is the count of findings.
 #
-#   usage: tools/verify-package.sh [--keep] [--require-notarized] <archive>
+#   usage: tools/verify-package.sh [--keep] [--release] [--require-notarized] <archive>
 #
 #     --keep     Leave the scratch extraction directory instead of deleting it, to debug a
 #                failure by hand (the message names the directory).
+#     --release  `--version` must be exactly `AltairSim X.Y.Z`, the version in the archive's
+#                name. tools/release-worker.sh passes it. The CI leg builds after the tag, so
+#                its version has a `-N-gSHA` suffix, and without --release only the start of
+#                the line is checked.
 #     --require-notarized
 #                macOS: the program must be signed with a Developer ID, Apple must have
 #                notarized it, and it must start with the quarantine mark a browser adds.
@@ -73,13 +77,15 @@ map=$root/docs/package.map
 manual=$root/docs/manual
 
 keep=0
+release=0
 notarized=0
 archive=""
 while [ $# -gt 0 ]; do
   case $1 in
     --keep) keep=1; shift ;;
+    --release) release=1; shift ;;
     --require-notarized) notarized=1; shift ;;
-    -h|--help) echo "usage: tools/verify-package.sh [--keep] [--require-notarized] <archive>"; exit 0 ;;
+    -h|--help) echo "usage: tools/verify-package.sh [--keep] [--release] [--require-notarized] <archive>"; exit 0 ;;
     -*) echo "verify-package: unknown option $1" >&2; exit 1 ;;
     *)  [ -z "$archive" ] || { echo "verify-package: only one archive, got '$archive' and '$1'" >&2; exit 1; }
         archive=$1; shift ;;
@@ -454,6 +460,101 @@ esac
 if [ "$_tools_ok" -eq 1 ]; then passed=$((passed + 1)); echo "  PASS tools/ has the mirror-watch scripts and the LBR tools"
 else failed=$((failed + 1)); echo "  ---- FAIL tools/ (the mirror-watch scripts and the LBR tools)"; fi
 
+# THE SHIPPED BINARY HAS ITS WINDOW. build-package.sh asks the binary it packs, but this is the
+# binary a user unpacks. The video row says "SDL3 -- windowed (...)" only when SDL3 is compiled
+# in with a real video backend; a headless build boots every guest and draws nothing.
+total=$((total + 1))
+if "$bin" -n -x 'SHOW VERSION' 2>/dev/null | tr -d '\r' | grep -q '^ *video *SDL3 -- windowed ('; then
+  passed=$((passed + 1)); echo "  PASS SHOW VERSION: video SDL3 -- windowed"
+else
+  failed=$((failed + 1)); echo "  ---- FAIL SHOW VERSION has no 'video  SDL3 -- windowed (' row: a headless build"
+fi
+
+# THE VERSION IS THE ONE IN THE ARCHIVE'S NAME. With --release, with no suffix: a `-N-gSHA`
+# suffix means it was not built at the tag, and `(modified)` means a dirty tree.
+_want=$(basename "$archive" | sed -n 's/^altairsim-\([0-9][0-9.]*\)-.*/\1/p')
+if [ -n "$_want" ]; then
+  total=$((total + 1))
+  _got=$("$bin" --version 2>/dev/null | tr -d '\r' | head -n 1)
+  _ok=0
+  if [ "$_got" = "AltairSim $_want" ]; then _ok=1
+  elif [ "$release" -eq 0 ]; then
+    # An untagged build prints `AltairSim X.Y.Z-N-gSHA`, and a dirty tree adds ` (modified)`.
+    case $_got in "AltairSim $_want-"*|"AltairSim $_want "*) _ok=1 ;; esac
+  fi
+  if [ "$_ok" -eq 1 ]; then
+    passed=$((passed + 1)); echo "  PASS --version: $_got"
+  else
+    failed=$((failed + 1)); echo "  ---- FAIL --version is '$_got', not 'AltairSim $_want'"
+  fi
+fi
+
+# macOS and Linux: SDL3 IS INSIDE THE BINARY. A line that names SDL is a library that a user's
+# machine may not have: /opt/homebrew/... on a Mac, a distro libSDL3.so on Linux.
+case $archive in
+  *-macos-*.tar.gz) _link=$(otool -L "$bin" 2>/dev/null | grep -i sdl || true); _tool="otool -L" ;;
+  *-linux-*.tar.gz) _link=$(ldd "$bin" 2>/dev/null | grep -i sdl || true); _tool="ldd" ;;
+  *) _tool="" ;;
+esac
+if [ -n "$_tool" ]; then
+  total=$((total + 1))
+  if [ -z "$_link" ]; then
+    passed=$((passed + 1)); echo "  PASS $_tool: no SDL library"
+  else
+    failed=$((failed + 1)); echo "  ---- FAIL $_tool names an SDL library:"
+    echo "$_link" | sed 's/^/    /'
+  fi
+fi
+
+# macOS: THE OLDEST macOS IT RUNS ON. The release builds for 11.0 (CMAKE_OSX_DEPLOYMENT_TARGET in
+# tools/release-worker.sh). A binary that says the build machine's own version refuses to
+# start on every older Mac.
+case $archive in
+  *-macos-*.tar.gz)
+    total=$((total + 1))
+    _minos=$(vtool -show-build "$bin" 2>/dev/null | awk '$1 == "minos" { print $2 }' | sort -u | tr '\n' ' ' | sed 's/ *$//')
+    if [ "$_minos" = "11.0" ]; then
+      passed=$((passed + 1)); echo "  PASS minos 11.0"
+    else
+      failed=$((failed + 1)); echo "  ---- FAIL minos is '${_minos:-unknown}', not 11.0"
+    fi ;;
+esac
+
+# Windows: NO DLL A USER MAY NOT HAVE. SDL3 is linked in statically, and so is the C++ runtime
+# (/MT), so the program must name neither SDL3.dll nor VCRUNTIME140.dll. dumpbin comes with
+# Visual Studio; vswhere, at a fixed path, finds it. With no Visual Studio, say so loudly.
+dumpbin_skipped=0
+case $archive in
+  *-windows-*.zip)
+    _vswhere="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
+    _dumpbin=""
+    if [ -f "$_vswhere" ]; then
+      _dumpbin=$("$_vswhere" -latest -products '*' -find 'VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe' 2>/dev/null \
+                 | tr -d '\r' | head -n 1)
+    fi
+    if [ -z "$_dumpbin" ] || [ ! -f "$_dumpbin" ]; then
+      dumpbin_skipped=1
+    else
+      total=$((total + 1))
+      # -dependents, not /dependents: Git Bash rewrites an argument that starts with / into a
+      # Windows path before dumpbin sees it. Git Bash also finds `altairsim` with no `.exe`, so
+      # $bin can lack it, and dumpbin opens only the exact name.
+      _exe=$bin
+      case $_exe in *.exe) ;; *) _exe=$_exe.exe ;; esac
+      _deps=$("$_dumpbin" -dependents "$_exe" 2>&1 | tr -d '\r')
+      _bad=$(echo "$_deps" | grep -iE '^ *(SDL3|VCRUNTIME140[_0-9]*|MSVCP140[_0-9]*)\.dll' || true)
+      if ! echo "$_deps" | grep -qi 'KERNEL32.dll'; then
+        failed=$((failed + 1)); echo "  ---- FAIL dumpbin /dependents gave no DLL list:"
+        echo "$_deps" | sed 's/^/    /'
+      elif [ -n "$_bad" ]; then
+        failed=$((failed + 1)); echo "  ---- FAIL the program needs a DLL that a user may not have:"
+        echo "$_bad" | sed 's/^/    /'
+      else
+        passed=$((passed + 1)); echo "  PASS dumpbin /dependents: system DLLs only"
+      fi
+    fi ;;
+esac
+
 # THE macOS SIGNATURE (tools/macos-sign.sh). Every macOS package must carry a valid one; a
 # release package must also be a Developer ID one that Apple notarized, and must START with the
 # quarantine mark on it -- the state a browser download is in, which is what a user has.
@@ -511,6 +612,11 @@ fi
 if [ "$skipped" -ne 0 ]; then
   echo "verify-package: NOTE -- $skipped pty command(s) were NOT verified (no expect on this box)." >&2
   echo "  Install expect to verify BASIC 1.0, disk BASIC and the Sol-20 too." >&2
+fi
+
+if [ "$dumpbin_skipped" -ne 0 ]; then
+  echo "verify-package: NOTE -- the DLL check was NOT run (no Visual Studio dumpbin on this box)." >&2
+  echo "  Run: dumpbin /dependents altairsim.exe -- it must name no SDL3.dll and no VCRUNTIME140.dll." >&2
 fi
 
 if [ "$optchecked" -ne 0 ]; then

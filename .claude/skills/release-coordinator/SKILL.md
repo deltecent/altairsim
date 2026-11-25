@@ -116,8 +116,9 @@ out the tag in it. On a worker box, the driver first resets the checkout, as `pr
   version. **STOP on `release-drive: FAIL`.** An empty log is not a build in progress: in 1.3.0
   a start that printed `started` ran nothing, and nobody saw it for about 10 minutes.
 - **The two Macs sign and notarize their own packages** with the `<TARGET>_SIGN_…` values in
-  `distribution.conf` (DISTRIBUTION.md §4.3). `preflight` checks each Mac's signing keychain.
-  A Mac with no signing values stops before step 1. Do not pass `--unsigned` for a release:
+  `distribution.conf` (DISTRIBUTION.md §4.3). `preflight` checks each Mac's signing keychain
+  and makes a test signature that must finish in 60 seconds. A keychain that asks "allow
+  codesign?" fails there, not in packaging. A Mac with no signing values stops before step 1. Do not pass `--unsigned` for a release:
   it is for a dry run only, and its package needs the `xattr` step that the manual no longer
   gives.
 - **Any order, and at the same time**, but the driver refuses a target in `SHARED_HOST` while
@@ -162,10 +163,18 @@ origin vX.Y.Z`, then rebuild on every box. Never move a published tag.
 
 ## 6. Verify, checksum, upload, publish
 
-1. **Verify the archives** — the `release-verify` skill, on each of the four. Hand its human
-   checklist to a person.
-2. **Checksum:** `tools/build-checksums.sh`. It refuses unless all four archives of one
-   version are in `dist/`, writes `dist/SHA256SUMS`, and checks it before returning.
+1. **Verify the archives.** The workers already did: step 7 of each worker runs
+   `tools/verify-package.sh --release` on its archive, on its own platform. In the `wait`
+   output, read the `verify` and `signed` line of each `#####` block.
+   - **CHECK** that each `verify` line is `verify-package: PASS -- …`, and that each macOS
+     `signed` line ends `notarized (Accepted)`. **STOP** on any other value.
+   - **Do not write a boot script or run the checks again.** The `release-verify` skill says
+     what the script checks.
+   - Give the window checklist of `release-verify` to a person.
+2. **Checksum:** `tools/build-checksums.sh --version X.Y.Z`. Give `--version`: `dist/` keeps the
+   archives of earlier releases, and with no version the script stops and asks for one. It
+   refuses unless all four archives of X.Y.Z are in `dist/`, writes `dist/SHA256SUMS`, and
+   checks it before returning. **CHECK `build-checksums: OK -- all four archives verify`.**
 3. **Upload all five:**
    ```sh
    gh release upload vX.Y.Z dist/altairsim-X.Y.Z-*.tar.gz dist/altairsim-X.Y.Z-*.zip dist/SHA256SUMS

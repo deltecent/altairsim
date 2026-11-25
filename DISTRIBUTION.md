@@ -369,7 +369,9 @@ The `release-coordinator` skill has the commands. Steps 1–4 can be done ahead 
 3. **Preflight, then tag and push.** Run `tools/release-drive.sh preflight` at the commit
    that you will tag. It builds a package of HEAD in a temporary clone on the coordinator and
    runs §7 on it. Next, it resets each worker's checkout and proves that the worker can `scp` a
-   file to the coordinator's `dist/`. Tag only after its last line, `preflight: OK`. The tag
+   file to the coordinator's `dist/`. On each Mac it makes a test signature, which must finish
+   in 60 seconds: in 1.4.0 a keychain that asked "allow codesign?" passed the other checks and
+   then held the package step for 35 minutes. Tag only after its last line, `preflight: OK`. The tag
    starts no CI run: the CPU exercisers run on the build machines in
    step 5 (§4.2 step 4). `cpu-exerciser-release.yml` is manual only.
 4. **Open the draft** — `gh release create vX.Y.Z --draft`.
@@ -382,9 +384,13 @@ The `release-coordinator` skill has the commands. Steps 1–4 can be done ahead 
    ended. Then it prints each report block and one `wait OK` or `wait FAIL` line.
    `status <target>` reads one log once. The workers `scp` their archives
    into the coordinator's `dist/`; the coordinator builds its own straight into it.
-6. **Verify, checksum, upload, publish.** §7 on each archive; then `tools/build-checksums.sh`
-   (it refuses unless all four of one version are in `dist/`, and writes `dist/SHA256SUMS`);
-   then upload the four archives and `SHA256SUMS` and publish the draft.
+6. **Verify, checksum, upload, publish.**
+   1. Each worker ran §7 on its archive (its step 7). Read the `verify` and `signed` lines of
+      the four report blocks, and give the window checklist to a person.
+   2. Run `tools/build-checksums.sh --version X.Y.Z`. Give the version, because `dist/` keeps
+      earlier releases. The script refuses unless all four archives of that version are in
+      `dist/`, and writes `dist/SHA256SUMS`.
+   3. Upload the four archives and `SHA256SUMS`, and publish the draft.
 
 **While a release is still a draft**, a doc fix after tagging is shipped by force-moving the
 tag to the fix and rebuilding everywhere, so every archive still reports a clean `X.Y.Z`. Never
@@ -451,14 +457,16 @@ works next to its source tree is exactly what this catches.
 staging directory. It holds whatever local `build/altairsim` existed when the script ran, and
 it looks exactly like a package.
 
-**Ask the binary first:** `altairsim -n -x 'SHOW VERSION'` has a `video` row that reads
-`SDL3 -- windowed` or `none -- headless (null display)`. `build-package.sh` refuses a headless
-binary on the same row.
+**Every machine check is in `tools/verify-package.sh`, and the worker runs it.** In 1.4.0 the
+coordinator wrote its own boot scripts for the four archives, and their bugs looked like
+failures of the archives. The script checks `--version` (exact, with `--release`), the
+`video` row, the dependency list (`otool -L`, `ldd`, `dumpbin -dependents`), macOS `minos`
+and notarization, and the manual's own commands.
 
-**"No SDL in the dependency list" means static or headless**, and `otool -L` / `ldd` /
-`dumpbin` cannot tell the two apart. So a second check counts SDL symbols with `nm` (thousands,
-or zero). Use `nm`, not `strings`: `SDL_CreateWindow` is a symbol, not a string, and `strings`
-reports zero on a correct static build.
+**Ask the binary:** `altairsim -n -x 'SHOW VERSION'` has a `video` row that reads
+`SDL3 -- windowed` or `none -- headless (null display)`. No SDL in the dependency list means
+static or headless, and the row tells the two apart. `build-package.sh` refuses a headless
+binary on the same row.
 
 **A window reaching a screen can only be checked by a person.** The `video` row says SDL3 is
 compiled in, not that a window opened and takes the keyboard. The skill ends with a short

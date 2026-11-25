@@ -468,7 +468,7 @@ case $target in
 esac
 
 # --- 7. Prove the manual true against the ARCHIVE. ------------------------------------------
-run 7 tools/verify-package.sh $notary "$archive"
+run 7 tools/verify-package.sh --release $notary "$archive"
 r_verify=$(verify_line "$out") || { r_verify="no PASS line"; stop 7 "verify-package.sh did not print its PASS line"; }
 [ "$rc" = 0 ] || stop 7 "verify-package.sh exit status $rc"
 
