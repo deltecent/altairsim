@@ -479,7 +479,8 @@ if [ -n "$_want" ]; then
   _ok=0
   if [ "$_got" = "AltairSim $_want" ]; then _ok=1
   elif [ "$release" -eq 0 ]; then
-    case $_got in "AltairSim $_want "*) _ok=1 ;; esac
+    # An untagged build prints `AltairSim X.Y.Z-N-gSHA`, and a dirty tree adds ` (modified)`.
+    case $_got in "AltairSim $_want-"*|"AltairSim $_want "*) _ok=1 ;; esac
   fi
   if [ "$_ok" -eq 1 ]; then
     passed=$((passed + 1)); echo "  PASS --version: $_got"
