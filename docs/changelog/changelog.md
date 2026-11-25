@@ -10,95 +10,11 @@ register, the bit or the command that was wrong.
 
 ---
 
-## Unreleased
+## 1.4.0
 
-**Under `--mcp`, a console character from 80 to FF reaches the guest as one byte (issue
-#985).** The MCP `send` tool, and the `input` of `run` and `start`, sent each character as its
-UTF-8 bytes. A character from `\u0080` to `ÿ` became two bytes, with no error. For
-example, `send` with the text `ðAÿ` gave the guest `C3 B0 41 C3 BF`, so a guest that
-reads 8-bit keyboard codes read the wrong keys. Now each character from `\u0000` to `ÿ`
-is one byte, and the same text gives `F0 41 FF`. The server refuses a character above
-`ÿ`, and the call changes nothing.
-
-**`BOARDS ADD` adds no board when a setting is bad (issue #984).** `BOARDS ADD` added the
-board first and then set each `<key>=<value>`. When a key or a value was bad, the monitor
-showed the error, but the board stayed in the machine with its default settings. The monitor
-also showed `added`. A word with no `=` was ignored with no error. For example,
-`BOARDS ADD 2sio sx bogus=1` added `sx` on ports `10`–`13`, the same ports as `sio0`. Now a
-bad key, a bad value or a word with no `=` removes the board again, and the monitor shows
-`sx: not added`.
-
-**`HISTORY` shows a four-byte Z80 instruction correctly (issue #983).** `HISTORY` kept only
-three bytes of each instruction. It showed the fourth byte of a Z80 instruction as `00`, with
-no error. For example, `DD 36 05 7B` was shown as `LD (IX+05),00`, and `ED 4B 34 12` as
-`LD BC,(0034)`. In a `DD CB` or `FD CB` instruction the fourth byte is the operation, so the
-instruction itself was wrong: `DD CB 05 46` was shown as `*RLC (IX+05),B`, not
-`BIT 0,(IX+05)`. The processor ran each instruction correctly. `HISTORY` now keeps four bytes
-of each instruction, and each line shows the same instruction as `DISASM`.
-
-**The CompuPro M-Drive/H RAM disk: the `mdriveh` board.** The board holds 512K of RAM on two
-I/O ports, `C6` and `C7`. The `boards` property gives a set of 1 to 8 boards on the same ports.
-CompuPro CP/M 2.2N on the `disk1` controller uses it as drive `M:`. At cold boot, the BIOS
-prints `1 M-Drive/H` and formats the drive. The files on `M:` stay through a bus `RESET`, and
-`POWER` loses them.
-
-**Bad sectors on a disk, to test retry code: `FAULT` (issue #966).** `FAULT` makes a sector of
-a mounted disk bad, for example `FAULT fdc0:drive0 ADD 2/0/1 data count=2`. The kinds are
-`data` and `id` (a CRC error), `missing` (no ID field) and `write` (the drive does not write).
-With `count=N`, the sector fails N times and is then good. With no count, it fails each time.
-The controller reports each fault with the status bits of its chip, and the disk image does not
-change. `FAULT` lists each fault with the number of times it occurred. `SET <id> DEBUG=fault`
-writes a line for each fault. The `faults` key of a drive puts faults in a machine file, and a
-snapshot keeps them. The MCP tools are `disk_fault_add`, `disk_fault_list` and
-`disk_fault_clear`. The `tarbell`, `tarbelldd`, `16fdc`, `64fdc`, `versafloppy`, `jadedd`,
-`disk1`, `disk1a`, `dcdd`, `mds`, `mdsa` and `mdsad` controllers take faults, and the
-`fdcplus` at drive type 5 (issue #969). The `dcdd` and the `mds` have no
-error bit. On them, a fault changes the bytes that the guest reads, and the CP/M BIOS finds the
-error with its checksum (issue #968). For example, a hard fault on sector 0 of track 2 of the 88-DCDD
-CP/M disk gives 12 reads and then `Bdos Err On A: Bad Sector`. On the `fdcplus` 1.5 MB floppy, a
-fault sets the checksum, track or end-of-sector bit of the I/O status. A hard fault on the
-directory track, `0/1/0`, gives 12 reads and the same error. The serial drive takes no faults.
-On the North Star `mdsa` and `mdsad` (issue #970), the address is `<track>/<side>/<sector>`. A
-`data` fault makes the check character after the data wrong, and the CP/M BIOS finds it. A
-`missing` fault takes away the sync character, so the data never comes. A hard fault on the
-directory of the `mdsad` CP/M disk, `2/0/0`, gives `Bdos Err On A: Bad Sector`. A North Star
-sector has no ID field, so these boards refuse an `id` fault. The Vector Graphic `vgmdc`
-(Micropolis) and `vgdmdc` (Dual-Mode) take faults too (issue #971). The guest checks each
-275-byte slot itself. A `data` fault makes the checksum wrong, an `id` fault makes the track
-byte wrong, and a `missing` fault takes away the sync byte. A hard fault on the directory gives
-`Bdos Err On A: Bad Sector`. The `vgmdc` CP/M 2.20B disk reads it 100 times first, and the
-`vgdmdc` CP/M 2.22 H disk 72 times. The MITS `hdsk` takes faults too (issue #972). A fault
-sets the bit of the controller's error byte, CSTAT: bit 2 for `data`, bit 3 for `id` and bit 4
-for `missing`. A `write` fault loses the write, and the guest is not told. The HDBL boot PROM
-and the CP/M BIOS try a bad sector one time. A bad read of `0/0/0` gives `LOAD ERR`. A hard
-fault on the directory, `1/0/0`, gives `Bdos Err On A: Bad Sector`.
-
-**Fixed: `run` over `--mcp` stopped many times during the cold boot of Vector CP/M 2.22 H (issue #976).** At cold boot, the BIOS finds the processor speed. It reads bit 5, the vertical blank, on the Flashwriter II status port. The same port has the key flag. The board counted each status read with no key as a guest that waits for a key. Because of this, each `run` stopped as idle in the speed count, and it took many calls to reach `A>`. The board now counts a status read as a key wait only after the guest polls through two blanking starts. The speed count reads through one. Now one `run` after `B` at `Mon>` reaches `A>`.
-
-**Fixed: the WD17xx set CRC Error for a sector that it found.** A Read Sector or Write Sector
-can pass a bad ID field on the way to its sector. The chip then set status bit 3, CRC Error,
-also when it found the sector after that. A BIOS reads bit 3 alone as a CRC error in the data, so a
-good sector read as bad. The chip now sets bit 3 only together with bit 4, Record Not Found, as
-the WD177X status table says. A disk image has no bad ID fields, so a guest met this only
-through `FAULT`.
-
-**The PAiA SS-100 speech synthesizer board, `ss100` (issue #420).** The board has a Votrax
-SC-01-A chip. The guest writes phoneme codes to port `30` and the control word to port `31`.
-The board requests an interrupt when the chip is ready for the next phoneme. The
-`interrupt` setting is the jumper of the board: `vi0` to `vi7`, or `int`. The chip model
-uses the phoneme ROM of a real SC-01-A. The control word
-sets the volume, the speech or sound-effects mode, and the master clock, which changes the
-pitch and the speed. The `r21` setting is the board's clock trim pot, to match a real board. You hear the speech on the sound output of your computer when the
-machine has a crystal (`clock_hz`). The *User Manual* has a short program that says "hello".
-
-**A `volume` setting for each sound board (issue #964).** The `d7a`, `music6` and `ss100`
-boards have a `volume` setting, in dB from `-40` to `24`. The default is `0`. The setting
-changes the sound on your computer only, and the guest cannot see it. altairsim rounds off
-a peak that is too loud. Because of this, you can make the speech of the PAiA SS-100 louder
-with little distortion, for example `SET ss0 volume=6`.
-
-**The D+7A and the Newtech Model 6 are 12 dB louder.** A full-swing level now uses the full
-range of the sound output. Before, it used a quarter of it. Set `volume=-12` for the old level.
+**1.4.0 adds `FAULT`, which makes a sector of a disk bad to test the retry code of a guest. It
+adds the PAiA SS-100 speech board, the CompuPro M-Drive/H RAM disk, and a `volume` setting for
+each sound board. Some built-in machines are removed.**
 
 **Breaking: some built-in machines are removed.** They are `bankmem`, `cdbl`, `compupro`,
 `cuter`, `dazzler`, `disk1`, `disk1a`, `dualide`, `dualidesd`, `dualsd`, `jadedd`,
@@ -109,6 +25,79 @@ with `type = "c700"` on `base = "default"` gives the old `lineprinter`. The *Use
 chapter on boards shows the machine file for `bankmem`, `disk1`, `disk1a`, `dualide`, `dualsd`,
 `jadedd`, `lineprinter`, `parallel`, `sbc200v` and `vg3vipt`. `roms/CDBL/README.md` shows the
 machine file for `cdbl`.
+
+**Bad sectors on a disk: `FAULT` (issue #966).** `FAULT` makes a sector of a mounted disk bad,
+for example `FAULT fdc0:drive0 ADD 2/0/1 data count=2`. The disk image does not change.
+
+- The kinds are `data` and `id` (a CRC error), `missing` (no ID field) and `write` (the drive
+  does not write).
+- With `count=N`, the sector fails N times and is then good. With no count, it fails each time.
+- `FAULT` lists each fault with the number of times it occurred. `SET <id> DEBUG=fault` writes a
+  line for each fault.
+- The `faults` key of a drive puts faults in a machine file, and a snapshot keeps them. The MCP
+  tools are `disk_fault_add`, `disk_fault_list` and `disk_fault_clear`.
+
+These controllers take faults. Each one reports a fault as its real hardware does:
+
+- `tarbell`, `tarbelldd`, `16fdc`, `64fdc`, `versafloppy`, `jadedd`, `disk1` and `disk1a`: the
+  status bits of the controller chip.
+- `dcdd` and `mds` (issue #968): these boards have no error bit. A fault changes the bytes that
+  the guest reads, and the CP/M BIOS finds the error with its checksum. A hard fault on sector 0
+  of track 2 of the 88-DCDD CP/M disk gives 12 reads and then `Bdos Err On A: Bad Sector`.
+- `fdcplus` at drive type 5 (issue #969): the checksum, track or end-of-sector bit of the I/O
+  status. The serial drive takes no faults.
+- The North Star `mdsa` and `mdsad` (issue #970): the address is `<track>/<side>/<sector>`. A
+  `data` fault makes the check character wrong, and a `missing` fault takes away the sync
+  character. A North Star sector has no ID field, so these boards refuse an `id` fault.
+- The Vector Graphic `vgmdc` (Micropolis) and `vgdmdc` (Dual-Mode) (issue #971): the guest
+  checks each 275-byte slot itself. A `data` fault makes the checksum wrong, an `id` fault makes
+  the track byte wrong, and a `missing` fault takes away the sync byte.
+- The MITS `hdsk` (issue #972): bit 2, 3 or 4 of the error byte, CSTAT, for `data`, `id` or
+  `missing`. A `write` fault loses the write, and the guest is not told. A bad read of `0/0/0`
+  gives `LOAD ERR` from the HDBL boot PROM.
+
+**New boards.**
+
+- The PAiA SS-100 speech synthesizer, `ss100` (issue #420). The board has a Votrax SC-01-A chip,
+  with the phoneme ROM of a real chip. The guest writes phoneme codes to port `30` and the control
+  word to port `31`. The board requests an interrupt when the chip is ready for the next phoneme.
+  The `r21` setting is the clock trim pot of the board. You hear the speech when the machine has
+  a crystal (`clock_hz`). The *User Manual* has a short program that says "hello".
+- The CompuPro M-Drive/H RAM disk, `mdriveh`. The board holds 512K of RAM on the I/O ports `C6`
+  and `C7`, and `boards` gives a set of 1 to 8 boards. CompuPro CP/M 2.2N on the `disk1`
+  controller uses it as drive `M:`. The files on `M:` stay through a bus `RESET`, and `POWER`
+  loses them.
+
+**Sound.**
+
+- The `d7a`, `music6` and `ss100` boards have a `volume` setting, in dB from `-40` to `24`
+  (issue #964). The default is `0`. The setting changes the sound on your computer only, and the
+  guest cannot see it. For example, `SET ss0 volume=6` makes the speech louder with little
+  distortion.
+- The D+7A and the Newtech Model 6 are 12 dB louder. A full-swing level now uses the full range
+  of the sound output. Before, it used a quarter of it. Set `volume=-12` for the old level.
+
+**Fixes.**
+
+- Under `--mcp`, a console character from 80 to FF reaches the guest as one byte (issue #985).
+  The `send` tool, and the `input` of `run` and `start`, sent each character as its UTF-8 bytes.
+  For example, `ð` reached the guest as `C3 B0`, and a guest that reads 8-bit keyboard codes read
+  the wrong keys. Now `ð` is `F0`. The server refuses a character above `ÿ`.
+- `BOARDS ADD` adds no board when a setting is bad (issue #984). Before, the board stayed in the
+  machine with its default settings, and the monitor showed `added`. For example,
+  `BOARDS ADD 2sio sx bogus=1` added `sx` on the ports of `sio0`. Now the monitor shows
+  `sx: not added`. A word with no `=` is now an error.
+- `HISTORY` shows a four-byte Z80 instruction correctly (issue #983). `HISTORY` kept three bytes
+  of each instruction, and showed the fourth byte as `00`. For example, `DD CB 05 46` was shown
+  as `*RLC (IX+05),B`, not `BIT 0,(IX+05)`. The processor ran each instruction correctly.
+- One `run` over `--mcp` reaches `A>` in the cold boot of Vector CP/M 2.22 H (issue #976). The
+  BIOS reads the vertical blank on the Flashwriter II status port to find the processor speed.
+  The board counted each of these reads as a wait for a key, so `run` stopped as idle many times.
+  Now the board counts a key wait only after two blanking starts.
+- The WD17xx set CRC Error for a sector that it found. A Read Sector or Write Sector can pass a
+  bad ID field on the way to its sector. The chip set status bit 3 also when it then found the
+  sector, so a good sector read as bad. Now it sets bit 3 only with bit 4, Record Not Found, as
+  the WD177X status table says. A guest met this only through `FAULT`.
 
 ## 1.3.7
 
