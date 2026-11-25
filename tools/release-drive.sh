@@ -47,7 +47,10 @@
 #      (`git reset --hard` and `git clean -fdx`), and an scp from the worker to
 #      COORDINATOR_DIST arrives. The scp is the one that step 8 of the worker makes.
 #   3. On each Mac, the coordinator too: the signing keychain unlocks with its password file,
-#      holds <TARGET>_SIGN_IDENTITY, and Apple answers with the notary profile.
+#      holds <TARGET>_SIGN_IDENTITY, and Apple answers with the notary profile. Then a copy of
+#      /usr/bin/true is signed as tools/macos-sign.sh signs the program, within 60 seconds. A
+#      keychain that asks "allow codesign?" passes the first three checks and then makes
+#      codesign wait for a click. In 1.4.0 the package step waited 35 minutes for it.
 # Each check prints `preflight: OK -- <what>` or `preflight: FAIL -- <what>`. The last line is
 # `preflight: OK` or `preflight: FAIL`, and the exit status is 0 only for OK.
 #
@@ -297,7 +300,13 @@ if [ "$cmd" = preflight ]; then
     c="security unlock-keychain -p \"\$(cat $pf)\" $kc && security find-identity -v -p codesigning $kc | grep -q $sid && xcrun notarytool history --keychain-profile $np --keychain $kc > /dev/null"
     if [ "$2" = local ]; then sh -c "$c" > /dev/null 2>&1; else ssh $sshopt "$2" "$c" > /dev/null 2>&1; fi \
       && pass "$1: the signing keychain holds the identity, and Apple accepts the notary profile" \
-      || fail "$1: the signing keychain $kc does not unlock, does not hold $sid, or Apple refuses profile $np. Run tools/macos-signing-setup.sh there"
+      || { fail "$1: the signing keychain $kc does not unlock, does not hold $sid, or Apple refuses profile $np. Run tools/macos-signing-setup.sh there"; return 1; }
+    # A real signature, with the arguments of tools/macos-sign.sh. perl's alarm ends a
+    # codesign that waits for an "allow" dialog, so the check fails and does not hang.
+    c="f=\$(mktemp -t preflight-sign) && cp /usr/bin/true \$f && security unlock-keychain -p \"\$(cat $pf)\" $kc && perl -e 'alarm 60; exec @ARGV' codesign --force --options runtime --timestamp --keychain $kc --sign $sid \$f; r=\$?; rm -f \$f; exit \$r"
+    if [ "$2" = local ]; then sh -c "$c" > /dev/null 2>&1; else ssh $sshopt "$2" "$c" > /dev/null 2>&1; fi \
+      && pass "$1: a test codesign with the identity finishes" \
+      || fail "$1: a test codesign did not finish in 60 seconds, or it failed. The keychain may ask for permission. On that Mac, run tools/macos-signing-setup.sh, or its security set-key-partition-list line"
   }
   case ${COORDINATOR_TARGET:-} in
     macos-*) sign_check "$COORDINATOR_TARGET" local ;;

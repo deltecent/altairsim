@@ -1,75 +1,51 @@
 ---
 name: release-verify
-description: Prove an altairsim release archive works as downloaded — unpack it outside any repository, check the version, check that SDL3 is linked in statically (not headless, not by absolute path), check that a macOS program is signed and notarized, and hand a person the window checklist. Use when asked to verify, check or test a release package or archive before (or after) it is published, or to run DISTRIBUTION.md §7.
+description: Prove an altairsim release archive works as downloaded: run tools/verify-package.sh on it, on the platform it is for (version, video row, static SDL3, minos, Windows DLLs, macOS signature and notarization, and the manual's own commands), and hand a person the window checklist. Use when asked to verify, check or test a release package or archive before (or after) it is published, or to run DISTRIBUTION.md §7.
 ---
 
 # Verify a release archive
 
-**Test the ARCHIVE, unpacked somewhere `git rev-parse` fails.** Not in `dist/`, not under the
-repository. A package that only works next to its source tree is exactly what this catches.
+**During a release, the workers have already done the machine part.** Step 7 of
+`tools/release-worker.sh` runs `tools/verify-package.sh --release` on each archive, on its own
+box, and the `verify` line of each report block in the `release-drive.sh wait` output gives
+the result. Read those four lines. Do not run the checks again, and do not write a boot
+script. Give the window checklist below to a person.
 
-**Never test `dist/altairsim-<ver>-<target>/`.** That is `build-package.sh`'s staging
-directory: it holds whatever `build/altairsim` existed when it ran, not the binary that ships,
-and it looks exactly like a package.
+## The machine part: one command
 
-On each of the four archives, on the platform it is for:
+To check an archive outside a release, such as a download, run this from a checkout of the
+repository, on the platform that the archive is for:
 
 ```sh
-d=$(mktemp -d) && tar xzf altairsim-X.Y.Z-<target>.tar.gz -C "$d" && cd "$d"/altairsim-X.Y.Z*
-#   Windows: extract with tar.exe (Expand-Archive refuses some files)
-
-./altairsim --version                            # CHECK: exactly "AltairSim X.Y.Z"
-./altairsim -n -x 'SHOW VERSION'                 # CHECK: video row "SDL3 -- windowed"
-./altairsim -l                                   # the built-in machines list
+tools/verify-package.sh --release [--require-notarized] altairsim-X.Y.Z-<target>.tar.gz
+#   --require-notarized: macOS only.   Windows: run it in Git Bash, with the .zip.
 ```
 
-**STOP** on any version suffix, `(modified)`, or a video row of `none -- headless (null
-display)`. Ask the binary first — it is the simplest check and needs no toolchain.
+**CHECK the last line, `verify-package: PASS -- N/N … (skipped 0)`.** **STOP on
+`verify-package: FAIL`.** Each `---- FAIL` line above it names the problem.
 
-Then boot two machines and see them reach their prompt. Drive them with `altairsim <machine>
---mcp` (the `altairsim` skill), not a hand-rolled pty script:
+The script unpacks the archive in a temporary folder outside any repository, and checks the
+binary in it:
 
-| machine | reaches |
+| Check | Pass |
 |---|---|
-| `examples/cpm/cpm22-buffered.toml` | `A>` |
-| `examples/basic4k/basic4k.toml` | `MEMORY SIZE?` |
+| `--version` | `AltairSim X.Y.Z`, the version in the archive name. With `--release`, no suffix. |
+| `SHOW VERSION` | a row `video  SDL3 -- windowed (…)`. A headless build has no window. |
+| macOS `otool -L`, Linux `ldd` | no SDL library |
+| Windows `dumpbin -dependents` | no `SDL3.dll`, no `VCRUNTIME140.dll` |
+| macOS `vtool -show-build` | `minos 11.0` |
+| macOS signature | Developer ID, notarized, and it starts with the quarantine mark |
+| the manual's commands | each one reaches the prompt that the manual shows |
 
-## Is SDL3 inside the binary?
+Notes:
 
-| | run | PASS (static) | FAIL |
-|---|---|---|---|
-| macOS | `otool -L altairsim` | no SDL line | `/opt/homebrew/…` or any absolute SDL path |
-| Linux | `ldd altairsim` | no SDL line | a distro `libSDL3.so` |
-| Windows | `dumpbin /dependents altairsim.exe` | only system DLLs: no `SDL3.dll`, no `VCRUNTIME140.dll` | either of those |
-
-**"No SDL line" also describes a headless build**, so add a second check where `nm` exists:
-
-```sh
-nm altairsim | grep -c SDL_       # static: thousands.   headless: 0.
-```
-
-Use `nm`, not `strings`: `SDL_CreateWindow` is a symbol, not a string, and `strings` reports
-0 on a correct static build.
-
-**macOS only:** `vtool -show-build altairsim | grep minos` must report `11.0`, not the build
-machine's own OS version.
-
-## macOS: is it signed and notarized?
-
-A macOS package must start with no `xattr` step. Check it:
-
-```sh
-codesign --verify --strict --verbose=2 altairsim
-codesign -dv --verbose=2 altairsim 2>&1 | grep -E '^(Authority|Timestamp)='
-spctl --assess --type open --context context:primary-signature --verbose=2 altairsim
-```
-
-PASS is `valid on disk`, a first `Authority=Developer ID Application: …`, and from `spctl`
-`accepted` with `source=Notarized Developer ID`. FAIL is an ad hoc signature (no `Authority`
-line) or `rejected`. Use the `spctl` form above. `--type execute` judges only an app bundle,
-and rejects every plain program as "not an app".
-
-`spctl` asks Apple online, so a Mac with no internet gives a false FAIL.
+- **Never give it `dist/altairsim-<ver>-<target>/`.** That folder is the staging folder of
+  `build-package.sh`. Give it the archive.
+- **Windows with no Visual Studio:** the script prints a NOTE that the DLL check did not run.
+  Run `dumpbin /dependents altairsim.exe` by hand.
+- **macOS:** `spctl` asks Apple online. A Mac with no internet gives a false FAIL.
+- **No `expect`:** the pty commands are skipped, and the PASS line says how many. A skip is not
+  a pass.
 
 ## The window checklist — for a PERSON
 
@@ -100,6 +76,5 @@ Things that look like bugs and are not:
 
 ## Report
 
-Per target: the `--version` line, the `video` row, the dependency check result, `nm` count,
-`minos` (macOS), the signature and `spctl` lines (macOS), the two boots, and the person's
-H0–H6 answers (or "not yet run").
+For each target: the `verify-package:` last line (from the worker report, or from your own run),
+any `---- FAIL` or NOTE line, and the person's H0–H6 answers, or "not yet run".
